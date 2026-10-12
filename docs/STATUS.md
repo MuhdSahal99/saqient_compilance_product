@@ -115,3 +115,18 @@ Playwright flow that authors and publishes a checklist and runs a review on it.
 - Restyled documents (drag-and-drop upload), checklists, reviews, findings (floating bulk-assign bar), tasks,
   reports, activity (timeline) and settings.
 - Tests run: eslint (0 errors), tsc, vitest 12/12, vite build, Playwright e2e 3/3 against the dev server.
+
+## AI suggestions (branch ai-suggestions)
+
+- Added: `ai_suggest` job, `ai_suggestion_runs` / `ai_suggestions` tables
+  (migration 0002), mock provider that returns labelled JSON, citation checks on
+  every quote, accept (creates a proposed finding) and dismiss endpoints with
+  audit events, AI origin in HTML/PDF/CSV reports, an *AI suggestions* tab
+  shown only when a provider is on, an AI badge on findings, en/ar strings, and
+  an optional `inference` (vLLM v0.31.0) compose service under the `ai` profile.
+- Executed: ruff, ruff format, mypy, `alembic upgrade/downgrade/upgrade`,
+  `alembic check`, full pytest (8 new AI tests), pnpm lint, typecheck, test,
+  build; manual browser run with the mock provider (desktop and 390px).
+- Not executed: any real model (no GPU, by design); `docker compose --profile ai up`.
+- Next: pick an exact Jais or Falcon checkpoint, check its licence, and run the
+  evaluation steps in docs/MODEL_INTEGRATION.md on approved GPU time.

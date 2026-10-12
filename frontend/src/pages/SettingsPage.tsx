@@ -7,7 +7,8 @@ import { z } from "zod";
 import { Bot, Building2, Info, KeyRound, Languages, Loader2, ShieldCheck, Users, type LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
-import type { Member } from "@/lib/types";
+import type { AIStatus, Member } from "@/lib/types";
+import { MockNotice } from "@/components/ai-suggestions";
 import { useAuth } from "@/lib/auth";
 import { LANGUAGES } from "@/i18n";
 import { Avatar } from "@/components/ui/avatar";
@@ -73,7 +74,7 @@ export function SettingsPage() {
   const members = useQuery({ queryKey: ["members"], queryFn: () => api<Member[]>("/members") });
   const ai = useQuery({
     queryKey: ["ai-status"],
-    queryFn: () => api<{ enabled: boolean; provider: string; note: string }>("/ai/status"),
+    queryFn: () => api<AIStatus>("/ai/status"),
   });
   if (!me) return null;
   return (
@@ -210,7 +211,8 @@ export function SettingsPage() {
               {ai.isLoading && <LoadingState rows={1} />}
               {ai.isError && <ErrorState error={ai.error} onRetry={() => void ai.refetch()} />}
               {ai.data && <p className="text-[13px] text-slate-500">{t("settings.aiProvider", { provider: ai.data.provider })}</p>}
-              <p className="leading-relaxed text-slate-600">{t("settings.aiExplainer")}</p>
+              <p className="leading-relaxed text-slate-600">{ai.data?.enabled ? t("settings.aiExplainerOn") : t("settings.aiExplainer")}</p>
+              {ai.data?.is_mock && <MockNotice />}
             </CardContent>
           </Card>
         </div>

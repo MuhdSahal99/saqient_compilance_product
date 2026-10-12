@@ -56,6 +56,9 @@ class Settings(BaseSettings):
     ai_max_output_tokens: int = 800
     ai_allowed_hosts: str = ""
     ai_serving_interface_verified: bool = False
+    # Plain http to an allowlisted host, for a model server on a private network only
+    # (for example the compose "inference" service). Never for a public endpoint.
+    ai_allow_insecure_http: bool = False
 
     @property
     def cors_origin_list(self) -> list[str]:

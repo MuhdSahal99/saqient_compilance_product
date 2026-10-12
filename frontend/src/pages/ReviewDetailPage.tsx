@@ -25,6 +25,7 @@ import {
   Quote,
   RotateCcw,
   SearchCheck,
+  Sparkles,
   Unlock,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -55,8 +56,9 @@ import {
 import { evidenceLocation } from "@/components/evidence";
 import { FindingPanel } from "@/components/finding-panel";
 import { ReportLinks } from "@/components/report-links";
+import { AISuggestionsPanel, useAISuggestions } from "@/components/ai-suggestions";
 
-type Tab = "findings" | "results" | "reports";
+type Tab = "findings" | "ai" | "results" | "reports";
 
 function useMediaQuery(query: string): boolean {
   return useSyncExternalStore(
@@ -313,6 +315,11 @@ export function ReviewDetailPage() {
     queryFn: () => api<CheckResult[]>(`/reviews/${reviewId}/results`),
     enabled: !!r && !running && tab === "results",
   });
+  const aiSuggestions = useAISuggestions(reviewId, !!r);
+  const showAI = !!(aiSuggestions.data?.available || aiSuggestions.data?.run);
+  const aiPending = (aiSuggestions.data?.suggestions ?? []).filter(
+    (s) => s.status === "pending" && (s.assessment === "not_addressed" || s.assessment === "unclear"),
+  ).length;
   const reports = useQuery({
     queryKey: ["reports", reviewId, r?.status],
     queryFn: () => api<Page<Report>>(`/reports${qs({ review_id: reviewId })}`),
@@ -405,6 +412,14 @@ export function ReviewDetailPage() {
       p.set("tab", next);
       return p;
     });
+  const openFinding = (id: string) => {
+    setStatusFilter("");
+    setParams((p) => {
+      p.set("tab", "findings");
+      p.set("finding", id);
+      return p;
+    });
+  };
 
   if (review.isLoading) return <LoadingState />;
   if (review.isError || !r) return <ErrorState error={review.error} onRetry={() => void review.refetch()} />;
@@ -603,6 +618,7 @@ export function ReviewDetailPage() {
         onChange={setTab}
         items={[
           { key: "findings", label: t("reviewDetail.tab.findings"), count: totalFindings },
+          ...(showAI ? [{ key: "ai" as const, label: t("reviewDetail.tab.ai"), count: aiPending || undefined }] : []),
           { key: "results", label: t("reviewDetail.tab.results") },
           { key: "reports", label: t("reviewDetail.tab.reports"), count: reports.data?.total },
         ]}
@@ -668,6 +684,12 @@ export function ReviewDetailPage() {
                           <span className="flex flex-wrap items-center gap-1.5">
                             <SeverityBadge severity={f.severity as Severity} />
                             <FindingStatusBadge status={f.status} />
+                            {f.ai_suggestion_id && (
+                              <span className="inline-flex items-center gap-1 text-[11px] font-medium text-violet-600">
+                                <Sparkles className="size-3" aria-hidden />
+                                {t("ai.badge")}
+                              </span>
+                            )}
                             {f.evidence.length > 0 && (
                               <span className="inline-flex items-center gap-1 text-[11px] text-slate-400">
                                 <Quote className="size-3" aria-hidden />
@@ -704,6 +726,8 @@ export function ReviewDetailPage() {
             </div>
           </div>
         ))}
+
+      {tab === "ai" && showAI && <AISuggestionsPanel review={r} onOpenFinding={openFinding} />}
 
       {tab === "results" && (
         <Card className="overflow-hidden">

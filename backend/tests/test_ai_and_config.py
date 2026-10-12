@@ -85,6 +85,25 @@ def test_external_endpoint_must_be_allowlisted() -> None:
         )
     )
     assert ok.name == "openai_compatible"
+    # Plain http only with the explicit private-network switch, and still allowlisted.
+    private = OpenAICompatibleProvider(
+        Settings(
+            **base,
+            ai_base_url="http://inference:8000/v1",  # type: ignore[arg-type]
+            ai_allowed_hosts="inference",
+            ai_allow_insecure_http=True,
+        )
+    )
+    assert private.name == "openai_compatible"
+    with pytest.raises(ConfigError):
+        OpenAICompatibleProvider(
+            Settings(
+                **base,
+                ai_base_url="http://other:8000/v1",  # type: ignore[arg-type]
+                ai_allowed_hosts="inference",
+                ai_allow_insecure_http=True,
+            )
+        )
 
 
 def test_jais_falcon_require_verified_interface() -> None:

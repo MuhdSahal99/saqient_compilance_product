@@ -91,11 +91,15 @@ class OpenAICompatibleProvider:
     def __init__(self, settings: Settings, name: str = "openai_compatible") -> None:
         self.name = name
         host = (urlparse(settings.ai_base_url).hostname or "").lower()
-        if not settings.ai_base_url.startswith("https://") and host not in (
-            "localhost",
-            "127.0.0.1",
+        if (
+            not settings.ai_base_url.startswith("https://")
+            and host not in ("localhost", "127.0.0.1")
+            and not (settings.ai_allow_insecure_http and settings.ai_base_url.startswith("http://"))
         ):
-            raise ConfigError("AI_BASE_URL must use https (or localhost for self-hosted dev).")
+            raise ConfigError(
+                "AI_BASE_URL must use https (or http on a private network with "
+                "AI_ALLOW_INSECURE_HTTP=true)."
+            )
         if not host or host not in settings.ai_allowed_host_list:
             raise ConfigError("AI_BASE_URL host is not in AI_ALLOWED_HOSTS.")
         if not settings.ai_model:

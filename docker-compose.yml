@@ -13,8 +13,14 @@ x-backend-env: &backend-env
   COOKIE_SECURE: ${COOKIE_SECURE:-false}
   STORAGE_BACKEND: local
   STORAGE_LOCAL_PATH: /data/storage
-  AI_ENABLED: "false"
-  AI_PROVIDER: disabled
+  # AI stays off unless set explicitly. See docs/MODEL_INTEGRATION.md before changing.
+  AI_ENABLED: ${AI_ENABLED:-false}
+  AI_PROVIDER: ${AI_PROVIDER:-disabled}
+  AI_BASE_URL: ${AI_BASE_URL:-}
+  AI_MODEL: ${AI_MODEL:-}
+  AI_ALLOWED_HOSTS: ${AI_ALLOWED_HOSTS:-}
+  AI_ALLOW_INSECURE_HTTP: ${AI_ALLOW_INSECURE_HTTP:-false}
+  AI_SERVING_INTERFACE_VERIFIED: ${AI_SERVING_INTERFACE_VERIFIED:-false}
 
 services:
   db:
@@ -87,6 +93,34 @@ services:
     depends_on:
       api: { condition: service_healthy }
 
+  # Optional self-hosted model server (Jais or Falcon via vLLM). Never starts by
+  # default: it needs `--profile ai`, an NVIDIA GPU host and INFERENCE_MODEL set to a
+  # model whose licence you have checked. No port is published; only the api and
+  # worker reach it on the compose network. Running it on a GPU machine costs money:
+  # get approval first (docs/MODEL_INTEGRATION.md).
+  inference:
+    profiles: ["ai"]
+    image: vllm/vllm-openai:v0.31.0
+    command:
+      - "--model=${INFERENCE_MODEL:-}"  # required: a licence-checked model id
+      - "--served-model-name=${AI_MODEL:-local-model}"
+      - "--max-model-len=${INFERENCE_MAX_MODEL_LEN:-8192}"
+      - "--host=0.0.0.0"
+      - "--port=8000"
+    environment:
+      HF_HUB_OFFLINE: ${HF_HUB_OFFLINE:-0}
+    volumes:
+      - model-cache:/root/.cache/huggingface
+    ipc: host
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
 volumes:
   pgdata:
   storage:
+  model-cache:

@@ -19,7 +19,8 @@ Boundaries (non-negotiable):
 - No invented regulations, statutory citations, customers, metrics or results.
 - A text match is not proof of compliance; a missing match is not
   automatically a violation. Automated outcomes are never final decisions.
-- AI inference (Jais, Falcon or any other model) is **disabled**. The core
+- AI inference (Jais, Falcon or any other model) is **disabled by default**.
+  The only AI feature is reviewer-accepted AI suggestions on a review. The core
   application must work with no external AI API.
 
 ## Repository structure

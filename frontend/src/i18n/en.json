@@ -282,7 +282,8 @@
     "tab": {
       "findings": "Findings",
       "results": "All check results",
-      "reports": "Reports"
+      "reports": "Reports",
+      "ai": "AI suggestions"
     },
     "undecided_one": "{{count}} finding needs a reviewer decision.",
     "undecided_other": "{{count}} findings need a reviewer decision.",
@@ -500,7 +501,10 @@
     "checklist.created": "Created checklist",
     "checklist.published": "Published checklist version",
     "checklist.draft_created": "Created checklist draft",
-    "checklist.draft_edited": "Edited checklist draft"
+    "checklist.draft_edited": "Edited checklist draft",
+    "ai.suggestions_requested": "Requested AI suggestions",
+    "ai.suggestion_accepted": "Added AI suggestion as finding",
+    "ai.suggestion_rejected": "Dismissed AI suggestion"
   },
   "roles": {
     "org_admin": "Organisation admin",
@@ -532,7 +536,8 @@
     "aiEnabled": "Enabled",
     "aiDisabled": "Disabled",
     "aiProvider": "Provider: {{provider}}",
-    "aiExplainer": "AI is off. Reviews use deterministic checks and human decisions only, and no document content is sent to any external service."
+    "aiExplainer": "AI is off. Reviews use deterministic checks and human decisions only, and no document content is sent to any external service.",
+    "aiExplainerOn": "AI suggestions are on. Document text for a review is sent only to the provider configured by your administrator, and only when someone asks for suggestions. A reviewer must accept each suggestion."
   },
   "palette": {
     "title": "Command menu",
@@ -544,5 +549,50 @@
     "navigate": "Navigate",
     "open": "Open",
     "hint": "Type 2+ characters to search records"
+  },
+  "ai": {
+    "title": "AI suggestions",
+    "badge": "AI-suggested",
+    "explainer": "Suggestions are drafts from a model. Nothing becomes a finding until a reviewer accepts it, and an accepted suggestion still needs a normal decision. Quotes are checked against the stored document text; quotes that do not match are removed. A suggestion is not legal advice and not a compliance decision.",
+    "mockNotice": "Mock provider: these are placeholder suggestions for testing the workflow. They are not analysis.",
+    "mockModel": "mock provider (testing only)",
+    "runMeta": "From {{model}} · requested {{date}}",
+    "generate": "Get AI suggestions",
+    "generateAgain": "Ask again",
+    "working": "Preparing suggestions…",
+    "failed": "AI suggestions could not be prepared. The review itself is not affected. {{error}}",
+    "nowDisabled": "AI is now turned off for this workspace. Earlier suggestions stay visible for the record.",
+    "emptyTitle": "No AI suggestions yet",
+    "emptyHint": "Ask the model to read the document against each checklist requirement. You decide what to keep.",
+    "disabledTitle": "AI suggestions are off",
+    "disabledHint": "An administrator has not enabled an AI provider for this workspace.",
+    "pendingCount_one": "{{count}} possible gap waits for a reviewer.",
+    "pendingCount_other": "{{count}} possible gaps wait for a reviewer.",
+    "filter": "Which suggestions to show",
+    "filterGaps": "Possible gaps",
+    "filterAll": "All requirements",
+    "noneShown": "No suggestions to show with this filter.",
+    "noQuotes": "No supporting quote was found in the document.",
+    "rejectedCitations_one": "{{count}} quote did not match the document and was removed.",
+    "rejectedCitations_other": "{{count}} quotes did not match the document and were removed.",
+    "accept": "Add as finding",
+    "reject": "Dismiss",
+    "openFinding": "Open finding",
+    "acceptedToast": "Added as a proposed finding.",
+    "rejectedToast": "Suggestion dismissed.",
+    "decidedBy": "{{name}} · {{date}}",
+    "findingOrigin": "Started as an AI suggestion from {{model}} and added by a reviewer. It still needs a reviewer decision.",
+    "assessment": {
+      "addressed": "Appears addressed",
+      "not_addressed": "Possibly missing",
+      "unclear": "Unclear",
+      "invalid_output": "Unreadable answer"
+    },
+    "status": {
+      "pending": "Pending",
+      "accepted": "Added as finding",
+      "rejected": "Dismissed"
+    },
+    "signedOffHint": "Reopen the review to ask for suggestions."
   }
 }
