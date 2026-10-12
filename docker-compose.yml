@@ -21,6 +21,7 @@ x-backend-env: &backend-env
   AI_ALLOWED_HOSTS: ${AI_ALLOWED_HOSTS:-}
   AI_ALLOW_INSECURE_HTTP: ${AI_ALLOW_INSECURE_HTTP:-false}
   AI_SERVING_INTERFACE_VERIFIED: ${AI_SERVING_INTERFACE_VERIFIED:-false}
+  AI_AUTH: ${AI_AUTH:-api_key}
 
 services:
   db:

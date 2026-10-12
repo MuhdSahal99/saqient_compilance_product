@@ -56,6 +56,7 @@ AI_PROVIDER=disabled          # disabled | mock | openai_compatible | jais | fal
 AI_BASE_URL=
 AI_MODEL=
 AI_API_KEY=                   # backend only, never sent to the browser
+AI_AUTH=api_key               # api_key | google (short-lived Google Cloud tokens)
 AI_TIMEOUT_SECONDS=30
 AI_MAX_INPUT_CHARS=12000
 AI_MAX_OUTPUT_TOKENS=800
@@ -119,3 +120,30 @@ docker compose --profile ai up -d
 Nothing in this repository has been run against a real Jais or Falcon model yet.
 Quality, latency, Arabic handling and citation pass rates are unknown until
 step 5 and step 6 are done on synthetic documents.
+
+## Using a model deployed on Google Cloud Vertex AI
+
+A Model Garden page is a catalogue entry. A model is only callable after it is
+deployed to a Vertex AI endpoint, which runs on a GPU machine billed while it is
+up. Get approval before deploying (step 8), and pick a Middle East region if
+client documents must stay in the region.
+
+The app signs in with short-lived Google tokens instead of a fixed key:
+
+```
+AI_AUTH=google                   # install with: uv sync --extra vertex
+                                 # (Docker: build with --build-arg EXTRAS=vertex)
+GOOGLE_APPLICATION_CREDENTIALS=/run/secrets/vertex-sa.json   # not needed on Google Cloud
+AI_PROVIDER=falcon
+AI_MODEL=<served model name>
+AI_BASE_URL=https://<REGION>-aiplatform.googleapis.com/v1/projects/<PROJECT>/locations/<REGION>/endpoints/<ENDPOINT_ID>
+AI_ALLOWED_HOSTS=<REGION>-aiplatform.googleapis.com
+AI_SERVING_INTERFACE_VERIFIED=true   # only after a test call proves the route below works
+```
+
+The adapter posts to `AI_BASE_URL + "/chat/completions"`. Whether a given
+deployment answers on that route depends on the serving container Google uses
+for it; check it with one test call before setting
+`AI_SERVING_INTERFACE_VERIFIED=true`. The service account needs only the
+*Vertex AI User* role. Its key file is a secret: keep it out of the repository,
+chat and logs. This path is tested with a fake token and a fake endpoint only.

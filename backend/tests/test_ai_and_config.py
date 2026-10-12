@@ -178,3 +178,57 @@ def test_prompt_injection_text_has_no_effect_on_deterministic_review(tenant_a: T
     assert results["DEMO-03"] == "no_match_found"
     fs = client.get("/api/findings", params={"review_id": review["id"]}).json()["items"]
     assert all(f["status"] == "proposed" for f in fs)
+
+
+def test_google_auth_sends_short_lived_token(monkeypatch: pytest.MonkeyPatch) -> None:
+    import httpx
+
+    from app.ai import GoogleToken
+
+    url = "https://me-central2-aiplatform.googleapis.com/v1/projects/p/locations/me-central2/endpoints/1"
+    settings = Settings(
+        _env_file=None,  # type: ignore[call-arg]
+        ai_enabled=True,
+        ai_provider="openai_compatible",
+        ai_model="falcon",
+        ai_base_url=url,
+        ai_allowed_hosts="me-central2-aiplatform.googleapis.com",
+        ai_auth="google",
+    )
+    monkeypatch.setattr(GoogleToken, "get", lambda self: "short-lived-token")
+    seen: dict[str, object] = {}
+
+    def fake_post(target: str, **kwargs: object) -> httpx.Response:
+        seen["url"], seen["headers"] = target, kwargs["headers"]
+        body = {"id": "r1", "model": "falcon", "choices": [{"message": {"content": "{}"}}]}
+        return httpx.Response(200, json=body, request=httpx.Request("POST", target))
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+    out = OpenAICompatibleProvider(settings).complete("system", "prompt")
+    assert out.text == "{}" and out.model == "falcon"
+    assert seen["url"] == url + "/chat/completions"
+    assert seen["headers"] == {"Authorization": "Bearer short-lived-token"}
+
+    with pytest.raises(ConfigError):
+        OpenAICompatibleProvider(settings.model_copy(update={"ai_api_key": "static"}))
+
+
+def test_google_auth_failure_is_a_safe_provider_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.ai import AIProviderError, GoogleToken
+
+    def boom(self: GoogleToken) -> str:
+        raise RuntimeError("could not load key file /secret/path.json")
+
+    monkeypatch.setattr(GoogleToken, "get", boom)
+    settings = Settings(
+        _env_file=None,  # type: ignore[call-arg]
+        ai_enabled=True,
+        ai_provider="openai_compatible",
+        ai_model="falcon",
+        ai_base_url="https://vertex.example/v1",
+        ai_allowed_hosts="vertex.example",
+        ai_auth="google",
+    )
+    with pytest.raises(AIProviderError) as err:
+        OpenAICompatibleProvider(settings).complete("s", "p")
+    assert "secret" not in str(err.value) and "RuntimeError" in str(err.value)
