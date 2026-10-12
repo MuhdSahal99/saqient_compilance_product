@@ -1,0 +1,27 @@
+Vendor Data Handling Policy
+
+This is a synthetic document created for software demonstration. It describes a fictional company, Example Trading Co., and is not a real policy.
+
+Policy owner: Head of Information Security (fictional role).
+
+Effective date: 01/03/2026. Next review date: 01/03/2027.
+
+1. Purpose
+
+This policy sets expectations for how vendors handle data shared by Example Trading Co.
+
+2. Data retention
+
+Vendors keep shared data only for as long as the contract requires. Retention periods are listed in each data sharing schedule.
+
+At the end of the contract, vendors return or delete data within 30 days and confirm deletion in writing.
+
+3. Security incidents
+
+Vendors must notify Example Trading Co. of any security incident affecting shared data without undue delay.
+
+Our systems are 100% secure, so incidents are not expected.
+
+4. Subcontractors
+
+Vendors may use subcontractors only with prior written approval.

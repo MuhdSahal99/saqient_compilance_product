@@ -41,3 +41,18 @@ Read the root `CLAUDE.md` first. This file adds backend specifics.
 - Celery tasks are exercised by calling the task functions directly
   (`task.apply()` in eager mode) — no broker needed in tests.
 - Every new endpoint: happy path, role denial, cross-tenant 404.
+
+## Gotchas found while building
+
+- Enums are stored as `VARCHAR` with `create_constraint=False`; allowed values
+  are enforced by named `CheckConstraint`s from `NAMING_CONVENTION`. After
+  autogenerate, delete any duplicate unnamed enum check constraints and set
+  `create_constraint=False`, or `alembic upgrade` fails on a duplicate name.
+  `alembic check` must report no changes.
+- When a subquery references the same model as an enclosing `exists()`, use
+  `aliased(...)`; otherwise SQLAlchemy auto-correlates it and PostgreSQL
+  rejects the aggregate (`GET /documents?status=` hit this).
+- After `enqueue(job)` in an API handler, call `db.expire_all()` before
+  reading the job back; in eager mode the job ran in another session.
+- Never run `pkill -f pytest` / `pkill -f uvicorn` from an agent shell: the
+  pattern matches the shell's own command line. Kill by PID.

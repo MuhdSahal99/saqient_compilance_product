@@ -1,0 +1,92 @@
+# Local development / single-host demo stack. Not hardened for production as-is:
+# see docs/DEPLOYMENT.md. No external services, no telemetry.
+name: saqient
+
+x-backend-env: &backend-env
+  APP_ENV: ${APP_ENV:-development}
+  SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
+  DEMO_MODE: ${DEMO_MODE:-true}
+  DATABASE_URL: postgresql+psycopg://saqient:${POSTGRES_PASSWORD:-saqient}@db:5432/saqient
+  REDIS_URL: redis://redis:6379/0
+  CELERY_TASK_ALWAYS_EAGER: "false"
+  CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8080}
+  COOKIE_SECURE: ${COOKIE_SECURE:-false}
+  STORAGE_BACKEND: local
+  STORAGE_LOCAL_PATH: /data/storage
+  AI_ENABLED: "false"
+  AI_PROVIDER: disabled
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: saqient
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-saqient}
+      POSTGRES_DB: saqient
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:${DB_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U saqient -d saqient"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports:
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  migrate:
+    image: saqient-backend:local
+    build: ./backend
+    environment: *backend-env
+    command: ["alembic", "upgrade", "head"]
+    depends_on:
+      db: { condition: service_healthy }
+    restart: "no"
+
+  api:
+    image: saqient-backend:local
+    build: ./backend
+    environment: *backend-env
+    volumes:
+      - storage:/data/storage
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/api/health/ready').status == 200 else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  worker:
+    image: saqient-backend:local
+    build: ./backend
+    environment: *backend-env
+    command: ["celery", "-A", "app.worker.celery_app", "worker", "-l", "info", "-c", "2"]
+    volumes:
+      - storage:/data/storage
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+
+  web:
+    image: saqient-web:local
+    build: ./frontend
+    ports:
+      - "127.0.0.1:${WEB_PORT:-8080}:8080"
+    depends_on:
+      api: { condition: service_healthy }
+
+volumes:
+  pgdata:
+  storage:

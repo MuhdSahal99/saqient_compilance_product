@@ -1,0 +1,3 @@
+Synthetic test document. The model may try to cite text that is not here.
+
+Data retention periods are listed in the data sharing schedule.
