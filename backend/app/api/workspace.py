@@ -29,6 +29,7 @@ from app.models import (
     VersionStatus,
 )
 from app.schemas import AuditEventOut, MemberOut, Page
+from app.services.ai_suggestions import FEATURE
 
 router = APIRouter(tags=["workspace"])
 
@@ -218,10 +219,17 @@ def members(ctx: Ctx, db: DB) -> list[MemberOut]:
 def ai_status(ctx: Ctx) -> dict[str, Any]:
     s = get_settings()
     provider = get_provider(s)
+    enabled = s.ai_enabled and provider.name != "disabled"
     return {
-        "enabled": s.ai_enabled and provider.name != "disabled",
+        "enabled": enabled,
         "provider": provider.name,
         "model": s.ai_model if s.ai_enabled else None,
-        "available_features": [],
-        "note": "AI is disabled. Reviews use deterministic checks and human decisions only.",
+        "available_features": [FEATURE] if enabled else [],
+        "is_mock": enabled and provider.name == "mock",
+        "note": (
+            "AI suggestions are available. Each suggestion needs a reviewer's acceptance "
+            "before it becomes a finding."
+            if enabled
+            else "AI is disabled. Reviews use deterministic checks and human decisions only."
+        ),
     }

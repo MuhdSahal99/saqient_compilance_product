@@ -1,10 +1,15 @@
-"""AI provider abstraction. Disabled by default; not used by any user flow yet.
+"""AI provider abstraction. Disabled by default.
+
+Used only by AI-suggested findings (app/services/ai_suggestions.py), which a
+reviewer must accept before anything becomes a finding.
 
 See docs/MODEL_INTEGRATION.md before enabling anything here.
 """
 
 from __future__ import annotations
 
+import json
+import re
 from dataclasses import dataclass
 from typing import Protocol
 from urllib.parse import urlparse
@@ -53,7 +58,27 @@ class MockProvider:
             raise ConfigError("MockProvider is only available in development or test.")
 
     def complete(self, system: str, prompt: str) -> Completion:
-        return Completion(MOCK_PREFIX + "This is placeholder text.", "mock", "mock", None)
+        """Return a fixed, labelled answer in the suggestion JSON shape.
+
+        It quotes the first few words of the first numbered block in the prompt,
+        so the citation check runs against real stored text. It reads nothing
+        else and makes no judgement about the document.
+        """
+        citations = []
+        match = _MOCK_BLOCK.search(prompt)
+        if match:
+            words = match.group(2).split()[:8]
+            citations.append({"block": match.group(1), "quote": " ".join(words)})
+        body = {
+            "assessment": "unclear",
+            "summary": MOCK_PREFIX
+            + "Placeholder produced by the mock provider for testing the workflow.",
+            "citations": citations,
+        }
+        return Completion(MOCK_PREFIX + json.dumps(body), "mock", "mock", None)
+
+
+_MOCK_BLOCK = re.compile(r"^\[(B\d+)\] (.+)$", re.MULTILINE)
 
 
 class OpenAICompatibleProvider:

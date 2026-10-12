@@ -45,10 +45,20 @@ DISCLAIMER = (
     "listed."
 )
 
+AI_DISABLED_LIMITATION = "AI analysis was disabled for this review."
+AI_USED_LIMITATION = (
+    "Some findings started as AI suggestions. A reviewer accepted each one; the model, "
+    "provider and version are recorded per finding. AI output can be wrong and quotes were "
+    "checked only for matching stored text, not for meaning."
+)
+AI_MOCK_LIMITATION = (
+    "Some findings came from the mock AI provider used for testing. They are placeholders, "
+    "not analysis."
+)
+
 LIMITATIONS = [
     "Deterministic checks match text only; they do not interpret meaning or context.",
     "Content in images or scanned pages is not reviewed unless OCR is enabled (it is not).",
-    "AI analysis was disabled for this review.",
     "Checklist content is only as accurate as its sources; see each requirement's source "
     "and verification status.",
 ]
@@ -427,6 +437,15 @@ def build_snapshot(
     )
     from app.models import Organization
 
+    ai_findings = [f for f in findings if f.ai_suggestion is not None]
+    limitations = list(LIMITATIONS)
+    if not ai_findings:
+        limitations.insert(2, AI_DISABLED_LIMITATION)
+    else:
+        limitations.insert(2, AI_USED_LIMITATION)
+        if any(f.ai_suggestion and f.ai_suggestion.run.provider == "mock" for f in ai_findings):
+            limitations.insert(3, AI_MOCK_LIMITATION)
+
     org = db.get(Organization, review.org_id)
     return {
         "report_version": version,
@@ -452,7 +471,7 @@ def build_snapshot(
             "mode": run.engine_mode if run else "none",
             "run_started_at": run.started_at.isoformat() if run and run.started_at else None,
             "run_finished_at": run.finished_at.isoformat() if run and run.finished_at else None,
-            "ai_enabled": False,
+            "ai_enabled": bool(ai_findings),
         },
         "extraction_warnings": list(dv.extraction_warnings or []),
         "run_warnings": list(run.warnings or []) if run else [],
@@ -468,7 +487,9 @@ def build_snapshot(
         "findings": [
             {
                 "id": str(f.id),
-                "requirement_code": f.requirement.code if f.requirement else None,
+                "requirement_code": f.requirement.code
+                if f.requirement
+                else (f.ai_suggestion.requirement.code if f.ai_suggestion else None),
                 "source_reference": f.requirement.source_reference if f.requirement else None,
                 "title": f.title,
                 "description": f.description,
@@ -482,6 +503,13 @@ def build_snapshot(
                 "due_date": f.due_date.isoformat() if f.due_date else None,
                 "remediation_notes": f.remediation_notes,
                 "is_manual": f.is_manual,
+                "ai_suggestion": {
+                    "provider": f.ai_suggestion.run.provider,
+                    "model": f.ai_suggestion.run.model,
+                    "prompt_version": f.ai_suggestion.run.prompt_version,
+                }
+                if f.ai_suggestion
+                else None,
                 "evidence": [
                     {
                         "ref": e.get("ref"),
@@ -496,7 +524,7 @@ def build_snapshot(
         ],
         "signed_off_by": signer.full_name,
         "signed_off_at": signed_at.isoformat(),
-        "limitations": LIMITATIONS,
+        "limitations": limitations,
         "disclaimer": DISCLAIMER,
     }
 
