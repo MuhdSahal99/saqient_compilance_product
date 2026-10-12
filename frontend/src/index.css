@@ -1,31 +1,93 @@
+@import "@fontsource-variable/inter";
+@import "@fontsource/ibm-plex-sans-arabic/400.css";
+@import "@fontsource/ibm-plex-sans-arabic/500.css";
+@import "@fontsource/ibm-plex-sans-arabic/600.css";
+@import "@fontsource/ibm-plex-sans-arabic/700.css";
 @import "tailwindcss";
 
 @theme {
-  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", "Noto Sans", "Noto Sans Arabic", Tahoma, sans-serif;
+  --font-sans: "Inter Variable", "IBM Plex Sans Arabic", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Tahoma, sans-serif;
+  --font-arabic: "IBM Plex Sans Arabic", "Inter Variable", Tahoma, sans-serif;
 
-  --color-navy-50: #f2f5fa;
-  --color-navy-100: #e1e8f3;
-  --color-navy-200: #c3d0e6;
-  --color-navy-300: #94a9cf;
-  --color-navy-500: #3b5a8f;
-  --color-navy-600: #2a4675;
-  --color-navy-700: #1f365e;
-  --color-navy-800: #172a4b;
-  --color-navy-900: #10203b;
-  --color-navy-950: #0a1528;
+  /* Ink: primary text and dark surfaces */
+  --color-navy-50: #f4f6fb;
+  --color-navy-100: #e6eaf4;
+  --color-navy-200: #cad3e6;
+  --color-navy-300: #9eadcc;
+  --color-navy-400: #6d80a8;
+  --color-navy-500: #4a5d87;
+  --color-navy-600: #36476d;
+  --color-navy-700: #283756;
+  --color-navy-800: #1c2842;
+  --color-navy-900: #121a2e;
+  --color-navy-950: #0a0f1d;
 
-  --color-teal-50: #effaf8;
-  --color-teal-100: #d5f2ec;
-  --color-teal-200: #aee5da;
-  --color-teal-500: #14a08c;
-  --color-teal-600: #0f8573;
-  --color-teal-700: #0f6b5e;
-  --color-teal-800: #10564d;
+  /* Brand: emerald-teal accent */
+  --color-teal-50: #ecfdf8;
+  --color-teal-100: #d1faee;
+  --color-teal-200: #a7f2dd;
+  --color-teal-300: #6ee5c7;
+  --color-teal-400: #34cfac;
+  --color-teal-500: #10b594;
+  --color-teal-600: #059279;
+  --color-teal-700: #047563;
+  --color-teal-800: #065e50;
+  --color-teal-900: #064d43;
+
+  --shadow-xs: 0 1px 2px 0 rgb(16 24 40 / 0.04);
+  --shadow-card: 0 1px 2px 0 rgb(16 24 40 / 0.04), 0 1px 3px 0 rgb(16 24 40 / 0.06);
+  --shadow-pop: 0 12px 32px -8px rgb(16 24 40 / 0.18), 0 4px 8px -4px rgb(16 24 40 / 0.08);
+
+  --animate-fade-in: fade-in 0.25s ease-out both;
+  --animate-fade-up: fade-up 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+  --animate-scale-in: scale-in 0.18s cubic-bezier(0.16, 1, 0.3, 1) both;
+  --animate-shimmer: shimmer 1.6s linear infinite;
+
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  @keyframes fade-up {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  @keyframes scale-in {
+    from {
+      opacity: 0;
+      transform: scale(0.97);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+  @keyframes shimmer {
+    from {
+      background-position: 200% 0;
+    }
+    to {
+      background-position: -200% 0;
+    }
+  }
 }
 
 @layer base {
   html {
     @apply bg-slate-50 text-slate-900 antialiased;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+  html[lang="ar"] {
+    font-family: var(--font-arabic);
   }
   body {
     @apply min-h-screen;
@@ -36,11 +98,34 @@
   [dir="rtl"] .rtl-flip {
     transform: scaleX(-1);
   }
+  ::selection {
+    @apply bg-teal-200/70 text-navy-950;
+  }
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(203 213 225) transparent;
+  }
+}
+
+@utility skeleton {
+  border-radius: 0.375rem;
+  background: linear-gradient(90deg, rgb(241 245 249) 0%, rgb(226 232 240) 50%, rgb(241 245 249) 100%);
+  background-size: 200% 100%;
+  animation: var(--animate-shimmer);
 }
 
 /* Evidence highlight */
 mark.evidence {
-  @apply rounded-sm bg-amber-200/80 px-0.5 text-slate-900;
+  @apply rounded-sm bg-amber-200/80 px-0.5 text-slate-900 ring-1 ring-amber-300/60;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 @media print {

@@ -102,3 +102,16 @@ verification status; invitations and password reset with expiring tokens and
 a development mail sink; member management for org admins. Acceptance: each
 with backend permission and cross-tenant tests, component tests, and a
 Playwright flow that authors and publishes a checklist and runs a review on it.
+
+## UI/UX redesign (branch ui-redesign)
+
+- New design system: Inter + IBM Plex Sans Arabic (bundled via @fontsource), refreshed palette, shadows,
+  animations, skeleton loaders, dot status badges, severity glyphs, progress ring.
+- New app shell: grouped, collapsible sidebar with counts, org switcher, top bar, command palette (Ctrl K, "/"),
+  mobile drawer.
+- Redesigned login (split screen), overview (stat cards, "needs a decision" queue, severity donut, coverage
+  rings, recent activity) and review workspace (progress stepper, decision summary, findings list with
+  j/k navigation, evidence and document side by side).
+- Restyled documents (drag-and-drop upload), checklists, reviews, findings (floating bulk-assign bar), tasks,
+  reports, activity (timeline) and settings.
+- Tests run: eslint (0 errors), tsc, vitest 12/12, vite build, Playwright e2e 3/3 against the dev server.

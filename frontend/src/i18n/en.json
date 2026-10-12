@@ -15,7 +15,17 @@
     "tasks": "Tasks",
     "reports": "Reports",
     "activity": "Activity",
-    "settings": "Settings"
+    "settings": "Settings",
+    "group": {
+      "workspace": "Workspace",
+      "review": "Review",
+      "followUp": "Follow-up",
+      "admin": "Workspace admin"
+    },
+    "openMenu": "Open menu",
+    "collapseSidebar": "Collapse sidebar",
+    "expandSidebar": "Expand sidebar",
+    "account": "Account"
   },
   "common": {
     "breadcrumbs": "Breadcrumbs",
@@ -35,7 +45,8 @@
     "unsavedBadge": "Unsaved changes",
     "skipToContent": "Skip to content",
     "notFound": "Page not found",
-    "notFoundHint": "The page or record does not exist, or you do not have access to it."
+    "notFoundHint": "The page or record does not exist, or you do not have access to it.",
+    "close": "Close"
   },
   "auth": {
     "email": "Email",
@@ -45,7 +56,27 @@
     "signedOut": "You have been signed out.",
     "tagline": "Human-reviewed document review",
     "emailInvalid": "Enter a valid email address.",
-    "passwordRequired": "Enter your password."
+    "passwordRequired": "Enter your password.",
+    "welcome": "Welcome back",
+    "signInHint": "Sign in to your review workspace to continue.",
+    "showPassword": "Show password",
+    "hidePassword": "Hide password",
+    "heroTitle": "Document reviews your team can trace, step by step.",
+    "heroBody": "Run versioned checklists against your documents, inspect the evidence behind each finding, and record every reviewer decision.",
+    "feature": {
+      "checklists": {
+        "title": "Versioned checklists",
+        "body": "Each review is pinned to one checklist version and one document version."
+      },
+      "evidence": {
+        "title": "Evidence you can open",
+        "body": "Findings link to the page or paragraph of the stored document text."
+      },
+      "signoff": {
+        "title": "People make the decisions",
+        "body": "Automated checks are a first pass. Reviewers confirm, dismiss and sign off."
+      }
+    }
   },
   "overview": {
     "title": "Overview",
@@ -65,7 +96,21 @@
     "coverageTitle": "Checklist coverage (recent reviews)",
     "coverageDefinition": "The proportion of checklist items reviewed.",
     "coverageCount": "{{reviewed}} of {{total}} items reviewed",
-    "noReviews": "No reviews yet."
+    "noReviews": "No reviews yet.",
+    "greeting": {
+      "morning": "Good morning, {{name}}",
+      "afternoon": "Good afternoon, {{name}}",
+      "evening": "Good evening, {{name}}"
+    },
+    "needsDecision": "Needs a reviewer decision",
+    "needsDecisionHint": "Proposed findings, most severe first.",
+    "nothingToDecide": "Nothing waiting for a decision",
+    "nothingToDecideHint": "New findings from checklist runs will appear here.",
+    "viewAll": "View all",
+    "recentActivity": "Recent activity",
+    "health": "Operational health",
+    "confirmedHint_one": "{{count}} confirmed finding",
+    "confirmedHint_other": "{{count}} confirmed findings"
   },
   "documents": {
     "title": "Documents",
@@ -130,7 +175,8 @@
     "submit": "Upload",
     "success": "Uploaded. Processing has started.",
     "openExisting": "Open the existing document",
-    "uploadAnyway": "Upload anyway"
+    "uploadAnyway": "Upload anyway",
+    "dropzone": "Click to browse or drag a file here"
   },
   "processing": {
     "pending": "Queued",
@@ -266,7 +312,22 @@
     "detail": "Detail",
     "needsAttention": "needs attention",
     "noResults": "No completed check run yet.",
-    "outcomeNote": "Outcomes describe text matches only. Reviewer decisions are recorded on findings."
+    "outcomeNote": "Outcomes describe text matches only. Reviewer decisions are recorded on findings.",
+    "highlighted_one": "{{count}} passage highlighted",
+    "highlighted_other": "{{count}} passages highlighted",
+    "progress": "Review progress",
+    "step": {
+      "checks": "Run checks",
+      "decide": "Decide findings",
+      "signoff": "Sign off",
+      "report": "Report ready"
+    },
+    "decisionsRecorded": "Finding decisions recorded",
+    "count": {
+      "awaiting": "Awaiting",
+      "confirmed": "Confirmed",
+      "closed": "Closed"
+    }
   },
   "outcome": {
     "match_found": "Match found",
@@ -335,7 +396,9 @@
     "noComments": "No comments yet.",
     "addComment": "Add a comment",
     "post": "Post",
-    "history": "History"
+    "history": "History",
+    "selected": "selected",
+    "clearSelection": "Clear selection"
   },
   "findingStatus": {
     "proposed": "Proposed",
@@ -470,5 +533,16 @@
     "aiDisabled": "Disabled",
     "aiProvider": "Provider: {{provider}}",
     "aiExplainer": "AI is off. Reviews use deterministic checks and human decisions only, and no document content is sent to any external service."
+  },
+  "palette": {
+    "title": "Command menu",
+    "trigger": "Search or jump to…",
+    "placeholder": "Search reviews, documents and findings, or type a page name…",
+    "noResults": "No results.",
+    "actions": "Quick actions",
+    "goTo": "Go to",
+    "navigate": "Navigate",
+    "open": "Open",
+    "hint": "Type 2+ characters to search records"
   }
 }

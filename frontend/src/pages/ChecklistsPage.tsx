@@ -1,12 +1,13 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { api } from "@/lib/api";
-import type { Checklist, ChecklistKind, ChecklistVersionDetail } from "@/lib/types";
-import { formatDate } from "@/lib/utils";
+import { ChevronDown, ChevronRight, FlaskConical, Info, ListChecks, Lock, type LucideIcon, ScrollText, Building2 } from "lucide-react";
+import type { Checklist, ChecklistKind, ChecklistVersionDetail, Requirement, Severity } from "@/lib/types";
+import { cn, formatDate } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
+import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   EmptyState,
   ErrorState,
@@ -24,7 +25,32 @@ export function KindBadge({ kind }: { kind: ChecklistKind }) {
 
 function StateBadge({ state }: { state: "draft" | "published" | "archived" }) {
   const { t } = useTranslation();
-  return <Badge tone={state === "published" ? "green" : state === "draft" ? "amber" : "neutral"}>{t(`checklistState.${state}`)}</Badge>;
+  return (
+    <Badge tone={state === "published" ? "green" : state === "draft" ? "amber" : "neutral"} dot>
+      {t(`checklistState.${state}`)}
+    </Badge>
+  );
+}
+
+const KIND_ICON: Record<ChecklistKind, { icon: LucideIcon; tile: string }> = {
+  synthetic_demo: { icon: FlaskConical, tile: "bg-amber-50 text-amber-600 ring-amber-200/80" },
+  internal_policy: { icon: Building2, tile: "bg-teal-50 text-teal-600 ring-teal-200/80" },
+  external_regulatory: { icon: ScrollText, tile: "bg-indigo-50 text-indigo-600 ring-indigo-200/70" },
+};
+
+function Notice({ children, tone = "info" }: { children: React.ReactNode; tone?: "info" | "warning" }) {
+  const Icon = tone === "warning" ? FlaskConical : Info;
+  return (
+    <div
+      className={cn(
+        "flex items-start gap-2 rounded-lg border px-3 py-2 text-xs leading-relaxed",
+        tone === "warning" ? "border-amber-200 bg-amber-50 text-amber-900" : "border-slate-200 bg-slate-50 text-slate-600",
+      )}
+    >
+      <Icon className={cn("mt-0.5 size-3.5 shrink-0", tone === "warning" ? "text-amber-600" : "text-slate-400")} aria-hidden />
+      <div>{children}</div>
+    </div>
+  );
 }
 
 export function ChecklistsPage() {
@@ -37,52 +63,88 @@ export function ChecklistsPage() {
         description={t("checklists.description")}
         crumbs={[{ label: t("nav.overview"), to: "/" }, { label: t("nav.checklists") }]}
       />
-      <div className="mb-4 rounded-md border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">{t("checklists.kindsExplainer")}</div>
-      {lists.isLoading && <LoadingState />}
-      {lists.isError && <ErrorState error={lists.error} onRetry={() => void lists.refetch()} />}
-      {lists.data?.length === 0 && (
+      <div className="mb-6">
+        <Notice>{t("checklists.kindsExplainer")}</Notice>
+      </div>
+      {lists.isLoading && (
         <Card>
-          <EmptyState title={t("checklists.empty")} description={t("checklists.emptyHint")} />
+          <LoadingState />
         </Card>
       )}
-      <div className="space-y-4">
-        {lists.data?.map((c) => (
-          <Card key={c.id}>
-            <CardHeader>
-              <div className="flex flex-wrap items-center gap-2">
-                <CardTitle>{c.name}</CardTitle>
-                <KindBadge kind={c.kind} />
+      {lists.isError && (
+        <Card>
+          <ErrorState error={lists.error} onRetry={() => void lists.refetch()} />
+        </Card>
+      )}
+      {lists.data?.length === 0 && (
+        <Card>
+          <EmptyState icon={ListChecks} title={t("checklists.empty")} description={t("checklists.emptyHint")} />
+        </Card>
+      )}
+      <div className="grid gap-5 lg:grid-cols-2">
+        {lists.data?.map((c) => {
+          const kind = KIND_ICON[c.kind];
+          const KindIcon = kind.icon;
+          return (
+            <Card key={c.id} className="flex flex-col">
+              <div className="flex items-start gap-3.5 px-5 pt-5 pb-4">
+                <span className={cn("flex size-10 shrink-0 items-center justify-center rounded-lg ring-1", kind.tile)} aria-hidden>
+                  <KindIcon className="size-[18px]" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <CardTitle className="text-base" dir="auto">
+                      {c.name}
+                    </CardTitle>
+                    <KindBadge kind={c.kind} />
+                  </div>
+                  {c.description && (
+                    <CardDescription className="mt-1 leading-relaxed" dir="auto">
+                      {c.description}
+                    </CardDescription>
+                  )}
+                </div>
               </div>
-              <CardDescription>{c.description}</CardDescription>
-            </CardHeader>
-            <Table>
-              <THead>
-                <tr>
-                  <TH>{t("checklists.version")}</TH>
-                  <TH>{t("checklists.state")}</TH>
-                  <TH>{t("checklists.requirements")}</TH>
-                  <TH>{t("checklists.published")}</TH>
-                </tr>
-              </THead>
-              <TBody>
-                {[...c.versions].reverse().map((v) => (
-                  <TR key={v.id}>
-                    <TD>
-                      <Link to={`/checklists/versions/${v.id}`} className="font-medium text-navy-900 hover:underline">
-                        v{v.version_number}
+              {c.kind === "synthetic_demo" && !c.description.includes(t("common.syntheticNotice")) && (
+                <div className="px-5 pb-4">
+                  <Notice tone="warning">{t("common.syntheticNotice")}</Notice>
+                </div>
+              )}
+              <div className="mt-auto border-t border-slate-100">
+                <div className="grid grid-cols-[1fr_auto_auto] items-center gap-x-4 bg-slate-50/80 px-5 py-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                  <span>{t("checklists.version")}</span>
+                  <span className="text-end">{t("checklists.requirements")}</span>
+                  <span className="w-28 text-end">{t("checklists.published")}</span>
+                </div>
+                <ul className="divide-y divide-slate-100">
+                  {[...c.versions].reverse().map((v) => (
+                    <li key={v.id}>
+                      <Link
+                        to={`/checklists/versions/${v.id}`}
+                        className="group grid grid-cols-[1fr_auto_auto] items-center gap-x-4 px-5 py-3 text-sm transition-colors hover:bg-slate-50/80"
+                      >
+                        <span className="flex items-center gap-2.5">
+                          <span className="rounded-md bg-slate-100 px-1.5 py-0.5 font-mono text-xs font-semibold tabular-nums text-navy-900 group-hover:text-teal-700">
+                            v{v.version_number}
+                          </span>
+                          <StateBadge state={v.state} />
+                        </span>
+                        <span className="flex items-center justify-end gap-1.5 tabular-nums text-slate-700">
+                          <ListChecks className="size-3.5 text-slate-400" aria-hidden />
+                          {v.requirement_count}
+                        </span>
+                        <span className="flex w-28 items-center justify-end gap-1.5 text-[13px] whitespace-nowrap text-slate-500">
+                          {formatDate(v.published_at, i18n.language)}
+                          <ChevronRight className="size-3.5 text-slate-300 group-hover:text-slate-500 rtl-flip" aria-hidden />
+                        </span>
                       </Link>
-                    </TD>
-                    <TD>
-                      <StateBadge state={v.state} />
-                    </TD>
-                    <TD className="tabular-nums">{v.requirement_count}</TD>
-                    <TD>{formatDate(v.published_at, i18n.language)}</TD>
-                  </TR>
-                ))}
-              </TBody>
-            </Table>
-          </Card>
-        ))}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </Card>
+          );
+        })}
       </div>
     </>
   );
@@ -106,6 +168,81 @@ function configSummary(config: Record<string, unknown> & { type: string }, t: (k
   }
 }
 
+const SEVERITY_ORDER: Severity[] = ["critical", "high", "medium", "low"];
+
+function RequirementRow({ r }: { r: Requirement }) {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  const detailsId = `req-${r.id}`;
+  return (
+    <li className="group">
+      <div className="flex items-start gap-3 px-5 py-4">
+        <code className="mt-0.5 shrink-0 rounded-md bg-slate-100 px-1.5 py-0.5 font-mono text-xs font-medium text-slate-700 ring-1 ring-slate-200/70">
+          {r.code}
+        </code>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1.5">
+            <h3 className="font-medium text-navy-900" dir="auto">
+              {r.title}
+            </h3>
+            <div className="flex shrink-0 items-center gap-1.5">
+              <Badge tone="neutral" className="text-[11px]">
+                {t(`checkType.${r.check_config.type}`, { defaultValue: r.check_config.type })}
+              </Badge>
+              <SeverityBadge severity={r.severity} />
+            </div>
+          </div>
+          {r.description && (
+            <p className="mt-1 text-sm leading-relaxed text-slate-600" dir="auto">
+              {r.description}
+            </p>
+          )}
+          {r.human_instructions && (
+            <p className="mt-2 border-s-2 border-teal-200 ps-3 text-[13px] leading-relaxed text-slate-700" dir="auto">
+              <span className="font-medium text-navy-900">{t("checklists.instructions")}:</span> {r.human_instructions}
+            </p>
+          )}
+          <button
+            type="button"
+            className="mt-2 inline-flex items-center gap-1 rounded text-xs font-medium text-teal-700 hover:text-teal-800"
+            aria-expanded={open}
+            aria-controls={detailsId}
+            onClick={() => setOpen((o) => !o)}
+          >
+            <ChevronDown className={cn("size-3.5 transition-transform", open ? "rotate-0" : "-rotate-90 rtl:rotate-90")} aria-hidden />
+            {t("checklists.check")} · {t("checklists.source")}
+          </button>
+          {open && (
+            <div id={detailsId} className="mt-3 animate-fade-up rounded-lg border border-slate-200 bg-slate-50/70 p-3.5">
+              <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-1.5 text-[13px]">
+                <dt className="text-slate-500">{t("checklists.check")}</dt>
+                <dd className="break-words text-slate-800">{configSummary(r.check_config, t)}</dd>
+                <dt className="text-slate-500">{t("checklists.category")}</dt>
+                <dd className="text-slate-800">{r.category}</dd>
+                {r.jurisdiction && (
+                  <>
+                    <dt className="text-slate-500">{t("checklists.jurisdiction")}</dt>
+                    <dd className="text-slate-800">{r.jurisdiction}</dd>
+                  </>
+                )}
+                <dt className="text-slate-500">{t("checklists.source")}</dt>
+                <dd className="flex flex-wrap items-center gap-1.5 text-slate-800">
+                  {r.source_reference || "—"}
+                  {r.source && (
+                    <Badge tone={r.source.verification_status === "verified" ? "green" : "amber"}>
+                      {t(`verification.${r.source.verification_status}`)}
+                    </Badge>
+                  )}
+                </dd>
+              </dl>
+            </div>
+          )}
+        </div>
+      </div>
+    </li>
+  );
+}
+
 export function ChecklistVersionPage() {
   const { versionId = "" } = useParams();
   const { t } = useTranslation();
@@ -114,6 +251,7 @@ export function ChecklistVersionPage() {
   if (v.isLoading) return <LoadingState />;
   if (v.isError) return <ErrorState error={v.error} onRetry={() => void v.refetch()} />;
   const d = v.data!;
+  const counts = SEVERITY_ORDER.map((s) => [s, d.requirements.filter((r) => r.severity === s).length] as const).filter(([, n]) => n > 0);
 
   return (
     <>
@@ -121,65 +259,48 @@ export function ChecklistVersionPage() {
         title={`${d.checklist_name} · v${d.version_number}`}
         crumbs={[{ label: t("nav.checklists"), to: "/checklists" }, { label: `v${d.version_number}` }]}
         description={
-          <span className="flex flex-wrap items-center gap-2">
+          <span className="mt-1 flex flex-wrap items-center gap-2">
             <KindBadge kind={d.checklist_kind} />
             <StateBadge state={d.state} />
-            {d.state === "published" && t("checklists.immutable")}
+            {d.state === "published" && (
+              <span className="inline-flex items-center gap-1 text-[13px] text-slate-500">
+                <Lock className="size-3.5" aria-hidden />
+                {t("checklists.immutable")}
+              </span>
+            )}
           </span>
         }
       />
-      {d.disclaimer && (
-        <p className="mb-4 rounded-md border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-900">{d.disclaimer}</p>
-      )}
-      <p className="mb-4 text-sm text-slate-600">{t("checklists.authoringNote")}</p>
-      <div className="space-y-3">
-        {d.requirements.map((r) => (
-          <Card key={r.id}>
-            <CardContent className="grid gap-3 md:grid-cols-[1fr_18rem]">
-              <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <code className="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-700">{r.code}</code>
-                  <h3 className="font-medium text-navy-900">{r.title}</h3>
-                  <SeverityBadge severity={r.severity} />
-                </div>
-                <p className="mt-1 text-sm text-slate-600">{r.description}</p>
-                {r.human_instructions && (
-                  <p className="mt-2 text-sm text-slate-700">
-                    <span className="font-medium">{t("checklists.instructions")}:</span> {r.human_instructions}
-                  </p>
-                )}
-              </div>
-              <dl className="space-y-1 text-xs text-slate-600">
-                <div>
-                  <dt className="inline font-medium">{t("checklists.check")}: </dt>
-                  <dd className="inline">{configSummary(r.check_config, t)}</dd>
-                </div>
-                <div>
-                  <dt className="inline font-medium">{t("checklists.category")}: </dt>
-                  <dd className="inline">{r.category}</dd>
-                </div>
-                {r.jurisdiction && (
-                  <div>
-                    <dt className="inline font-medium">{t("checklists.jurisdiction")}: </dt>
-                    <dd className="inline">{r.jurisdiction}</dd>
-                  </div>
-                )}
-                <div>
-                  <dt className="inline font-medium">{t("checklists.source")}: </dt>
-                  <dd className="inline">
-                    {r.source_reference || "—"}
-                    {r.source && (
-                      <Badge className="ms-1" tone={r.source.verification_status === "verified" ? "green" : "amber"}>
-                        {t(`verification.${r.source.verification_status}`)}
-                      </Badge>
-                    )}
-                  </dd>
-                </div>
-              </dl>
-            </CardContent>
-          </Card>
-        ))}
+      <div className="mb-6 space-y-2">
+        {d.disclaimer && (
+          <p className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-sm font-medium text-amber-900">
+            <FlaskConical className="mt-0.5 size-4 shrink-0 text-amber-600" aria-hidden />
+            {d.disclaimer}
+          </p>
+        )}
+        <Notice>{t("checklists.authoringNote")}</Notice>
       </div>
+      <Card>
+        <CardHeader className="flex-row flex-wrap items-center justify-between gap-3">
+          <CardTitle className="flex items-center gap-2">
+            {t("checklists.requirements")}
+            <Badge className="tabular-nums">{d.requirements.length}</Badge>
+          </CardTitle>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {counts.map(([s, n]) => (
+              <span key={s} className="inline-flex items-center gap-1">
+                <SeverityBadge severity={s} />
+                <span className="text-xs tabular-nums text-slate-500">×{n}</span>
+              </span>
+            ))}
+          </div>
+        </CardHeader>
+        <ul className="divide-y divide-slate-100">
+          {d.requirements.map((r) => (
+            <RequirementRow key={r.id} r={r} />
+          ))}
+        </ul>
+      </Card>
     </>
   );
 }

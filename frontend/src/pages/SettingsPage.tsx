@@ -1,19 +1,20 @@
+import type { ReactNode } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Bot } from "lucide-react";
+import { Bot, Building2, Info, KeyRound, Languages, Loader2, ShieldCheck, Users, type LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import type { Member } from "@/lib/types";
 import { useAuth } from "@/lib/auth";
 import { LANGUAGES } from "@/i18n";
+import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { FieldError, Input, Label, Select } from "@/components/ui/input";
-import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { ErrorState, errorMessage, LoadingState, PageHeader, SyntheticBadge, useUnsavedChangesWarning } from "@/components/common";
 
 const pwSchema = z
@@ -39,7 +40,7 @@ function PasswordForm() {
   });
   const err = form.formState.errors;
   return (
-    <form className="space-y-3" onSubmit={form.handleSubmit((v) => change.mutate(v))} noValidate>
+    <form className="max-w-md space-y-4" onSubmit={form.handleSubmit((v) => change.mutate(v))} noValidate>
       <div className="space-y-1.5">
         <Label htmlFor="pw-current">{t("settings.currentPassword")}</Label>
         <Input id="pw-current" type="password" autoComplete="current-password" {...form.register("current_password")} />
@@ -54,8 +55,12 @@ function PasswordForm() {
         <Input id="pw-confirm" type="password" autoComplete="new-password" aria-invalid={!!err.confirm} {...form.register("confirm")} />
         <FieldError message={err.confirm ? t("settings.passwordMismatch") : undefined} />
       </div>
-      <p className="text-xs text-slate-500">{t("settings.passwordSessionsNote")}</p>
-      <Button type="submit" size="sm" disabled={change.isPending}>
+      <p className="flex items-start gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+        <Info className="mt-px size-3.5 shrink-0 text-slate-400" aria-hidden />
+        {t("settings.passwordSessionsNote")}
+      </p>
+      <Button type="submit" disabled={change.isPending}>
+        {change.isPending && <Loader2 className="animate-spin" aria-hidden />}
         {t("settings.changePassword")}
       </Button>
     </form>
@@ -74,114 +79,151 @@ export function SettingsPage() {
   return (
     <>
       <PageHeader title={t("settings.title")} crumbs={[{ label: t("nav.overview"), to: "/" }, { label: t("nav.settings") }]} />
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>{t("settings.profile")}</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4 text-sm">
-            <dl className="grid grid-cols-[8rem_1fr] gap-y-2">
-              <dt className="text-slate-500">{t("settings.name")}</dt>
-              <dd>{me.user.full_name}</dd>
-              <dt className="text-slate-500">{t("auth.email")}</dt>
-              <dd>{me.user.email}</dd>
-              <dt className="text-slate-500">{t("settings.organisation")}</dt>
-              <dd className="flex items-center gap-2">
-                {me.org.name} {me.org.is_demo && <SyntheticBadge />}
-              </dd>
-              <dt className="text-slate-500">{t("settings.role")}</dt>
-              <dd>{t(`roles.${me.role}`)}</dd>
-            </dl>
-            <div className="space-y-1.5">
-              <Label htmlFor="lang">{t("settings.language")}</Label>
-              <Select id="lang" className="w-48" value={i18n.language} onChange={(e) => void i18n.changeLanguage(e.target.value)}>
+      <div className="grid items-start gap-6 lg:grid-cols-[1fr_360px]">
+        <div className="space-y-6">
+          <Card>
+            <CardHeader>
+              <SectionTitle icon={ShieldCheck}>{t("settings.profile")}</SectionTitle>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <div className="flex items-center gap-4">
+                <Avatar name={me.user.full_name} className="size-12 text-base" />
+                <div className="min-w-0">
+                  <p className="truncate font-semibold text-navy-900">{me.user.full_name}</p>
+                  <Badge tone="navy" className="mt-1">
+                    {t(`roles.${me.role}`)}
+                  </Badge>
+                </div>
+              </div>
+              <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2.5 border-t border-slate-100 pt-4 text-sm">
+                <dt className="text-slate-500">{t("settings.name")}</dt>
+                <dd className="text-slate-800">{me.user.full_name}</dd>
+                <dt className="text-slate-500">{t("auth.email")}</dt>
+                <dd className="break-all text-slate-800">{me.user.email}</dd>
+                <dt className="text-slate-500">{t("settings.role")}</dt>
+                <dd className="text-slate-800">{t(`roles.${me.role}`)}</dd>
+              </dl>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <SectionTitle icon={KeyRound}>{t("settings.security")}</SectionTitle>
+            </CardHeader>
+            <CardContent>
+              <PasswordForm />
+            </CardContent>
+          </Card>
+          <Card className="overflow-hidden">
+            <CardHeader>
+              <SectionTitle icon={Users}>{t("settings.members")}</SectionTitle>
+              <CardDescription>{t("settings.membersHint")}</CardDescription>
+            </CardHeader>
+            {members.isLoading && <LoadingState rows={3} />}
+            {members.isError && <ErrorState error={members.error} onRetry={() => void members.refetch()} />}
+            {members.data && (
+              <ul className="divide-y divide-slate-100">
+                {members.data.map((m) => (
+                  <li key={m.user_id} className="flex items-center gap-3 px-5 py-3">
+                    <Avatar name={m.full_name} />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium text-navy-900">{m.full_name}</p>
+                      <p className="truncate text-xs text-slate-500">{m.email}</p>
+                    </div>
+                    <Badge tone={m.role === "org_admin" ? "navy" : "neutral"}>{t(`roles.${m.role}`)}</Badge>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
+        </div>
+        <div className="space-y-6">
+          <Card>
+            <CardHeader>
+              <SectionTitle icon={Languages}>{t("settings.language")}</SectionTitle>
+            </CardHeader>
+            <CardContent>
+              <Label htmlFor="lang" className="sr-only">
+                {t("settings.language")}
+              </Label>
+              <Select id="lang" value={i18n.language} onChange={(e) => void i18n.changeLanguage(e.target.value)}>
                 {LANGUAGES.map((l) => (
                   <option key={l.code} value={l.code}>
                     {l.label}
                   </option>
                 ))}
               </Select>
-            </div>
-            {me.memberships.length > 1 && (
-              <div className="space-y-1.5">
-                <Label htmlFor="org">{t("settings.switchOrg")}</Label>
-                <Select
-                  id="org"
-                  className="w-72"
-                  value={me.org.id}
-                  onChange={async (e) => {
-                    try {
-                      await switchOrg(e.target.value);
-                      toast.success(t("settings.orgSwitched"));
-                    } catch (err) {
-                      toast.error(errorMessage(err, t("common.genericError")));
-                    }
-                  }}
-                >
-                  {me.memberships.map((m) => (
-                    <option key={m.org.id} value={m.org.id}>
-                      {m.org.name} · {t(`roles.${m.role}`)}
-                    </option>
-                  ))}
-                </Select>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <SectionTitle icon={Building2}>{t("settings.organisation")}</SectionTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center gap-3">
+                <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-slate-50 ring-1 ring-slate-200/80">
+                  <Building2 className="size-4 text-slate-500" aria-hidden />
+                </span>
+                <div className="min-w-0">
+                  <p className="flex flex-wrap items-center gap-2 text-sm font-medium text-navy-900">
+                    {me.org.name} {me.org.is_demo && <SyntheticBadge />}
+                  </p>
+                  <p className="text-xs text-slate-500">{t(`roles.${me.role}`)}</p>
+                </div>
               </div>
-            )}
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>{t("settings.security")}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <PasswordForm />
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>{t("settings.members")}</CardTitle>
-            <CardDescription>{t("settings.membersHint")}</CardDescription>
-          </CardHeader>
-          {members.isLoading && <LoadingState />}
-          {members.isError && <ErrorState error={members.error} onRetry={() => void members.refetch()} />}
-          {members.data && (
-            <Table>
-              <THead>
-                <tr>
-                  <TH>{t("settings.name")}</TH>
-                  <TH>{t("settings.role")}</TH>
-                </tr>
-              </THead>
-              <TBody>
-                {members.data.map((m) => (
-                  <TR key={m.user_id}>
-                    <TD>
-                      {m.full_name}
-                      <p className="text-xs text-slate-500">{m.email}</p>
-                    </TD>
-                    <TD>{t(`roles.${m.role}`)}</TD>
-                  </TR>
-                ))}
-              </TBody>
-            </Table>
-          )}
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Bot className="size-4" aria-hidden /> {t("settings.ai")}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2 text-sm">
-            {ai.data && (
-              <p className="flex items-center gap-2">
-                <Badge tone={ai.data.enabled ? "teal" : "neutral"}>{ai.data.enabled ? t("settings.aiEnabled") : t("settings.aiDisabled")}</Badge>
-                <span className="text-slate-600">{t("settings.aiProvider", { provider: ai.data.provider })}</span>
-              </p>
-            )}
-            <p className="text-slate-600">{t("settings.aiExplainer")}</p>
-          </CardContent>
-        </Card>
+              {me.memberships.length > 1 && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="org">{t("settings.switchOrg")}</Label>
+                  <Select
+                    id="org"
+                    value={me.org.id}
+                    onChange={async (e) => {
+                      try {
+                        await switchOrg(e.target.value);
+                        toast.success(t("settings.orgSwitched"));
+                      } catch (err) {
+                        toast.error(errorMessage(err, t("common.genericError")));
+                      }
+                    }}
+                  >
+                    {me.memberships.map((m) => (
+                      <option key={m.org.id} value={m.org.id}>
+                        {m.org.name} · {t(`roles.${m.role}`)}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between gap-2">
+                <SectionTitle icon={Bot}>{t("settings.ai")}</SectionTitle>
+                {ai.data && (
+                  <Badge tone={ai.data.enabled ? "teal" : "neutral"} dot>
+                    {ai.data.enabled ? t("settings.aiEnabled") : t("settings.aiDisabled")}
+                  </Badge>
+                )}
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm">
+              {ai.isLoading && <LoadingState rows={1} />}
+              {ai.isError && <ErrorState error={ai.error} onRetry={() => void ai.refetch()} />}
+              {ai.data && <p className="text-[13px] text-slate-500">{t("settings.aiProvider", { provider: ai.data.provider })}</p>}
+              <p className="leading-relaxed text-slate-600">{t("settings.aiExplainer")}</p>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </>
+  );
+}
+
+function SectionTitle({ icon: Icon, children }: { icon: LucideIcon; children: ReactNode }) {
+  return (
+    <CardTitle className="flex items-center gap-2">
+      <Icon className="size-4 text-slate-400" aria-hidden />
+      {children}
+    </CardTitle>
   );
 }

@@ -1,11 +1,13 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Link, useBlocker } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { AlertTriangle, ChevronLeft, ChevronRight, FlaskConical, Inbox, Loader2, RotateCw } from "lucide-react";
+import { AlertTriangle, ChevronLeft, ChevronRight, FlaskConical, Inbox, Loader2, RotateCw, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from "@/components/ui/dialog";
 import { ApiError } from "@/lib/api";
+import { cn } from "@/lib/utils";
 import type { CheckOutcome, FindingStatus, JobStatus, ReviewStatus, Severity, VersionStatus } from "@/lib/types";
 
 export interface Crumb {
@@ -18,59 +20,90 @@ export function PageHeader({
   description,
   crumbs,
   actions,
+  eyebrow,
 }: {
   title: ReactNode;
   description?: ReactNode;
   crumbs?: Crumb[];
   actions?: ReactNode;
+  eyebrow?: ReactNode;
 }) {
   const { t } = useTranslation();
   return (
-    <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+    <div className="mb-7 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
       <div className="min-w-0">
         {crumbs && crumbs.length > 0 && (
-          <nav aria-label={t("common.breadcrumbs")} className="mb-1.5">
-            <ol className="flex flex-wrap items-center gap-1 text-xs text-slate-500">
+          <nav aria-label={t("common.breadcrumbs")} className="mb-2">
+            <ol className="flex flex-wrap items-center gap-1 text-[13px] text-slate-500">
               {crumbs.map((c, i) => (
-                <li key={i} className="flex items-center gap-1">
-                  {i > 0 && <ChevronRight className="size-3 rtl-flip" aria-hidden />}
+                <li key={i} className="flex min-w-0 items-center gap-1">
+                  {i > 0 && <ChevronRight className="size-3.5 shrink-0 text-slate-300 rtl-flip" aria-hidden />}
                   {c.to ? (
-                    <Link to={c.to} className="hover:text-teal-700 hover:underline">
+                    <Link to={c.to} className="rounded transition-colors hover:text-navy-900">
                       {c.label}
                     </Link>
                   ) : (
-                    <span aria-current="page">{c.label}</span>
+                    <span aria-current="page" className="truncate font-medium text-slate-700">
+                      {c.label}
+                    </span>
                   )}
                 </li>
               ))}
             </ol>
           </nav>
         )}
-        <h1 className="truncate text-2xl font-semibold tracking-tight text-navy-900">{title}</h1>
-        {description && <p className="mt-1 max-w-3xl text-sm text-slate-600">{description}</p>}
+        {eyebrow && <div className="mb-1 text-sm text-slate-500">{eyebrow}</div>}
+        <h1 className="text-2xl font-semibold tracking-tight text-navy-950 sm:text-[28px] sm:leading-9">{title}</h1>
+        {description && <div className="mt-1.5 max-w-3xl text-sm leading-relaxed text-slate-500">{description}</div>}
       </div>
-      {actions && <div className="flex shrink-0 flex-wrap gap-2">{actions}</div>}
+      {actions && <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}
     </div>
   );
 }
 
-export function LoadingState({ label }: { label?: string }) {
+export function LoadingState({ label, rows = 4 }: { label?: string; rows?: number }) {
   const { t } = useTranslation();
   return (
-    <div role="status" className="flex items-center justify-center gap-2 py-16 text-sm text-slate-500">
-      <Loader2 className="size-4 animate-spin" aria-hidden />
-      {label ?? t("common.loading")}
+    <div role="status" className="space-y-3 px-5 py-6">
+      <span className="sr-only">{label ?? t("common.loading")}</span>
+      {label && (
+        <p className="flex items-center gap-2 text-sm text-slate-500">
+          <Loader2 className="size-4 animate-spin text-teal-600" aria-hidden />
+          {label}
+        </p>
+      )}
+      {Array.from({ length: rows }, (_, i) => (
+        <div key={i} className="flex items-center gap-3">
+          <Skeleton className="size-8 shrink-0 rounded-lg" />
+          <div className="flex-1 space-y-1.5">
+            <Skeleton className="h-3.5" style={{ width: `${70 - i * 9}%` }} />
+            <Skeleton className="h-3 w-1/4" />
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
 
-export function EmptyState({ title, description, action }: { title: string; description?: string; action?: ReactNode }) {
+export function EmptyState({
+  title,
+  description,
+  action,
+  icon: Icon = Inbox,
+}: {
+  title: string;
+  description?: string;
+  action?: ReactNode;
+  icon?: LucideIcon;
+}) {
   return (
-    <div className="flex flex-col items-center justify-center gap-2 px-6 py-14 text-center">
-      <Inbox className="size-8 text-slate-300" aria-hidden />
-      <p className="font-medium text-slate-800">{title}</p>
-      {description && <p className="max-w-md text-sm text-slate-500">{description}</p>}
-      {action && <div className="mt-2">{action}</div>}
+    <div className="flex flex-col items-center justify-center gap-1.5 px-6 py-14 text-center">
+      <div className="mb-2 flex size-12 items-center justify-center rounded-2xl bg-gradient-to-b from-slate-50 to-slate-100 ring-1 ring-slate-200/80">
+        <Icon className="size-5 text-slate-400" aria-hidden />
+      </div>
+      <p className="font-semibold text-navy-900">{title}</p>
+      {description && <p className="max-w-sm text-sm leading-relaxed text-slate-500">{description}</p>}
+      {action && <div className="mt-3">{action}</div>}
     </div>
   );
 }
@@ -84,8 +117,10 @@ export function ErrorState({ error, onRetry }: { error: unknown; onRetry?: () =>
   const { t } = useTranslation();
   return (
     <div role="alert" className="flex flex-col items-center gap-3 px-6 py-12 text-center">
-      <AlertTriangle className="size-7 text-amber-600" aria-hidden />
-      <p className="text-sm text-slate-700">{errorMessage(error, t("common.genericError"))}</p>
+      <div className="flex size-12 items-center justify-center rounded-2xl bg-amber-50 ring-1 ring-amber-200/80">
+        <AlertTriangle className="size-5 text-amber-600" aria-hidden />
+      </div>
+      <p className="max-w-sm text-sm text-slate-700">{errorMessage(error, t("common.genericError"))}</p>
       {onRetry && (
         <Button variant="outline" size="sm" onClick={onRetry}>
           <RotateCw aria-hidden /> {t("common.retry")}
@@ -120,7 +155,7 @@ export function Pagination({
   const pages = Math.max(1, Math.ceil(total / pageSize));
   if (total <= pageSize) return null;
   return (
-    <div className="flex items-center justify-between border-t border-slate-100 px-4 py-3 text-sm text-slate-600">
+    <div className="flex items-center justify-between border-t border-slate-100 px-4 py-3 text-[13px] text-slate-500">
       <span>{t("common.pageOf", { page, pages, total })}</span>
       <div className="flex gap-2">
         <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => onPage(page - 1)}>
@@ -195,44 +230,86 @@ export function useUnsavedChangesWarning(dirty: boolean) {
   }, [dirty]);
 }
 
-const SEVERITY_TONE: Record<Severity, "neutral" | "amber" | "red" | "navy"> = {
+const SEVERITY_TONE: Record<Severity, "neutral" | "amber" | "red" | "navy" | "orange"> = {
   low: "neutral",
-  medium: "navy",
-  high: "amber",
+  medium: "amber",
+  high: "orange",
   critical: "red",
 };
 
+const SEVERITY_BARS: Record<Severity, number> = { low: 1, medium: 2, high: 3, critical: 4 };
+
 export function SeverityBadge({ severity }: { severity: Severity }) {
   const { t } = useTranslation();
-  return <Badge tone={SEVERITY_TONE[severity]}>{t(`severity.${severity}`)}</Badge>;
+  const tone = SEVERITY_TONE[severity];
+  return (
+    <Badge tone={tone} className="gap-1.5">
+      <span className="flex items-end gap-px" aria-hidden>
+        {[1, 2, 3, 4].map((n) => (
+          <span
+            key={n}
+            className={cn("w-[3px] rounded-[1px]", n <= SEVERITY_BARS[severity] ? "bg-current opacity-80" : "bg-current opacity-20")}
+            style={{ height: 3 + n * 2 }}
+          />
+        ))}
+      </span>
+      {t(`severity.${severity}`)}
+    </Badge>
+  );
 }
 
-const FINDING_TONE: Record<FindingStatus, "neutral" | "amber" | "red" | "navy" | "teal" | "green"> = {
+export const SEVERITY_COLOR: Record<Severity, string> = {
+  critical: "#dc2626",
+  high: "#ea580c",
+  medium: "#f59e0b",
+  low: "#94a3b8",
+};
+
+const FINDING_TONE: Record<FindingStatus, "neutral" | "amber" | "red" | "navy" | "teal" | "green" | "violet"> = {
   proposed: "amber",
   in_review: "amber",
   confirmed: "red",
   dismissed: "neutral",
   remediation_in_progress: "navy",
-  ready_for_rereview: "teal",
+  ready_for_rereview: "violet",
   resolved: "green",
   accepted_risk: "neutral",
 };
 
 export function FindingStatusBadge({ status }: { status: FindingStatus }) {
   const { t } = useTranslation();
-  return <Badge tone={FINDING_TONE[status]}>{t(`findingStatus.${status}`)}</Badge>;
+  return (
+    <Badge tone={FINDING_TONE[status]} dot>
+      {t(`findingStatus.${status}`)}
+    </Badge>
+  );
 }
 
 export function OutcomeBadge({ outcome }: { outcome: CheckOutcome }) {
   const { t } = useTranslation();
-  const tone = outcome === "processing_error" ? "red" : outcome === "needs_human_review" ? "amber" : "neutral";
-  return <Badge tone={tone}>{t(`outcome.${outcome}`)}</Badge>;
+  const tone =
+    outcome === "processing_error"
+      ? "red"
+      : outcome === "needs_human_review"
+        ? "amber"
+        : outcome === "match_found"
+          ? "teal"
+          : "neutral";
+  return (
+    <Badge tone={tone} dot>
+      {t(`outcome.${outcome}`)}
+    </Badge>
+  );
 }
 
 export function ReviewStatusBadge({ status }: { status: ReviewStatus }) {
   const { t } = useTranslation();
   const tone = status === "signed_off" ? "green" : status === "running" ? "teal" : status === "in_review" ? "navy" : "neutral";
-  return <Badge tone={tone}>{t(`reviewStatus.${status}`)}</Badge>;
+  return (
+    <Badge tone={tone} dot>
+      {t(`reviewStatus.${status}`)}
+    </Badge>
+  );
 }
 
 export function ProcessingBadge({ status }: { status: VersionStatus | JobStatus }) {
@@ -247,26 +324,74 @@ export function ProcessingBadge({ status }: { status: VersionStatus | JobStatus 
           : "teal";
   const spinning = status === "processing" || status === "running" || status === "pending" || status === "queued";
   return (
-    <Badge tone={tone}>
+    <Badge tone={tone} dot={!spinning}>
       {spinning && <Loader2 className="size-3 animate-spin" aria-hidden />}
       {t(`processing.${status}`)}
     </Badge>
   );
 }
 
-export function ProgressBar({ value, label }: { value: number; label: string }) {
+export function ProgressBar({ value, label, className }: { value: number; label: string; className?: string }) {
   return (
-    <div className="w-full">
+    <div className={cn("w-full", className)}>
       <div
-        className="h-2 w-full overflow-hidden rounded-full bg-slate-200"
+        className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100"
         role="progressbar"
         aria-label={label}
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={Math.round(value)}
       >
-        <div className="h-full rounded-full bg-teal-600 transition-[width]" style={{ width: `${Math.max(2, value)}%` }} />
+        <div
+          className="h-full rounded-full bg-gradient-to-r from-teal-500 to-teal-600 transition-[width] duration-500"
+          style={{ width: `${Math.max(2, Math.min(100, value))}%` }}
+        />
       </div>
+    </div>
+  );
+}
+
+/** Circular progress for "items reviewed" coverage. Not a compliance score. */
+export function ProgressRing({
+  value,
+  size = 44,
+  stroke = 4,
+  label,
+  className,
+}: {
+  value: number;
+  size?: number;
+  stroke?: number;
+  label: string;
+  className?: string;
+}) {
+  const r = (size - stroke) / 2;
+  const c = 2 * Math.PI * r;
+  const pct = Math.max(0, Math.min(100, value));
+  return (
+    <div
+      className={cn("relative inline-flex shrink-0 items-center justify-center", className)}
+      style={{ width: size, height: size }}
+      role="img"
+      aria-label={label}
+    >
+      <svg width={size} height={size} className="-rotate-90">
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" strokeWidth={stroke} className="stroke-slate-100" />
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          fill="none"
+          strokeWidth={stroke}
+          strokeLinecap="round"
+          strokeDasharray={c}
+          strokeDashoffset={c - (pct / 100) * c}
+          className={cn("transition-[stroke-dashoffset] duration-700", pct >= 100 ? "stroke-emerald-500" : "stroke-teal-500")}
+        />
+      </svg>
+      <span className="absolute text-[11px] font-semibold tabular-nums text-navy-900" aria-hidden>
+        {Math.round(pct)}%
+      </span>
     </div>
   );
 }

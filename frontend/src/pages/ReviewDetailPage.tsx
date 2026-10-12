@@ -1,18 +1,40 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useParams, useSearchParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { AlertTriangle, FileCheck2, FilePlus, Play, RotateCcw, Unlock } from "lucide-react";
+import {
+  AlertTriangle,
+  BadgeCheck,
+  BookOpen,
+  Check,
+  CheckCircle2,
+  CircleDot,
+  Clock,
+  Cpu,
+  FileCheck2,
+  FilePlus,
+  FileText,
+  Info,
+  ListChecks,
+  Loader2,
+  MousePointerClick,
+  Play,
+  Quote,
+  RotateCcw,
+  SearchCheck,
+  Unlock,
+} from "lucide-react";
 import { toast } from "sonner";
 import { api, qs } from "@/lib/api";
 import type { CheckResult, Evidence, Finding, FindingStatus, Job, Page, Report, Review, Severity, SourceBlock } from "@/lib/types";
 import { useAuth } from "@/lib/auth";
 import { cn, formatDate } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from "@/components/ui/dialog";
 import { FieldError, Input, Label, Select, Textarea } from "@/components/ui/input";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
@@ -36,7 +58,27 @@ import { ReportLinks } from "@/components/report-links";
 
 type Tab = "findings" | "results" | "reports";
 
-function DocumentPanel({ versionId, highlight }: { versionId: string; highlight: { blockIds: Set<string>; focus?: string } }) {
+function useMediaQuery(query: string): boolean {
+  return useSyncExternalStore(
+    (cb) => {
+      const m = window.matchMedia(query);
+      m.addEventListener("change", cb);
+      return () => m.removeEventListener("change", cb);
+    },
+    () => window.matchMedia(query).matches,
+    () => false,
+  );
+}
+
+function DocumentPanel({
+  versionId,
+  highlight,
+  className,
+}: {
+  versionId: string;
+  highlight: { blockIds: Set<string>; focus?: string };
+  className?: string;
+}) {
   const { t } = useTranslation();
   const blocks = useQuery({
     queryKey: ["blocks", versionId, ""],
@@ -54,41 +96,56 @@ function DocumentPanel({ versionId, highlight }: { versionId: string; highlight:
 
   let lastPage: number | null = null;
   return (
-    <Card className="flex max-h-[44rem] flex-col">
-      <CardHeader>
-        <CardTitle>{t("reviewDetail.document")}</CardTitle>
+    <Card className={cn("flex flex-col overflow-hidden", className)}>
+      <CardHeader className="flex-row items-center justify-between gap-3 py-3">
+        <CardTitle className="flex items-center gap-2">
+          <BookOpen className="size-4 text-slate-400" aria-hidden />
+          {t("reviewDetail.document")}
+        </CardTitle>
+        {highlight.blockIds.size > 0 && (
+          <span className="flex items-center gap-1.5 text-xs text-slate-500">
+            <span className="size-2 rounded-sm bg-amber-300" aria-hidden />
+            {t("reviewDetail.highlighted", { count: highlight.blockIds.size })}
+          </span>
+        )}
       </CardHeader>
-      <div ref={containerRef} className="flex-1 space-y-1 overflow-y-auto px-5 py-3">
-        {blocks.isLoading && <LoadingState />}
+      <div ref={containerRef} className="flex-1 overflow-y-auto bg-slate-50/50 px-4 py-4 sm:px-6">
+        {blocks.isLoading && <LoadingState rows={6} />}
         {blocks.isError && <ErrorState error={blocks.error} onRetry={() => void blocks.refetch()} />}
-        {blocks.data?.items.map((b) => {
-          const pageBreak = b.page_number !== null && b.page_number !== lastPage;
-          lastPage = b.page_number;
-          const hit = highlight.blockIds.has(b.id);
-          return (
-            <div key={b.id}>
-              {pageBreak && (
-                <div className="sticky top-0 z-10 my-2 bg-white/90 py-1 text-xs font-semibold text-slate-500" id={`page-${b.page_number}`}>
-                  {t("evidence.page", { page: b.page_number })}
-                </div>
-              )}
-              <div
-                data-block={b.id}
-                tabIndex={-1}
-                className={cn(
-                  "rounded px-2 py-1 text-sm outline-none transition-colors",
-                  hit ? "bg-amber-100 ring-1 ring-amber-300" : "text-slate-700",
-                  highlight.focus === b.id && "ring-2 ring-teal-600",
+        <div className="mx-auto max-w-2xl space-y-0.5 rounded-lg bg-white px-4 py-4 shadow-xs ring-1 ring-slate-200/70 sm:px-6">
+          {blocks.data?.items.map((b) => {
+            const pageBreak = b.page_number !== null && b.page_number !== lastPage;
+            lastPage = b.page_number;
+            const hit = highlight.blockIds.has(b.id);
+            return (
+              <div key={b.id}>
+                {pageBreak && (
+                  <div
+                    className="sticky top-0 z-10 -mx-4 my-2 flex items-center gap-3 bg-white/95 px-4 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400 backdrop-blur sm:-mx-6 sm:px-6"
+                    id={`page-${b.page_number}`}
+                  >
+                    {t("evidence.page", { page: b.page_number })}
+                    <span className="h-px flex-1 bg-slate-100" aria-hidden />
+                  </div>
                 )}
-              >
-                {b.page_number === null && <span className="me-2 text-[10px] text-slate-400">{evidenceLocation(b, t)}</span>}
-                <span className="whitespace-pre-wrap" dir="auto">
-                  {b.text}
-                </span>
+                <div
+                  data-block={b.id}
+                  tabIndex={-1}
+                  className={cn(
+                    "rounded-md px-2 py-1 text-[13.5px] leading-relaxed outline-none transition-colors duration-300",
+                    hit ? "bg-amber-100/80 text-slate-900 ring-1 ring-amber-300/70" : "text-slate-600",
+                    highlight.focus === b.id && "ring-2 ring-teal-500",
+                  )}
+                >
+                  {b.page_number === null && <span className="me-2 text-[10px] font-medium text-slate-400">{evidenceLocation(b, t)}</span>}
+                  <span className="whitespace-pre-wrap" dir="auto">
+                    {b.text}
+                  </span>
+                </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
     </Card>
   );
@@ -300,21 +357,49 @@ export function ReviewDetailPage() {
     },
   });
 
-  const items = findings.data?.items ?? [];
-  const selected = items.find((f) => f.id === selectedId) ?? null;
+  const items = useMemo(() => findings.data?.items ?? [], [findings.data]);
+  // On wide screens the first finding opens by default so the workspace never starts empty.
+  const wide = useMediaQuery("(min-width: 1280px)");
+  const selected = items.find((f) => f.id === selectedId) ?? (wide && !selectedId ? (items[0] ?? null) : null);
   const highlight = useMemo(
     () => ({ blockIds: new Set((selected?.evidence ?? []).map((e) => e.block_id)), focus: focusBlock }),
     [selected, focusBlock],
   );
   const undecided = (r?.finding_counts.proposed ?? 0) + (r?.finding_counts.in_review ?? 0);
 
-  const select = (f: Finding) => {
-    setFocusBlock(f.evidence[0]?.block_id);
-    setParams((p) => {
-      p.set("finding", f.id);
-      return p;
-    });
-  };
+  const select = useCallback(
+    (f: Finding, replace = false) => {
+      setFocusBlock(f.evidence[0]?.block_id);
+      setParams(
+        (p) => {
+          p.set("finding", f.id);
+          return p;
+        },
+        { replace },
+      );
+    },
+    [setParams],
+  );
+
+  // j / k move between findings when focus is not in a form field.
+  useEffect(() => {
+    if (tab !== "findings" || items.length === 0) return;
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null;
+      if (el && (el.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName))) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const dir = e.key === "j" ? 1 : e.key === "k" ? -1 : 0;
+      if (!dir) return;
+      const idx = items.findIndex((f) => f.id === selected?.id);
+      const next = items[Math.min(items.length - 1, Math.max(0, idx + dir))];
+      if (next && next.id !== selected?.id) {
+        e.preventDefault();
+        select(next, true);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [tab, items, selected, select]);
   const setTab = (next: Tab) =>
     setParams((p) => {
       p.set("tab", next);
@@ -326,6 +411,10 @@ export function ReviewDetailPage() {
   const job = r.latest_run?.job;
   const warnings = r.latest_run?.warnings ?? [];
 
+  const totalFindings = Object.values(r.finding_counts).reduce((a, n) => a + (n ?? 0), 0);
+  const decided = totalFindings - undecided;
+  const stage = r.status === "signed_off" ? 3 : r.status === "in_review" ? (undecided === 0 ? 2 : 1) : 0;
+
   return (
     <>
       <PageHeader
@@ -335,8 +424,16 @@ export function ReviewDetailPage() {
           <span className="flex flex-wrap items-center gap-2">
             <ReviewStatusBadge status={r.status} />
             {(r.is_demo || r.checklist_kind === "synthetic_demo") && <SyntheticBadge />}
-            <span>
-              {r.document_title} v{r.document_version_number} · {r.checklist_name} v{r.checklist_version_number}
+            <Link
+              to={`/documents/${r.document_id}`}
+              className="inline-flex items-center gap-1.5 rounded-md bg-white px-2 py-0.5 text-xs text-slate-600 ring-1 ring-slate-200 transition-colors hover:text-navy-900 hover:ring-slate-300"
+            >
+              <FileText className="size-3.5 text-slate-400" aria-hidden />
+              {r.document_title} v{r.document_version_number}
+            </Link>
+            <span className="inline-flex items-center gap-1.5 rounded-md bg-white px-2 py-0.5 text-xs text-slate-600 ring-1 ring-slate-200">
+              <ListChecks className="size-3.5 text-slate-400" aria-hidden />
+              {r.checklist_name} v{r.checklist_version_number}
             </span>
           </span>
         }
@@ -353,7 +450,12 @@ export function ReviewDetailPage() {
               </Button>
             )}
             {can("decide") && r.status === "in_review" && (
-              <Button variant="accent" onClick={() => setConfirmSignoff(true)} disabled={undecided > 0} title={undecided > 0 ? t("reviewDetail.signoffBlocked", { count: undecided }) : undefined}>
+              <Button
+                variant="accent"
+                onClick={() => setConfirmSignoff(true)}
+                disabled={undecided > 0}
+                title={undecided > 0 ? t("reviewDetail.signoffBlocked", { count: undecided }) : undefined}
+              >
                 <FileCheck2 aria-hidden /> {t("reviewDetail.signoff")}
               </Button>
             )}
@@ -366,156 +468,248 @@ export function ReviewDetailPage() {
         }
       />
 
-      <Card className="mb-6">
-        <CardContent className="space-y-3 text-sm">
-          <div className="flex flex-wrap gap-x-6 gap-y-1 text-slate-600">
-            <span>
-              {t("reviewDetail.engine")}: <strong className="font-medium text-slate-800">{r.latest_run?.engine_mode ?? "—"}</strong> ·{" "}
-              {r.latest_run?.engine_version}
-            </span>
-            {r.latest_run?.finished_at && (
-              <span>
-                {t("reviewDetail.lastRun")}: {formatDate(r.latest_run.finished_at, i18n.language, true)}
+      <Card className="mb-6 overflow-hidden">
+        <div className="grid gap-0 lg:grid-cols-[minmax(0,1fr)_320px]">
+          <div className="p-5">
+            <ol className="flex items-center gap-2" aria-label={t("reviewDetail.progress")}>
+              {(["checks", "decide", "signoff", "report"] as const).map((k, i) => {
+                const done = i < stage || (i === 3 && stage === 3);
+                const current = i === stage && !(i === 3 && stage === 3);
+                return (
+                  <li key={k} className="flex min-w-0 flex-1 items-center gap-2">
+                    <span
+                      className={cn(
+                        "flex size-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold ring-1 transition-colors",
+                        done && "bg-teal-600 text-white ring-teal-600",
+                        current && "bg-teal-50 text-teal-700 ring-teal-300",
+                        !done && !current && "bg-white text-slate-400 ring-slate-200",
+                      )}
+                      aria-current={current ? "step" : undefined}
+                    >
+                      {done ? <Check className="size-3.5" aria-hidden /> : i + 1}
+                    </span>
+                    <span
+                      className={cn(
+                        "hidden truncate text-[13px] font-medium sm:block",
+                        done || current ? "text-navy-900" : "text-slate-400",
+                      )}
+                    >
+                      {t(`reviewDetail.step.${k}`)}
+                    </span>
+                    {i < 3 && <span className={cn("h-px min-w-4 flex-1", done ? "bg-teal-500" : "bg-slate-200")} aria-hidden />}
+                  </li>
+                );
+              })}
+            </ol>
+            <div className="mt-5 flex flex-wrap gap-x-6 gap-y-1.5 text-[13px] text-slate-500">
+              <span className="inline-flex items-center gap-1.5">
+                <Cpu className="size-3.5 text-slate-400" aria-hidden />
+                {t("reviewDetail.engine")}: <strong className="font-medium text-slate-700">{r.latest_run?.engine_mode ?? "—"}</strong>
+                <span className="text-slate-400">{r.latest_run?.engine_version}</span>
               </span>
-            )}
-            {r.signed_off_at && (
-              <span>
-                {t("reviewDetail.signedOffBy", { name: r.signed_off_by_name, date: formatDate(r.signed_off_at, i18n.language, true) })}
-              </span>
-            )}
+              {r.latest_run?.finished_at && (
+                <span className="inline-flex items-center gap-1.5">
+                  <Clock className="size-3.5 text-slate-400" aria-hidden />
+                  {t("reviewDetail.lastRun")}: {formatDate(r.latest_run.finished_at, i18n.language, true)}
+                </span>
+              )}
+              {r.signed_off_at && (
+                <span className="inline-flex items-center gap-1.5 text-emerald-700">
+                  <BadgeCheck className="size-3.5" aria-hidden />
+                  {t("reviewDetail.signedOffBy", { name: r.signed_off_by_name, date: formatDate(r.signed_off_at, i18n.language, true) })}
+                </span>
+              )}
+            </div>
           </div>
-          {running && job && (
-            <div className="space-y-1">
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-slate-700">{t("reviewDetail.running")}</span>
-                {can("write") && !job.cancel_requested && (
-                  <Button size="sm" variant="ghost" onClick={() => cancelRun.mutate(job.id)}>
-                    {t("jobs.cancel")}
+          <div className="border-t border-slate-100 bg-slate-50/60 p-5 lg:border-s lg:border-t-0">
+            <div className="flex items-baseline justify-between">
+              <p className="text-[13px] font-medium text-slate-600">{t("reviewDetail.decisionsRecorded")}</p>
+              <p className="text-sm font-semibold tabular-nums text-navy-900">
+                {decided}
+                <span className="font-normal text-slate-400"> / {totalFindings}</span>
+              </p>
+            </div>
+            <ProgressBar className="mt-2" value={totalFindings ? (100 * decided) / totalFindings : 0} label={t("reviewDetail.decisionsRecorded")} />
+            <dl className="mt-4 grid grid-cols-3 gap-2 text-center">
+              {(
+                [
+                  ["awaiting", undecided, "text-amber-600"],
+                  ["confirmed", (r.finding_counts.confirmed ?? 0) + (r.finding_counts.remediation_in_progress ?? 0) + (r.finding_counts.ready_for_rereview ?? 0), "text-red-600"],
+                  ["closed", (r.finding_counts.dismissed ?? 0) + (r.finding_counts.resolved ?? 0) + (r.finding_counts.accepted_risk ?? 0), "text-slate-600"],
+                ] as const
+              ).map(([k, n, cls]) => (
+                <div key={k} className="rounded-lg bg-white px-2 py-2 ring-1 ring-slate-200/70">
+                  <dd className={cn("text-lg font-semibold tabular-nums", cls)}>{n}</dd>
+                  <dt className="text-[11px] text-slate-500">{t(`reviewDetail.count.${k}`)}</dt>
+                </div>
+              ))}
+            </dl>
+          </div>
+        </div>
+        {(running || (job && (job.status === "failed" || job.status === "cancelled")) || warnings.length > 0) && (
+          <div className="space-y-3 border-t border-slate-100 px-5 py-4 text-sm">
+            {running && job && (
+              <div className="space-y-2 rounded-lg border border-teal-200 bg-teal-50/60 px-4 py-3">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="flex items-center gap-2 font-medium text-teal-800">
+                    <Loader2 className="size-4 animate-spin" aria-hidden />
+                    {t("reviewDetail.running")}
+                  </span>
+                  {can("write") && !job.cancel_requested && (
+                    <Button size="sm" variant="ghost" onClick={() => cancelRun.mutate(job.id)}>
+                      {t("jobs.cancel")}
+                    </Button>
+                  )}
+                </div>
+                <ProgressBar value={job.progress} label={t("jobs.progress")} />
+              </div>
+            )}
+            {job && (job.status === "failed" || job.status === "cancelled") && (
+              <p role="alert" className="flex items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-red-800">
+                <span>
+                  {job.status === "failed" ? t("reviewDetail.runFailed", { error: job.error ?? "" }) : t("reviewDetail.runCancelled")}
+                </span>
+                {can("write") && r.status !== "signed_off" && (
+                  <Button size="sm" variant="outline" onClick={() => rerun.mutate()}>
+                    <RotateCcw aria-hidden /> {t("common.retry")}
                   </Button>
                 )}
-              </div>
-              <ProgressBar value={job.progress} label={t("jobs.progress")} />
-            </div>
-          )}
-          {job && (job.status === "failed" || job.status === "cancelled") && (
-            <p role="alert" className="flex items-center justify-between gap-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-red-800">
-              <span>
-                {job.status === "failed" ? t("reviewDetail.runFailed", { error: job.error ?? "" }) : t("reviewDetail.runCancelled")}
-              </span>
-              {can("write") && r.status !== "signed_off" && (
-                <Button size="sm" variant="outline" onClick={() => rerun.mutate()}>
-                  <RotateCcw aria-hidden /> {t("common.retry")}
-                </Button>
-              )}
-            </p>
-          )}
-          {warnings.length > 0 && (
-            <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900">
-              <p className="flex items-center gap-1.5 font-medium">
-                <AlertTriangle className="size-4" aria-hidden /> {t("reviewDetail.warnings")}
               </p>
-              <ul className="mt-1 list-disc ps-5">
-                {warnings.map((w) => (
-                  <li key={w}>{w}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-          <p className="text-xs text-slate-500">{t("reviewDetail.disclaimer")}</p>
-        </CardContent>
+            )}
+            {warnings.length > 0 && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-amber-900">
+                <p className="flex items-center gap-1.5 font-medium">
+                  <AlertTriangle className="size-4" aria-hidden /> {t("reviewDetail.warnings")}
+                </p>
+                <ul className="mt-1 list-disc ps-5">
+                  {warnings.map((w) => (
+                    <li key={w}>{w}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
+        <p className="flex items-start gap-2 border-t border-slate-100 bg-slate-50/40 px-5 py-2.5 text-xs text-slate-500">
+          <Info className="mt-px size-3.5 shrink-0" aria-hidden />
+          {t("reviewDetail.disclaimer")}
+        </p>
       </Card>
 
-      <div role="tablist" aria-label={t("reviewDetail.sections")} className="mb-4 flex gap-1 border-b border-slate-200">
-        {(["findings", "results", "reports"] as const).map((k) => (
-          <button
-            key={k}
-            role="tab"
-            type="button"
-            aria-selected={tab === k}
-            onClick={() => setTab(k)}
-            className={cn(
-              "-mb-px border-b-2 px-4 py-2 text-sm",
-              tab === k ? "border-teal-700 font-medium text-navy-900" : "border-transparent text-slate-500 hover:text-slate-800",
-            )}
-          >
-            {t(`reviewDetail.tab.${k}`)}
-            {k === "reports" && reports.data ? ` (${reports.data.total})` : ""}
-          </button>
-        ))}
-      </div>
+      <Tabs
+        className="mb-5"
+        label={t("reviewDetail.sections")}
+        value={tab}
+        onChange={setTab}
+        items={[
+          { key: "findings", label: t("reviewDetail.tab.findings"), count: totalFindings },
+          { key: "results", label: t("reviewDetail.tab.results") },
+          { key: "reports", label: t("reviewDetail.tab.reports"), count: reports.data?.total },
+        ]}
+      />
 
-      {tab === "findings" && (
-        <div className="space-y-4">
-          {running ? (
+      {tab === "findings" &&
+        (running ? (
+          <Card>
             <LoadingState label={t("reviewDetail.running")} />
-          ) : (
-            <Card>
-              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
-                <p className="text-sm text-slate-600">
+          </Card>
+        ) : (
+          <div className="grid items-start gap-5 xl:grid-cols-[340px_minmax(0,1fr)]">
+            <Card className="overflow-hidden xl:sticky xl:top-20">
+              <div className="space-y-3 border-b border-slate-100 p-4">
+                <p
+                  className={cn(
+                    "flex items-center gap-2 text-[13px] font-medium",
+                    undecided > 0 ? "text-amber-700" : "text-emerald-700",
+                  )}
+                >
+                  {undecided > 0 ? <CircleDot className="size-4" aria-hidden /> : <CheckCircle2 className="size-4" aria-hidden />}
                   {undecided > 0 ? t("reviewDetail.undecided", { count: undecided }) : t("reviewDetail.allDecided")}
                 </p>
                 <Select
                   aria-label={t("findings.statusFilter")}
-                  className="w-56"
                   value={statusFilter}
                   onChange={(e) => setStatusFilter(e.target.value as FindingStatus | "open" | "")}
                 >
                   <option value="">{t("findings.allStatuses")}</option>
                   <option value="open">{t("findings.needsDecision")}</option>
-                  {(["confirmed", "dismissed", "accepted_risk", "remediation_in_progress", "ready_for_rereview", "resolved"] as const).map(
-                    (s) => (
-                      <option key={s} value={s}>
-                        {t(`findingStatus.${s}`)}
-                      </option>
-                    ),
-                  )}
+                  {(["confirmed", "dismissed", "accepted_risk", "remediation_in_progress", "ready_for_rereview", "resolved"] as const).map((s) => (
+                    <option key={s} value={s}>
+                      {t(`findingStatus.${s}`)}
+                    </option>
+                  ))}
                 </Select>
               </div>
               {findings.isLoading && <LoadingState />}
               {findings.isError && <ErrorState error={findings.error} onRetry={() => void findings.refetch()} />}
-              {findings.data && items.length === 0 && <EmptyState title={t("reviewDetail.noFindings")} description={t("reviewDetail.noFindingsHint")} />}
+              {findings.data && items.length === 0 && (
+                <EmptyState icon={SearchCheck} title={t("reviewDetail.noFindings")} description={t("reviewDetail.noFindingsHint")} />
+              )}
               {items.length > 0 && (
-                <ul className="divide-y divide-slate-100" aria-label={t("nav.findings")}>
-                  {items.map((f) => (
-                    <li key={f.id}>
-                      <button
-                        type="button"
-                        onClick={() => select(f)}
-                        aria-current={f.id === selectedId}
-                        className={cn(
-                          "flex w-full flex-wrap items-center gap-2 px-4 py-2.5 text-start text-sm hover:bg-slate-50",
-                          f.id === selectedId && "bg-teal-50/70",
-                        )}
-                      >
-                        <SeverityBadge severity={f.severity as Severity} />
-                        <span className="min-w-0 flex-1 truncate font-medium text-navy-900">{f.title}</span>
-                        <FindingStatusBadge status={f.status} />
-                      </button>
-                    </li>
-                  ))}
+                <ul className="max-h-[calc(100vh-16rem)] divide-y divide-slate-100 overflow-y-auto" aria-label={t("nav.findings")}>
+                  {items.map((f) => {
+                    const active = f.id === selected?.id;
+                    return (
+                      <li key={f.id}>
+                        <button
+                          type="button"
+                          onClick={() => select(f)}
+                          aria-current={active}
+                          className={cn(
+                            "relative flex w-full flex-col gap-2 px-4 py-3 text-start transition-colors",
+                            active ? "bg-teal-50/70" : "hover:bg-slate-50",
+                          )}
+                        >
+                          <span
+                            className={cn("absolute inset-y-0 start-0 w-[3px]", active ? "bg-teal-500" : "bg-transparent")}
+                            aria-hidden
+                          />
+                          <span className="line-clamp-2 text-[13.5px] font-medium leading-snug text-navy-900">{f.title}</span>
+                          <span className="flex flex-wrap items-center gap-1.5">
+                            <SeverityBadge severity={f.severity as Severity} />
+                            <FindingStatusBadge status={f.status} />
+                            {f.evidence.length > 0 && (
+                              <span className="inline-flex items-center gap-1 text-[11px] text-slate-400">
+                                <Quote className="size-3" aria-hidden />
+                                {f.evidence.length}
+                              </span>
+                            )}
+                          </span>
+                        </button>
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
             </Card>
-          )}
-          {selected && (
-            <div className="grid gap-4 lg:grid-cols-2">
-              <DocumentPanel versionId={r.document_version_id} highlight={highlight} />
-              <Card>
-                <CardContent className="py-5">
-                  <FindingPanel finding={selected} onLocate={(e: Evidence) => setFocusBlock(e.block_id)} />
-                </CardContent>
-              </Card>
+            <div className="min-w-0">
+              {selected ? (
+                <div className="grid items-start gap-5 2xl:grid-cols-2">
+                  <Card className="p-5 sm:p-6" key={selected.id}>
+                    <FindingPanel finding={selected} onLocate={(e: Evidence) => setFocusBlock(e.block_id)} />
+                  </Card>
+                  <DocumentPanel
+                    versionId={r.document_version_id}
+                    highlight={highlight}
+                    className="max-h-[36rem] 2xl:sticky 2xl:top-20 2xl:max-h-[calc(100vh-6rem)]"
+                  />
+                </div>
+              ) : (
+                items.length > 0 && (
+                  <Card className="border-dashed shadow-none">
+                    <EmptyState icon={MousePointerClick} title={t("reviewDetail.selectFinding")} />
+                  </Card>
+                )
+              )}
             </div>
-          )}
-          {!selected && items.length > 0 && <p className="text-center text-sm text-slate-500">{t("reviewDetail.selectFinding")}</p>}
-        </div>
-      )}
+          </div>
+        ))}
 
       {tab === "results" && (
-        <Card>
+        <Card className="overflow-hidden">
           {results.isLoading && <LoadingState />}
           {results.isError && <ErrorState error={results.error} onRetry={() => void results.refetch()} />}
-          {results.data?.length === 0 && <EmptyState title={t("reviewDetail.noResults")} />}
+          {results.data?.length === 0 && <EmptyState icon={SearchCheck} title={t("reviewDetail.noResults")} />}
           {results.data && results.data.length > 0 && (
             <Table>
               <THead>
@@ -529,36 +723,49 @@ export function ReviewDetailPage() {
               <TBody>
                 {results.data.map((c) => (
                   <TR key={c.id}>
-                    <TD>
-                      <code className="text-xs">{c.requirement_code}</code> {c.requirement_title}
+                    <TD className="align-top">
+                      <code className="me-1.5 rounded-md bg-slate-100 px-1.5 py-0.5 font-mono text-[11px] text-slate-600">{c.requirement_code}</code>
+                      <span className="font-medium text-navy-900">{c.requirement_title}</span>
                     </TD>
-                    <TD>
-                      <OutcomeBadge outcome={c.outcome} />
-                      {c.needs_attention && <span className="ms-1 text-xs text-amber-700">{t("reviewDetail.needsAttention")}</span>}
+                    <TD className="align-top">
+                      <div className="flex flex-col items-start gap-1">
+                        <OutcomeBadge outcome={c.outcome} />
+                        {c.needs_attention && <span className="text-[11px] font-medium text-amber-700">{t("reviewDetail.needsAttention")}</span>}
+                      </div>
                     </TD>
-                    <TD className="text-xs">{c.message}</TD>
-                    <TD className="text-xs">{c.evidence.map((e) => evidenceLocation(e, t)).join(", ") || "—"}</TD>
+                    <TD className="align-top text-xs leading-relaxed text-slate-600">{c.message}</TD>
+                    <TD className="align-top text-xs text-slate-500">{c.evidence.map((e) => evidenceLocation(e, t)).join(", ") || "—"}</TD>
                   </TR>
                 ))}
               </TBody>
             </Table>
           )}
-          <p className="px-4 py-3 text-xs text-slate-500">{t("reviewDetail.outcomeNote")}</p>
+          <p className="flex items-start gap-2 border-t border-slate-100 bg-slate-50/50 px-5 py-3 text-xs text-slate-500">
+            <Info className="mt-px size-3.5 shrink-0" aria-hidden />
+            {t("reviewDetail.outcomeNote")}
+          </p>
         </Card>
       )}
 
       {tab === "reports" && (
-        <Card>
-          {reports.data?.items.length === 0 && <EmptyState title={t("reports.noneForReview")} description={t("reports.noneForReviewHint")} />}
+        <Card className="overflow-hidden">
+          {reports.data?.items.length === 0 && (
+            <EmptyState icon={FileText} title={t("reports.noneForReview")} description={t("reports.noneForReviewHint")} />
+          )}
           <ul className="divide-y divide-slate-100">
             {reports.data?.items.map((rep) => (
-              <li key={rep.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
-                <div className="text-sm">
-                  <p className="font-medium text-navy-900">{t("reports.version", { n: rep.version })}</p>
-                  <p className="text-xs text-slate-500">
-                    {t("reviewDetail.signedOffBy", { name: rep.signed_off_by_name, date: formatDate(rep.signed_off_at, i18n.language, true) })} ·{" "}
-                    {t("reports.findingCount", { count: rep.finding_count })}
-                  </p>
+              <li key={rep.id} className="flex flex-wrap items-center justify-between gap-4 px-5 py-4">
+                <div className="flex items-center gap-3">
+                  <span className="flex size-10 items-center justify-center rounded-xl bg-emerald-50 ring-1 ring-emerald-100">
+                    <FileCheck2 className="size-5 text-emerald-600" aria-hidden />
+                  </span>
+                  <div className="text-sm">
+                    <p className="font-semibold text-navy-900">{t("reports.version", { n: rep.version })}</p>
+                    <p className="text-xs text-slate-500">
+                      {t("reviewDetail.signedOffBy", { name: rep.signed_off_by_name, date: formatDate(rep.signed_off_at, i18n.language, true) })} ·{" "}
+                      {t("reports.findingCount", { count: rep.finding_count })}
+                    </p>
+                  </div>
                 </div>
                 <ReportLinks report={rep} />
               </li>
