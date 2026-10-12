@@ -7,8 +7,8 @@ const SAMPLE = fileURLToPath(new URL("../../samples/synthetic-vendor-policy.txt"
 
 async function login(page: Page, email: string) {
   await page.goto("/login");
-  await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Password").fill(PASSWORD);
+  await page.getByLabel("Email", { exact: true }).fill(email);
+  await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
 }
@@ -136,7 +136,7 @@ test("Arabic switches the interface to right-to-left", async ({ page }) => {
   await expect(page.locator("html")).toHaveAttribute("dir", "rtl");
   await expect(page.locator("html")).toHaveAttribute("lang", "ar");
   await page.getByLabel("البريد الإلكتروني").fill("reviewer@alpha.example");
-  await page.getByLabel("كلمة المرور").fill(PASSWORD);
+  await page.getByLabel("كلمة المرور", { exact: true }).fill(PASSWORD);
   await page.getByRole("button", { name: "تسجيل الدخول" }).click();
   await expect(page.getByRole("heading", { name: "نظرة عامة" })).toBeVisible();
   await expect(page.getByText("نسبة بنود قائمة التحقق التي تمت مراجعتها.").first()).toBeVisible();

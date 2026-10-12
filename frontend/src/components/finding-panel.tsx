@@ -3,7 +3,20 @@ import { useTranslation } from "react-i18next";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Check, ShieldAlert, X } from "lucide-react";
+import {
+  BookMarked,
+  Bot,
+  Check,
+  Gavel,
+  History,
+  Lock,
+  MessageSquare,
+  Quote,
+  ShieldAlert,
+  UserCheck,
+  Wrench,
+  X,
+} from "lucide-react";
 import { toast } from "sonner";
 import { api, qs } from "@/lib/api";
 import type { AuditEvent, Comment, Evidence, Finding, Member, Page } from "@/lib/types";
@@ -11,6 +24,7 @@ import { useAuth } from "@/lib/auth";
 import { formatDate } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Avatar } from "@/components/ui/avatar";
 import { FieldError, Input, Label, Select, Textarea } from "@/components/ui/input";
 import { errorMessage, FindingStatusBadge, OutcomeBadge, SeverityBadge, useUnsavedChangesWarning } from "./common";
 import { EvidenceQuote } from "./evidence";
@@ -54,17 +68,18 @@ function DecisionForm({ finding }: { finding: Finding }) {
       decide.mutate({ decision, rationale: v.rationale }, { onSuccess: () => form.reset({ rationale: v.rationale }) });
     })();
   return (
-    <section aria-labelledby="decision-h" className="space-y-2">
-      <h3 id="decision-h" className="text-sm font-semibold text-navy-900">
+    <section aria-labelledby="decision-h" className="space-y-2.5 rounded-xl border border-slate-200/80 bg-slate-50/60 p-4">
+      <h3 id="decision-h" className="flex items-center gap-2 text-[13px] font-semibold text-navy-900">
+        <Gavel className="size-4 text-slate-400" aria-hidden />
         {t("findings.reviewerDecision")}
       </h3>
       <Label htmlFor="rationale" className="text-xs text-slate-600">
         {t("findings.rationale")}
       </Label>
-      <Textarea id="rationale" rows={2} aria-invalid={!!form.formState.errors.rationale} {...form.register("rationale")} />
+      <Textarea id="rationale" rows={2} className="bg-white" aria-invalid={!!form.formState.errors.rationale} {...form.register("rationale")} />
       <FieldError message={form.formState.errors.rationale?.message} />
       <div className="flex flex-wrap gap-2">
-        <Button size="sm" variant="default" disabled={decide.isPending} onClick={() => submit("confirmed")}>
+        <Button size="sm" variant="default" className="min-w-24" disabled={decide.isPending} onClick={() => submit("confirmed")}>
           <Check aria-hidden /> {t("findings.confirm")}
         </Button>
         <Button size="sm" variant="outline" disabled={decide.isPending} onClick={() => submit("dismissed")}>
@@ -89,18 +104,21 @@ function AssignmentForm({ finding }: { finding: Finding }) {
   });
   useUnsavedChangesWarning(form.formState.isDirty);
   const assign = useFindingMutation<{ owner_id: string | null; due_date: string | null }>(finding, "assignment");
+  // Render the owner select only once members are loaded, so the saved owner is preselected.
+  if (members.isLoading) return <div className="skeleton h-28 rounded-xl" aria-hidden />;
   return (
     <form
       aria-labelledby="assign-h"
-      className="space-y-2"
+      className="space-y-2.5 rounded-xl border border-slate-200/80 p-4"
       onSubmit={form.handleSubmit((v) =>
         assign.mutate({ owner_id: v.owner_id || null, due_date: v.due_date || null }, { onSuccess: () => form.reset(v) }),
       )}
     >
-      <h3 id="assign-h" className="text-sm font-semibold text-navy-900">
+      <h3 id="assign-h" className="flex items-center gap-2 text-[13px] font-semibold text-navy-900">
+        <Wrench className="size-4 text-slate-400" aria-hidden />
         {t("findings.remediation")}
       </h3>
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid gap-2 sm:grid-cols-2">
         <div className="space-y-1">
           <Label htmlFor="owner" className="text-xs text-slate-600">
             {t("findings.owner")}
@@ -141,7 +159,7 @@ function RemediationForm({ finding, canDecide }: { finding: Finding; canDecide: 
   const send = (status?: string) =>
     form.handleSubmit((v) => update.mutate({ notes: v.notes, status }, { onSuccess: () => form.reset(v) }))();
   return (
-    <section className="space-y-2">
+    <section className="space-y-2.5 rounded-xl border border-slate-200/80 p-4">
       <Label htmlFor="remediation-notes" className="text-xs text-slate-600">
         {t("findings.remediationNotes")}
       </Label>
@@ -185,18 +203,25 @@ function Comments({ finding, canWrite }: { finding: Finding; canWrite: boolean }
     onError: (e) => toast.error(errorMessage(e, t("common.genericError"))),
   });
   return (
-    <section className="space-y-2">
-      <h3 className="text-sm font-semibold text-navy-900">{t("findings.comments")}</h3>
+    <section className="space-y-3">
+      <h3 className="flex items-center gap-2 text-[13px] font-semibold text-navy-900">
+        <MessageSquare className="size-4 text-slate-400" aria-hidden />
+        {t("findings.comments")}
+        {!!comments.data?.length && <span className="rounded-full bg-slate-100 px-1.5 text-[11px] text-slate-500">{comments.data.length}</span>}
+      </h3>
       {comments.data?.length === 0 && <p className="text-xs text-slate-500">{t("findings.noComments")}</p>}
-      <ul className="space-y-2">
+      <ul className="space-y-2.5">
         {comments.data?.map((c) => (
-          <li key={c.id} className="rounded-md bg-slate-50 px-3 py-2 text-sm">
-            <p className="text-xs text-slate-500">
-              {c.author_name} · {formatDate(c.created_at, i18n.language, true)}
-            </p>
-            <p className="whitespace-pre-wrap text-slate-800" dir="auto">
-              {c.body}
-            </p>
+          <li key={c.id} className="flex gap-2.5">
+            <Avatar name={c.author_name} className="size-7 text-[10px]" />
+            <div className="min-w-0 flex-1 rounded-xl rounded-ss-sm bg-slate-50 px-3 py-2 text-sm ring-1 ring-slate-200/60">
+              <p className="text-xs text-slate-500">
+                <span className="font-medium text-slate-700">{c.author_name}</span> · {formatDate(c.created_at, i18n.language, true)}
+              </p>
+              <p className="mt-0.5 whitespace-pre-wrap text-slate-800" dir="auto">
+                {c.body}
+              </p>
+            </div>
           </li>
         ))}
       </ul>
@@ -225,14 +250,19 @@ function FindingActivity({ findingId }: { findingId: string }) {
   });
   if (!events.data?.items.length) return null;
   return (
-    <section className="space-y-1">
-      <h3 className="text-sm font-semibold text-navy-900">{t("findings.history")}</h3>
-      <ol className="space-y-1 text-xs text-slate-600">
+    <section className="space-y-2.5">
+      <h3 className="flex items-center gap-2 text-[13px] font-semibold text-navy-900">
+        <History className="size-4 text-slate-400" aria-hidden />
+        {t("findings.history")}
+      </h3>
+      <ol className="ms-1.5 space-y-2.5 border-s border-slate-200 ps-4 text-xs text-slate-600">
         {events.data.items.map((e) => (
-          <li key={e.id}>
-            {formatDate(e.created_at, i18n.language, true)} · {e.actor_name ?? t("activity.system")} ·{" "}
+          <li key={e.id} className="relative">
+            <span className="absolute -start-[21px] top-1 size-2 rounded-full bg-slate-300 ring-2 ring-white" aria-hidden />
+            <span className="font-medium text-slate-700">{e.actor_name ?? t("activity.system")}</span> ·{" "}
             {t(`audit.${e.action}`, { defaultValue: e.action })}
             {typeof e.meta.to === "string" && ` → ${t(`findingStatus.${e.meta.to}`, { defaultValue: e.meta.to })}`}
+            <span className="block text-[11px] text-slate-400">{formatDate(e.created_at, i18n.language, true)}</span>
           </li>
         ))}
       </ol>
@@ -248,49 +278,73 @@ export function FindingPanel({ finding, onLocate }: { finding: Finding; onLocate
   const isOwner = me?.user.id === finding.owner_id;
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       <div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-1.5">
           <SeverityBadge severity={finding.severity} />
           <FindingStatusBadge status={finding.status} />
-          {finding.requirement_code && <code className="rounded bg-slate-100 px-1.5 text-xs">{finding.requirement_code}</code>}
+          {finding.requirement_code && (
+            <code className="rounded-md bg-slate-100 px-1.5 py-0.5 font-mono text-[11px] text-slate-600">{finding.requirement_code}</code>
+          )}
           {finding.is_manual && <Badge>{t("findings.manual")}</Badge>}
-          {finding.is_overdue && <Badge tone="red">{t("findings.overdue")}</Badge>}
+          {finding.is_overdue && (
+            <Badge tone="red" dot>
+              {t("findings.overdue")}
+            </Badge>
+          )}
         </div>
-        <h2 className="mt-2 text-base font-semibold text-navy-900">{finding.title}</h2>
-        <p className="mt-1 text-sm text-slate-600">{finding.description}</p>
-        {finding.automated_outcome && (
-          <p className="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
-            {t("findings.automatedOutcome")}: <OutcomeBadge outcome={finding.automated_outcome} />
-            <span>{t("findings.automatedNotDecision")}</span>
-          </p>
-        )}
-        {finding.source_reference && (
-          <p className="mt-1 text-xs text-slate-500">
-            {t("findings.sourceReference")}: {finding.source_reference}
-          </p>
+        <h2 className="mt-3 text-lg font-semibold leading-snug tracking-tight text-navy-950">{finding.title}</h2>
+        {finding.description && <p className="mt-1.5 text-sm leading-relaxed text-slate-600">{finding.description}</p>}
+        {(finding.automated_outcome || finding.source_reference) && (
+          <div className="mt-3 space-y-1 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500 ring-1 ring-slate-200/60">
+            {finding.automated_outcome && (
+              <p className="flex flex-wrap items-center gap-1.5">
+                <Bot className="size-3.5 text-slate-400" aria-hidden />
+                {t("findings.automatedOutcome")}: <OutcomeBadge outcome={finding.automated_outcome} />
+                <span>{t("findings.automatedNotDecision")}</span>
+              </p>
+            )}
+            {finding.source_reference && (
+              <p className="flex items-center gap-1.5">
+                <BookMarked className="size-3.5 text-slate-400" aria-hidden />
+                {t("findings.sourceReference")}: {finding.source_reference}
+              </p>
+            )}
+          </div>
         )}
       </div>
 
-      <section className="space-y-2">
-        <h3 className="text-sm font-semibold text-navy-900">{t("findings.evidence")}</h3>
+      <section className="space-y-2.5">
+        <h3 className="flex items-center gap-2 text-[13px] font-semibold text-navy-900">
+          <Quote className="size-4 text-slate-400" aria-hidden />
+          {t("findings.evidence")}
+          {finding.evidence.length > 0 && (
+            <span className="rounded-full bg-slate-100 px-1.5 text-[11px] text-slate-500">{finding.evidence.length}</span>
+          )}
+        </h3>
         {finding.evidence.length === 0 ? (
-          <p className="rounded-md border border-dashed border-slate-300 px-3 py-2 text-xs text-slate-600">{t("findings.noEvidence")}</p>
+          <p className="rounded-lg border border-dashed border-slate-300 px-3 py-2.5 text-xs leading-relaxed text-slate-600">{t("findings.noEvidence")}</p>
         ) : (
           finding.evidence.map((e, i) => <EvidenceQuote key={`${e.block_id}-${i}`} evidence={e} onLocate={onLocate} />)
         )}
       </section>
 
       {finding.decided_by_name && (
-        <p className="text-xs text-slate-600">
+        <p className="flex items-start gap-2 rounded-lg bg-emerald-50/60 px-3 py-2 text-xs text-emerald-900 ring-1 ring-emerald-200/60">
+          <UserCheck className="mt-px size-3.5 shrink-0" aria-hidden />
+          <span>
           {t("findings.decidedBy", { name: finding.decided_by_name, date: formatDate(finding.decided_at, i18n.language, true) })}
           {finding.decision_rationale && <> — “{finding.decision_rationale}”</>}
+          </span>
         </p>
       )}
 
       {canDecide && !signedOff && DECIDABLE.has(finding.status) && <DecisionForm key={finding.id + finding.status} finding={finding} />}
       {signedOff && DECIDABLE.has(finding.status) && canDecide && (
-        <p className="rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-600">{t("findings.lockedSignedOff")}</p>
+        <p className="flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600 ring-1 ring-slate-200/60">
+          <Lock className="size-3.5 shrink-0" aria-hidden />
+          {t("findings.lockedSignedOff")}
+        </p>
       )}
       {canDecide && ASSIGNABLE.has(finding.status) && <AssignmentForm key={`${finding.id}-${finding.updated_at}`} finding={finding} />}
       {!canDecide && (finding.owner_name || finding.due_date) && (

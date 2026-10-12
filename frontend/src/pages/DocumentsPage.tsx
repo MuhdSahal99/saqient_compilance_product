@@ -1,15 +1,15 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { Search, Upload } from "lucide-react";
+import { ChevronRight, FileStack, Search, SearchX, Upload } from "lucide-react";
 import { api, qs } from "@/lib/api";
 import type { DocumentSummary, Page, VersionStatus } from "@/lib/types";
 import { useAuth } from "@/lib/auth";
 import { formatBytes, formatDate } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Input, Select } from "@/components/ui/input";
+import { IconInput, Select } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import {
@@ -22,7 +22,7 @@ import {
   SyntheticBadge,
   useDebounced,
 } from "@/components/common";
-import { DOCUMENT_TYPES, UploadDialog } from "@/components/upload-dialog";
+import { DOCUMENT_TYPES, FileTypeTile, UploadDialog } from "@/components/upload-dialog";
 
 export function DocumentsPage() {
   const { t, i18n } = useTranslation();
@@ -34,7 +34,21 @@ export function DocumentsPage() {
   const status = (params.get("status") as VersionStatus | null) ?? undefined;
   const type = params.get("type") ?? undefined;
   const page = Number(params.get("page") ?? 1);
-  const [uploadOpen, setUploadOpen] = useState(false);
+  const [uploadState, setUploadState] = useState(false);
+  // The command palette links to /documents?upload=1 to open the dialog directly.
+  const uploadParam = params.get("upload") === "1";
+  const uploadOpen = can("write") && (uploadState || uploadParam);
+  const uploadedRef = useRef(false);
+  const setUploadOpen = (open: boolean) => {
+    setUploadState(open);
+    if (!open && params.has("upload") && !uploadedRef.current) {
+      const next = new URLSearchParams(params);
+      next.delete("upload");
+      setParams(next, { replace: true });
+    }
+    if (open) uploadedRef.current = false;
+  };
+  const filtered = Boolean(q || status || type);
 
   const setParam = (k: string, v: string | undefined) => {
     const next = new URLSearchParams(params);
@@ -68,20 +82,18 @@ export function DocumentsPage() {
         }
       />
       <Card>
-        <div className="flex flex-wrap gap-3 border-b border-slate-100 p-4">
-          <div className="relative min-w-60 flex-1">
-            <Search className="pointer-events-none absolute start-3 top-2.5 size-4 text-slate-400" aria-hidden />
-            <Input
-              aria-label={t("documents.search")}
-              placeholder={t("documents.search")}
-              className="ps-9"
-              value={search}
-              onChange={(e) => {
-                setSearch(e.target.value);
-                setParam("q", e.target.value || undefined);
-              }}
-            />
-          </div>
+        <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 p-3">
+          <IconInput
+            icon={Search}
+            aria-label={t("documents.search")}
+            placeholder={t("documents.search")}
+            className="min-w-60 flex-1"
+            value={search}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setParam("q", e.target.value || undefined);
+            }}
+          />
           <Select aria-label={t("documents.statusFilter")} className="w-44" value={status ?? ""} onChange={(e) => setParam("status", e.target.value || undefined)}>
             <option value="">{t("documents.allStatuses")}</option>
             {(["pending", "processing", "ready", "failed"] as const).map((s) => (
@@ -103,10 +115,12 @@ export function DocumentsPage() {
         {docs.isError && <ErrorState error={docs.error} onRetry={() => void docs.refetch()} />}
         {docs.data && docs.data.items.length === 0 && (
           <EmptyState
-            title={q || status || type ? t("documents.noMatches") : t("documents.empty")}
-            description={q || status || type ? undefined : t("documents.emptyHint")}
+            icon={filtered ? SearchX : FileStack}
+            title={filtered ? t("documents.noMatches") : t("documents.empty")}
+            description={filtered ? undefined : t("documents.emptyHint")}
             action={
-              can("write") && !q && (
+              can("write") &&
+              !q && (
                 <Button variant="accent" onClick={() => setUploadOpen(true)}>
                   <Upload aria-hidden /> {t("upload.title")}
                 </Button>
@@ -119,36 +133,59 @@ export function DocumentsPage() {
             <Table>
               <THead>
                 <tr>
-                  <TH>{t("documents.titleField")}</TH>
+                  <TH className="ps-5">{t("documents.titleField")}</TH>
                   <TH>{t("documents.type")}</TH>
                   <TH>{t("documents.status")}</TH>
-                  <TH>{t("documents.version")}</TH>
+                  <TH className="text-end">{t("documents.version")}</TH>
                   <TH>{t("documents.updated")}</TH>
+                  <TH className="w-10" aria-hidden />
                 </tr>
               </THead>
               <TBody>
                 {docs.data.items.map((d) => (
-                  <TR key={d.id} className="cursor-pointer" onClick={() => navigate(`/documents/${d.id}`)}>
-                    <TD>
-                      <Link to={`/documents/${d.id}`} className="font-medium text-navy-900 hover:underline" onClick={(e) => e.stopPropagation()}>
-                        {d.title}
-                      </Link>
-                      <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
-                        {d.latest_version && (
-                          <span>
-                            {d.latest_version.file_format.toUpperCase()} · {formatBytes(d.latest_version.size_bytes)}
-                          </span>
-                        )}
-                        {d.is_demo && <SyntheticBadge />}
-                        {d.tags.map((tag) => (
-                          <Badge key={tag}>{tag}</Badge>
-                        ))}
+                  <TR key={d.id} className="group cursor-pointer" onClick={() => navigate(`/documents/${d.id}`)}>
+                    <TD className="ps-5">
+                      <div className="flex items-center gap-3">
+                        <FileTypeTile format={d.latest_version?.file_format} />
+                        <div className="min-w-0">
+                          <Link
+                            to={`/documents/${d.id}`}
+                            className="block truncate font-medium text-navy-900 transition-colors hover:text-teal-700"
+                            onClick={(e) => e.stopPropagation()}
+                            dir="auto"
+                          >
+                            {d.title}
+                          </Link>
+                          <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
+                            {d.latest_version && (
+                              <span className="tabular-nums">
+                                {d.latest_version.file_format.toUpperCase()} · {formatBytes(d.latest_version.size_bytes)}
+                              </span>
+                            )}
+                            {d.is_demo && <SyntheticBadge />}
+                            {d.tags.map((tag) => (
+                              <Badge key={tag} className="px-1.5 py-0 text-[11px]">
+                                {tag}
+                              </Badge>
+                            ))}
+                          </div>
+                        </div>
                       </div>
                     </TD>
-                    <TD>{t(`documentType.${d.document_type}`, { defaultValue: d.document_type })}</TD>
+                    <TD className="whitespace-nowrap text-[13px]">{t(`documentType.${d.document_type}`, { defaultValue: d.document_type })}</TD>
                     <TD>{d.latest_version && <ProcessingBadge status={d.latest_version.status} />}</TD>
-                    <TD className="tabular-nums">v{d.latest_version?.version_number ?? "—"}</TD>
-                    <TD className="whitespace-nowrap">{formatDate(d.updated_at, i18n.language)}</TD>
+                    <TD className="text-end">
+                      <span className="inline-flex items-center rounded-md bg-slate-100 px-1.5 py-0.5 font-mono text-xs font-medium tabular-nums text-slate-600">
+                        v{d.latest_version?.version_number ?? "—"}
+                      </span>
+                    </TD>
+                    <TD className="whitespace-nowrap text-[13px] text-slate-500">
+                      <div>{formatDate(d.updated_at, i18n.language)}</div>
+                      {d.created_by_name && <div className="text-xs text-slate-400">{d.created_by_name}</div>}
+                    </TD>
+                    <TD className="pe-4">
+                      <ChevronRight className="size-4 text-slate-300 transition-transform group-hover:translate-x-0.5 group-hover:text-slate-500 rtl-flip rtl:group-hover:-translate-x-0.5" aria-hidden />
+                    </TD>
                   </TR>
                 ))}
               </TBody>
@@ -157,7 +194,14 @@ export function DocumentsPage() {
           </>
         )}
       </Card>
-      <UploadDialog open={uploadOpen} onOpenChange={setUploadOpen} onUploaded={(d) => navigate(`/documents/${d.id}`)} />
+      <UploadDialog
+        open={uploadOpen}
+        onOpenChange={setUploadOpen}
+        onUploaded={(d) => {
+          uploadedRef.current = true;
+          navigate(`/documents/${d.id}`);
+        }}
+      />
     </>
   );
 }
