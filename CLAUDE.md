@@ -78,6 +78,16 @@ pnpm e2e            # needs backend + worker running with demo seed
   Use logical CSS properties (`ms-`, `me-`, `ps-`, `pe-`, `start`, `end`) so RTL works.
 - Keep unfinished features out of the UI, or visibly labelled "Not available".
 
+## Dependency policy
+
+- Use stable releases only (no alpha/beta/rc as direct dependencies) that have
+  been public for at least 7 days.
+- Frontend: exact versions in `package.json`; `frontend/pnpm-workspace.yaml`
+  sets `minimumReleaseAge: 10080` so pnpm refuses anything newer.
+- Backend: `[tool.uv] exclude-newer` in `backend/pyproject.toml` is a fixed
+  cutoff date; move it forward deliberately when upgrading, then relock.
+- Never take "latest" on the day of install.
+
 ## Tenant isolation requirements
 
 - Every tenant-owned table has a non-null `org_id`.
