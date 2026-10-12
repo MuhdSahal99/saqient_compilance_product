@@ -21,9 +21,12 @@ test-results/
 *.pem
 *.key
 # Local data (uploaded documents, DB dumps)
-data/
-storage/
-backups/
+/data/
+/backend/data/
+/storage/
+/backend/storage/
+/backups/
+/backend/backups/
 *.dump
 # OS/editor
 .DS_Store
