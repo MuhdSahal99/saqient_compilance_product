@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid
 from datetime import date
 from typing import Any
 
@@ -159,6 +160,7 @@ def audit_events(
     db: DB,
     action: str | None = Query(default=None, max_length=80),
     object_type: str | None = Query(default=None, max_length=60),
+    object_id: uuid.UUID | None = None,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=1, le=200),
 ) -> Page[AuditEventOut]:
@@ -167,6 +169,8 @@ def audit_events(
         stmt = stmt.where(AuditEvent.action.startswith(action))
     if object_type:
         stmt = stmt.where(AuditEvent.object_type == object_type)
+    if object_id:
+        stmt = stmt.where(AuditEvent.object_id == object_id)
     total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
     rows = (
         db.scalars(
