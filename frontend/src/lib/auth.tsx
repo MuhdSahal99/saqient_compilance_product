@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, type ReactNode } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { api, ApiError, setCsrfToken } from "./api";
 import type { Me, Role } from "./types";
 
@@ -22,6 +22,15 @@ const ROLE_PERMS: Record<Role, Permission[]> = {
   analyst: ["write"],
   viewer: [],
 };
+
+/**
+ * Drop cached data from the previous identity/organisation. The "me" query is kept
+ * (and overwritten) because AuthProvider's observer stays attached to it; clearing
+ * the whole cache would detach the observer and leave the stale value on screen.
+ */
+function clearOtherQueries(qc: QueryClient) {
+  qc.removeQueries({ predicate: (q) => q.queryKey[0] !== "me" });
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const qc = useQueryClient();
@@ -48,7 +57,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async (email: string, password: string) => {
       const result = await api<Me>("/auth/login", { json: { email, password } });
       setCsrfToken(result.csrf_token);
-      qc.clear();
+      clearOtherQueries(qc);
       qc.setQueryData(["me"], result);
     },
     [qc],
@@ -59,7 +68,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await api("/auth/logout", { method: "POST" });
     } finally {
       setCsrfToken("");
-      qc.clear();
+      clearOtherQueries(qc);
       qc.setQueryData(["me"], null);
     }
   }, [qc]);
@@ -67,7 +76,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const switchOrg = useCallback(
     async (orgId: string) => {
       const result = await api<Me>("/auth/switch-org", { json: { org_id: orgId } });
-      qc.clear();
+      clearOtherQueries(qc);
       qc.setQueryData(["me"], result);
     },
     [qc],

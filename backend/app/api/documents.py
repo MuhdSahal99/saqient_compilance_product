@@ -6,7 +6,7 @@ from typing import Annotated
 from fastapi import APIRouter, File, Form, HTTPException, Query, Response, UploadFile, status
 from fastapi.responses import JSONResponse
 from sqlalchemy import exists, func, or_, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from app.config import get_settings
 from app.deps import DB, Ctx, Decider, Writer, get_owned_or_404
@@ -123,9 +123,11 @@ def list_documents(
     if document_type:
         stmt = stmt.where(Document.document_type == document_type)
     if status_filter:
+        # Alias so the max() subquery is not auto-correlated into the EXISTS below.
+        newer = aliased(DocumentVersion)
         latest_no = (
-            select(func.max(DocumentVersion.version_number))
-            .where(DocumentVersion.document_id == Document.id)
+            select(func.max(newer.version_number))
+            .where(newer.document_id == Document.id)
             .scalar_subquery()
         )
         stmt = stmt.where(

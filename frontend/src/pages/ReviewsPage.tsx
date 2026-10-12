@@ -202,7 +202,7 @@ export function ReviewsPage() {
                   <TH>{t("reviews.scope")}</TH>
                   <TH>{t("reviews.status")}</TH>
                   <TH>{t("reviews.openFindings")}</TH>
-                  <TH>{t("reviews.created")}</TH>
+                  <TH>{t("reviews.created_col")}</TH>
                 </tr>
               </THead>
               <TBody>

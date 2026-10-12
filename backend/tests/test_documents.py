@@ -169,6 +169,17 @@ def test_search_extracted_text(tenant_a: Tenant) -> None:
     assert client.get("/api/documents", params={"q": "zzz-none"}).json()["total"] == 0
 
 
+def test_filter_by_latest_version_status(tenant_a: Tenant) -> None:
+    client = login(tenant_a.users[Role.ANALYST])
+    upload(client, title="Readable")
+    upload(client, dc.blank_pdf_bytes(), "scan.pdf", "application/pdf", title="Scanned")
+    ready = client.get("/api/documents", params={"status": "ready", "page_size": 100})
+    assert ready.status_code == 200
+    assert [d["title"] for d in ready.json()["items"]] == ["Readable"]
+    failed = client.get("/api/documents", params={"status": "failed"}).json()
+    assert [d["title"] for d in failed["items"]] == ["Scanned"]
+
+
 def test_delete_removes_file_and_text_but_keeps_audit(tenant_a: Tenant, db) -> None:  # type: ignore[no-untyped-def]
     writer = login(tenant_a.users[Role.ANALYST])
     reviewer = login(tenant_a.users[Role.REVIEWER])
