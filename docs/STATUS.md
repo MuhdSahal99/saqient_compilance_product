@@ -55,6 +55,7 @@ reopen with reason.
 | E2E against Docker Compose | `E2E_BASE_URL=http://localhost:8080 pnpm e2e` | **3 passed** |
 | Compose health | `curl /api/health/ready` through nginx | ok (database ok, redis ok) |
 | Production guard in container | `APP_ENV=production … validate_for_production()` | Refused: default secret, demo mode, insecure cookie |
+| GitHub Actions CI (PR #1, commit 2e89ffd) | backend, frontend, e2e, compose jobs | All 4 green |
 | Backup/restore drill | `pg_dump -Fc` → `pg_restore` into a new DB; `tar` of storage volume | Restored rows present; archive readable |
 
 Note on the Compose run: this sandbox blocks container registries other than
@@ -64,12 +65,14 @@ committed Dockerfiles were not built unmodified here; CI builds them as-is.
 
 ## Not executed
 
-- GitHub Actions CI workflow: written, not yet run (runs on the first push/PR).
 - S3 and GCS storage adapters against real buckets.
 - Browsers other than Chromium; screen-reader testing.
 - Load/performance testing.
 
-## Bugs found by the end-to-end run and fixed
+## Bugs found by the end-to-end run and CI, and fixed
+
+- The first CI run found `backend/app/storage/` missing from the repository:
+  an unanchored `storage/` rule in `.gitignore` hid it. Rules are now anchored.
 
 - After login the app returned to the login page: clearing the whole query
   cache detached the session observer. Fixed in `src/lib/auth.tsx`; unit
