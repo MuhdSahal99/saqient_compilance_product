@@ -106,6 +106,8 @@ class OpenAICompatibleProvider:
             raise ConfigError("AI_MODEL is required.")
         if settings.ai_auth == "google" and settings.ai_api_key:
             raise ConfigError("Leave AI_API_KEY empty when AI_AUTH=google.")
+        if settings.ai_auth == "google_api_key" and not settings.ai_api_key:
+            raise ConfigError("AI_AUTH=google_api_key needs AI_API_KEY.")
         self._settings = settings
         self._google = GoogleToken() if settings.ai_auth == "google" else None
 
@@ -113,6 +115,8 @@ class OpenAICompatibleProvider:
         if self._google is not None:
             return {"Authorization": f"Bearer {self._google.get()}"}
         key = self._settings.ai_api_key
+        if self._settings.ai_auth == "google_api_key":
+            return {"x-goog-api-key": key}
         return {"Authorization": f"Bearer {key}"} if key else {}
 
     def complete(self, system: str, prompt: str) -> Completion:  # pragma: no cover

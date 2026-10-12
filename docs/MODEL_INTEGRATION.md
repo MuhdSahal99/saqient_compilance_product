@@ -56,7 +56,7 @@ AI_PROVIDER=disabled          # disabled | mock | openai_compatible | jais | fal
 AI_BASE_URL=
 AI_MODEL=
 AI_API_KEY=                   # backend only, never sent to the browser
-AI_AUTH=api_key               # api_key | google (short-lived Google Cloud tokens)
+AI_AUTH=api_key               # api_key | google (short-lived tokens) | google_api_key
 AI_TIMEOUT_SECONDS=30
 AI_MAX_INPUT_CHARS=12000
 AI_MAX_OUTPUT_TOKENS=800
@@ -140,6 +140,11 @@ AI_BASE_URL=https://<REGION>-aiplatform.googleapis.com/v1/projects/<PROJECT>/loc
 AI_ALLOWED_HOSTS=<REGION>-aiplatform.googleapis.com
 AI_SERVING_INTERFACE_VERIFIED=true   # only after a test call proves the route below works
 ```
+
+If you have a Google Cloud API key instead of a service account, set
+`AI_AUTH=google_api_key` and put the key in `AI_API_KEY`; it is sent as the
+`x-goog-api-key` header. Google accepts API keys only for some Vertex AI
+endpoints, so confirm with a test call. Restrict the key to the Vertex AI API.
 
 The adapter posts to `AI_BASE_URL + "/chat/completions"`. Whether a given
 deployment answers on that route depends on the serving container Google uses

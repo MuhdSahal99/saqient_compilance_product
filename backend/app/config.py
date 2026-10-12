@@ -53,7 +53,8 @@ class Settings(BaseSettings):
     ai_api_key: str = Field(default="", repr=False)
     # "api_key": static bearer key (AI_API_KEY). "google": short-lived Google Cloud
     # tokens from the service account in GOOGLE_APPLICATION_CREDENTIALS (Vertex AI).
-    ai_auth: Literal["api_key", "google"] = "api_key"
+    # "google_api_key": a Google Cloud API key (AI_API_KEY) sent as x-goog-api-key.
+    ai_auth: Literal["api_key", "google", "google_api_key"] = "api_key"
     ai_timeout_seconds: int = 30
     ai_max_input_chars: int = 12_000
     ai_max_output_tokens: int = 800

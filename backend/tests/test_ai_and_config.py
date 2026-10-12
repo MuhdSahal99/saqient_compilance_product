@@ -232,3 +232,30 @@ def test_google_auth_failure_is_a_safe_provider_error(monkeypatch: pytest.Monkey
     with pytest.raises(AIProviderError) as err:
         OpenAICompatibleProvider(settings).complete("s", "p")
     assert "secret" not in str(err.value) and "RuntimeError" in str(err.value)
+
+
+def test_google_api_key_uses_its_own_header(monkeypatch: pytest.MonkeyPatch) -> None:
+    import httpx
+
+    base = dict(
+        _env_file=None,
+        ai_enabled=True,
+        ai_provider="openai_compatible",
+        ai_model="falcon",
+        ai_base_url="https://aiplatform.googleapis.com/v1/projects/p/locations/l/endpoints/e",
+        ai_allowed_hosts="aiplatform.googleapis.com",
+        ai_auth="google_api_key",
+    )
+    with pytest.raises(ConfigError):
+        OpenAICompatibleProvider(Settings(**base))  # type: ignore[arg-type]
+    seen: dict[str, object] = {}
+
+    def fake_post(target: str, **kwargs: object) -> httpx.Response:
+        seen["headers"] = kwargs["headers"]
+        body = {"choices": [{"message": {"content": "{}"}}]}
+        return httpx.Response(200, json=body, request=httpx.Request("POST", target))
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+    provider = OpenAICompatibleProvider(Settings(**base, ai_api_key="AIza-test"))  # type: ignore[arg-type]
+    provider.complete("s", "p")
+    assert seen["headers"] == {"x-goog-api-key": "AIza-test"}
