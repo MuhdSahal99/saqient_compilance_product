@@ -9,6 +9,7 @@ from app.config import get_settings
 from app.db import get_sessionmaker
 
 # Register job handlers.
+from app.services import ai_suggestions as _ai_suggestions  # noqa: F401
 from app.services import documents as _documents  # noqa: F401
 from app.services import reviews as _reviews  # noqa: F401
 from app.services.jobs import Outcome, execute_job

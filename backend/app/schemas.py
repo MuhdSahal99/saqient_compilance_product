@@ -7,6 +7,8 @@ from typing import Any, Generic, Literal, TypeVar
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 from app.models import (
+    AIAssessment,
+    AISuggestionStatus,
     ChecklistKind,
     ChecklistState,
     CheckOutcome,
@@ -329,6 +331,9 @@ class FindingOut(BaseModel):
     decided_at: datetime | None
     decision_rationale: str
     remediation_notes: str
+    ai_suggestion_id: uuid.UUID | None = None
+    ai_provider: str | None = None
+    ai_model: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -394,3 +399,45 @@ class AuditEventOut(BaseModel):
     object_id: uuid.UUID | None
     meta: dict[str, Any]
     created_at: datetime
+
+
+# ---------------------------------------------------------------- AI suggestions
+
+
+class AISuggestionRunOut(BaseModel):
+    id: uuid.UUID
+    provider: str
+    model: str
+    is_mock: bool
+    prompt_version: str
+    warnings: list[str]
+    created_at: datetime
+    finished_at: datetime | None
+    job: JobOut
+
+
+class AISuggestionOut(BaseModel):
+    id: uuid.UUID
+    requirement_id: uuid.UUID
+    requirement_code: str
+    requirement_title: str
+    severity: Severity
+    assessment: AIAssessment
+    summary: str
+    evidence: list[dict[str, Any]]
+    rejected_citations: int
+    status: AISuggestionStatus
+    decided_by_name: str | None
+    decided_at: datetime | None
+    decision_note: str
+    finding_id: uuid.UUID | None
+
+
+class AISuggestionsOut(BaseModel):
+    available: bool
+    run: AISuggestionRunOut | None
+    suggestions: list[AISuggestionOut]
+
+
+class AIDecisionIn(BaseModel):
+    note: str = Field(default="", max_length=2000)

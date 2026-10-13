@@ -121,6 +121,22 @@ class CheckOutcome(str, enum.Enum):
 class JobKind(str, enum.Enum):
     EXTRACT = "extract"
     REVIEW_RUN = "review_run"
+    AI_SUGGEST = "ai_suggest"
+
+
+class AIAssessment(str, enum.Enum):
+    """What the model said about one requirement. Never a reviewer decision."""
+
+    ADDRESSED = "addressed"
+    NOT_ADDRESSED = "not_addressed"
+    UNCLEAR = "unclear"
+    INVALID_OUTPUT = "invalid_output"
+
+
+class AISuggestionStatus(str, enum.Enum):
+    PENDING = "pending"
+    ACCEPTED = "accepted"
+    REJECTED = "rejected"
 
 
 class JobStatus(str, enum.Enum):
@@ -509,6 +525,10 @@ class Finding(Base):
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     decision_rationale: Mapped[str] = mapped_column(Text, default="")
     remediation_notes: Mapped[str] = mapped_column(Text, default="")
+    # Set when a reviewer accepted an AI suggestion; the finding is still a human decision.
+    ai_suggestion_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("ai_suggestions.id", ondelete="SET NULL", use_alter=True)
+    )
     created_at: Mapped[datetime] = _created()
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
@@ -518,6 +538,71 @@ class Finding(Base):
     requirement: Mapped[Requirement | None] = relationship(lazy="joined")
     owner: Mapped[User | None] = relationship(foreign_keys=[owner_id], lazy="joined")
     decided_by: Mapped[User | None] = relationship(foreign_keys=[decided_by_id], lazy="joined")
+    ai_suggestion: Mapped[AISuggestion | None] = relationship(foreign_keys=[ai_suggestion_id])
+
+
+class AISuggestionRun(Base):
+    """One request to the AI provider for a review: which model, when, and how it went."""
+
+    __tablename__ = "ai_suggestion_runs"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    review_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("reviews.id", ondelete="CASCADE"), index=True
+    )
+    job_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("jobs.id"))
+    requested_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    provider: Mapped[str] = mapped_column(String(40))
+    model: Mapped[str] = mapped_column(String(200), default="")
+    prompt_version: Mapped[str] = mapped_column(String(40))
+    document_version_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    checklist_version_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    warnings: Mapped[list[str]] = mapped_column(JSONType, default=list)
+    created_at: Mapped[datetime] = _created()
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    job: Mapped[Job] = relationship(lazy="joined")
+
+
+class AISuggestion(Base):
+    """A model's suggestion about one requirement. Only a reviewer can turn it into a finding."""
+
+    __tablename__ = "ai_suggestions"
+    __table_args__ = (UniqueConstraint("run_id", "requirement_id"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    run_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("ai_suggestion_runs.id", ondelete="CASCADE"), index=True
+    )
+    review_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("reviews.id", ondelete="CASCADE"), index=True
+    )
+    requirement_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("requirements.id", ondelete="RESTRICT")
+    )
+    assessment: Mapped[AIAssessment] = mapped_column(_enum(AIAssessment, "ai_assessment"))
+    summary: Mapped[str] = mapped_column(Text, default="")
+    # Only citations that passed validation against stored block text.
+    evidence: Mapped[list[dict[str, Any]]] = mapped_column(JSONType, default=list)
+    rejected_citations: Mapped[int] = mapped_column(Integer, default=0)
+    status: Mapped[AISuggestionStatus] = mapped_column(
+        _enum(AISuggestionStatus, "ai_suggestion_status"), default=AISuggestionStatus.PENDING
+    )
+    decided_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    decision_note: Mapped[str] = mapped_column(Text, default="")
+    finding_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("findings.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = _created()
+
+    run: Mapped[AISuggestionRun] = relationship(lazy="joined")
+    requirement: Mapped[Requirement] = relationship(lazy="joined")
+    decided_by: Mapped[User | None] = relationship(lazy="joined")
 
 
 class Comment(Base):

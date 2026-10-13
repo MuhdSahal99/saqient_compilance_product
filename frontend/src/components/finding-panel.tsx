@@ -13,6 +13,7 @@ import {
   MessageSquare,
   Quote,
   ShieldAlert,
+  Sparkles,
   UserCheck,
   Wrench,
   X,
@@ -28,6 +29,7 @@ import { Avatar } from "@/components/ui/avatar";
 import { FieldError, Input, Label, Select, Textarea } from "@/components/ui/input";
 import { errorMessage, FindingStatusBadge, OutcomeBadge, SeverityBadge, useUnsavedChangesWarning } from "./common";
 import { EvidenceQuote } from "./evidence";
+import { MockNotice } from "./ai-suggestions";
 
 const DECIDABLE = new Set(["proposed", "in_review", "confirmed", "dismissed", "accepted_risk"]);
 const ASSIGNABLE = new Set(["confirmed", "remediation_in_progress", "ready_for_rereview", "resolved", "accepted_risk"]);
@@ -287,6 +289,12 @@ export function FindingPanel({ finding, onLocate }: { finding: Finding; onLocate
             <code className="rounded-md bg-slate-100 px-1.5 py-0.5 font-mono text-[11px] text-slate-600">{finding.requirement_code}</code>
           )}
           {finding.is_manual && <Badge>{t("findings.manual")}</Badge>}
+          {finding.ai_suggestion_id && (
+            <Badge tone="violet">
+              <Sparkles className="size-3" aria-hidden />
+              {t("ai.badge")}
+            </Badge>
+          )}
           {finding.is_overdue && (
             <Badge tone="red" dot>
               {t("findings.overdue")}
@@ -295,6 +303,17 @@ export function FindingPanel({ finding, onLocate }: { finding: Finding; onLocate
         </div>
         <h2 className="mt-3 text-lg font-semibold leading-snug tracking-tight text-navy-950">{finding.title}</h2>
         {finding.description && <p className="mt-1.5 text-sm leading-relaxed text-slate-600">{finding.description}</p>}
+        {finding.ai_suggestion_id && (
+          <div className="mt-3 space-y-2">
+            <p className="flex items-start gap-1.5 rounded-lg bg-violet-50/70 px-3 py-2 text-xs leading-relaxed text-violet-900 ring-1 ring-violet-200/70">
+              <Sparkles className="mt-px size-3.5 shrink-0" aria-hidden />
+              {t("ai.findingOrigin", {
+                model: finding.ai_provider === "mock" ? t("ai.mockModel") : `${finding.ai_provider} · ${finding.ai_model}`,
+              })}
+            </p>
+            {finding.ai_provider === "mock" && <MockNotice />}
+          </div>
+        )}
         {(finding.automated_outcome || finding.source_reference) && (
           <div className="mt-3 space-y-1 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500 ring-1 ring-slate-200/60">
             {finding.automated_outcome && (

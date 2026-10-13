@@ -11,9 +11,12 @@ Features listed here are either absent or deliberately labelled in the UI.
 - **Member management UI is not built.** Invitations, password reset and role
   changes are planned. Settings says so.
 - **No notifications.** Due dates and overdue state are shown in the app only.
-- **AI assistance is disabled.** Provider interfaces and citation validation
-  exist and are tested, but no model is connected. Jais/Falcon are placeholders
-  until their serving interfaces are verified (docs/MODEL_INTEGRATION.md).
+- **AI is off by default.** AI suggestions on a review exist and are tested
+  with the mock provider only. No real model has been connected or evaluated;
+  Jais/Falcon stay placeholders until their serving interface is verified and a
+  GPU is approved (docs/MODEL_INTEGRATION.md). Suggestions use a word-overlap
+  block selection, so very long documents may be partly left out of the AI input
+  (the run shows a warning when that happens).
 
 ## Documents
 - **No OCR.** Scanned/image-only PDFs fail with a clear message.

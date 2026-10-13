@@ -33,6 +33,20 @@ def _evidence_label(e: dict[str, Any]) -> str:
 _env.filters["evidence_label"] = _evidence_label
 _env.filters["human"] = lambda s: (s or "").replace("_", " ")
 
+
+def finding_origin(f: dict[str, Any]) -> str:
+    ai = f.get("ai_suggestion")
+    if ai:
+        label = "mock provider, placeholder text" if ai.get("provider") == "mock" else ""
+        model = f"{ai.get('provider')} · {ai.get('model')}"
+        return f"AI suggestion accepted by a reviewer ({label or model})"
+    if f.get("is_manual"):
+        return "Added manually by a reviewer"
+    return "Deterministic check"
+
+
+_env.filters["origin"] = finding_origin
+
 HTML_TEMPLATE = _env.from_string(
     """<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
@@ -72,6 +86,7 @@ blockquote{margin:.25rem 0;padding:.25rem .75rem;border-inline-start:3px solid #
 <table>
 <tr><th>Severity</th><td>{{ f.severity }}</td><th>Reviewer decision</th><td><span class="badge">{{ f.status|human }}</span></td></tr>
 <tr><th>Requirement</th><td>{{ f.requirement_code or 'Manual finding' }}</td><th>Automated outcome</th><td>{{ (f.automated_outcome or 'n/a')|human }}</td></tr>
+<tr><th>Origin</th><td colspan="3">{{ f|origin }}</td></tr>
 <tr><th>Source reference</th><td colspan="3">{{ f.source_reference or '—' }}</td></tr>
 <tr><th>Rationale</th><td colspan="3">{{ f.decision_rationale or '—' }} <span class="muted">{{ f.decided_by or '' }} {{ f.decided_at or '' }}</span></td></tr>
 <tr><th>Remediation</th><td colspan="3">Owner: {{ f.owner or 'unassigned' }} · Due: {{ f.due_date or '—' }}<br>{{ f.remediation_notes }}</td></tr>
@@ -113,6 +128,7 @@ CSV_COLUMNS = [
     "evidence_refs",
     "evidence_quotes",
     "source_reference",
+    "origin",
 ]
 
 
@@ -140,6 +156,7 @@ def render_csv(content: dict[str, Any]) -> str:
                     "; ".join(_evidence_label(e) for e in f["evidence"]),
                     " | ".join(str(e.get("quote") or "") for e in f["evidence"]),
                     f["source_reference"],
+                    finding_origin(f),
                 ]
             ]
         )
@@ -239,6 +256,7 @@ def render_pdf(content: dict[str, Any]) -> bytes:
                 p(f["source_reference"] or "—"),
             ]
         )
+        rows.append([p("Origin"), p(finding_origin(f)), p(""), p("")])
         ft = Table(rows, colWidths=[22 * mm, 68 * mm, 22 * mm, 58 * mm])
         ft.setStyle(
             TableStyle(

@@ -118,7 +118,9 @@ def finding_out(f: Finding) -> FindingOut:
         review_title=f.review.title,
         review_status=f.review.status,
         requirement_id=f.requirement_id,
-        requirement_code=f.requirement.code if f.requirement else None,
+        requirement_code=f.requirement.code
+        if f.requirement
+        else (f.ai_suggestion.requirement.code if f.ai_suggestion else None),
         source_reference=f.requirement.source_reference if f.requirement else None,
         is_manual=f.is_manual,
         title=f.title,
@@ -135,6 +137,9 @@ def finding_out(f: Finding) -> FindingOut:
         decided_at=f.decided_at,
         decision_rationale=f.decision_rationale,
         remediation_notes=f.remediation_notes,
+        ai_suggestion_id=f.ai_suggestion_id,
+        ai_provider=f.ai_suggestion.run.provider if f.ai_suggestion else None,
+        ai_model=f.ai_suggestion.run.model if f.ai_suggestion else None,
         created_at=f.created_at,
         updated_at=f.updated_at,
     )

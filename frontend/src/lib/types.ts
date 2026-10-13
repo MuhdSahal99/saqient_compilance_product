@@ -233,6 +233,9 @@ export interface Finding {
   decided_at: string | null;
   decision_rationale: string;
   remediation_notes: string;
+  ai_suggestion_id?: string | null;
+  ai_provider?: string | null;
+  ai_model?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -283,4 +286,51 @@ export interface Dashboard {
   job_failures: number;
   coverage: { review_id: string; title: string; reviewed: number; total: number }[];
   coverage_definition: string;
+}
+
+export interface AIStatus {
+  enabled: boolean;
+  provider: string;
+  model: string | null;
+  available_features: string[];
+  is_mock?: boolean;
+  note: string;
+}
+
+export type AIAssessment = "addressed" | "not_addressed" | "unclear" | "invalid_output";
+export type AISuggestionStatus = "pending" | "accepted" | "rejected";
+
+export interface AISuggestion {
+  id: string;
+  requirement_id: string;
+  requirement_code: string;
+  requirement_title: string;
+  severity: Severity;
+  assessment: AIAssessment;
+  summary: string;
+  evidence: Evidence[];
+  rejected_citations: number;
+  status: AISuggestionStatus;
+  decided_by_name: string | null;
+  decided_at: string | null;
+  decision_note: string;
+  finding_id: string | null;
+}
+
+export interface AISuggestionRun {
+  id: string;
+  provider: string;
+  model: string;
+  is_mock: boolean;
+  prompt_version: string;
+  warnings: string[];
+  created_at: string;
+  finished_at: string | null;
+  job: Job;
+}
+
+export interface AISuggestions {
+  available: boolean;
+  run: AISuggestionRun | null;
+  suggestions: AISuggestion[];
 }

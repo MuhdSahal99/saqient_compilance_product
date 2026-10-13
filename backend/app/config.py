@@ -51,11 +51,18 @@ class Settings(BaseSettings):
     ai_base_url: str = ""
     ai_model: str = ""
     ai_api_key: str = Field(default="", repr=False)
+    # "api_key": static bearer key (AI_API_KEY). "google": short-lived Google Cloud
+    # tokens from the service account in GOOGLE_APPLICATION_CREDENTIALS (Vertex AI).
+    # "google_api_key": a Google Cloud API key (AI_API_KEY) sent as x-goog-api-key.
+    ai_auth: Literal["api_key", "google", "google_api_key"] = "api_key"
     ai_timeout_seconds: int = 30
     ai_max_input_chars: int = 12_000
     ai_max_output_tokens: int = 800
     ai_allowed_hosts: str = ""
     ai_serving_interface_verified: bool = False
+    # Plain http to an allowlisted host, for a model server on a private network only
+    # (for example the compose "inference" service). Never for a public endpoint.
+    ai_allow_insecure_http: bool = False
 
     @property
     def cors_origin_list(self) -> list[str]:
