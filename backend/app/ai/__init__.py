@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Any, Protocol
 from urllib.parse import urlparse
 
 from app.config import ConfigError, Settings
@@ -104,7 +104,20 @@ class OpenAICompatibleProvider:
             raise ConfigError("AI_BASE_URL host is not in AI_ALLOWED_HOSTS.")
         if not settings.ai_model:
             raise ConfigError("AI_MODEL is required.")
+        if settings.ai_auth == "google" and settings.ai_api_key:
+            raise ConfigError("Leave AI_API_KEY empty when AI_AUTH=google.")
+        if settings.ai_auth == "google_api_key" and not settings.ai_api_key:
+            raise ConfigError("AI_AUTH=google_api_key needs AI_API_KEY.")
         self._settings = settings
+        self._google = GoogleToken() if settings.ai_auth == "google" else None
+
+    def _headers(self) -> dict[str, str]:
+        if self._google is not None:
+            return {"Authorization": f"Bearer {self._google.get()}"}
+        key = self._settings.ai_api_key
+        if self._settings.ai_auth == "google_api_key":
+            return {"x-goog-api-key": key}
+        return {"Authorization": f"Bearer {key}"} if key else {}
 
     def complete(self, system: str, prompt: str) -> Completion:  # pragma: no cover
         import httpx
@@ -119,8 +132,8 @@ class OpenAICompatibleProvider:
             "max_tokens": s.ai_max_output_tokens,
             "temperature": 0,
         }
-        headers = {"Authorization": f"Bearer {s.ai_api_key}"} if s.ai_api_key else {}
         try:
+            headers = self._headers()
             # follow_redirects=False: never let the endpoint bounce us elsewhere.
             resp = httpx.post(
                 s.ai_base_url.rstrip("/") + "/chat/completions",
@@ -135,6 +148,32 @@ class OpenAICompatibleProvider:
         except Exception as exc:
             raise AIProviderError(f"AI request failed ({type(exc).__name__}).") from exc
         return Completion(text, self.name, data.get("model", s.ai_model), data.get("id"))
+
+
+class GoogleToken:
+    """Short-lived Google Cloud access token for Vertex AI, refreshed when it expires.
+
+    Uses Application Default Credentials: on Google Cloud the attached service
+    account, elsewhere the key file in GOOGLE_APPLICATION_CREDENTIALS. Needs the
+    optional ``vertex`` extra (``uv sync --extra vertex``). Tokens are never logged.
+    """
+
+    SCOPES = ("https://www.googleapis.com/auth/cloud-platform",)
+
+    def __init__(self) -> None:
+        self._credentials: Any = None
+
+    def get(self) -> str:
+        try:
+            import google.auth
+            import google.auth.transport.requests
+        except ImportError as exc:
+            raise AIProviderError("AI_AUTH=google needs the 'vertex' extra installed.") from exc
+        if self._credentials is None:
+            self._credentials, _ = google.auth.default(scopes=list(self.SCOPES))
+        if not self._credentials.valid:
+            self._credentials.refresh(google.auth.transport.requests.Request())
+        return str(self._credentials.token)
 
 
 def get_provider(settings: Settings) -> Provider:

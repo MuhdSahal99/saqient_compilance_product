@@ -27,6 +27,8 @@ dependencies = [
 [project.optional-dependencies]
 s3 = ["boto3>=1.35,<2"]
 gcs = ["google-cloud-storage>=2.18,<4"]
+# Google Cloud sign-in for a Vertex AI model endpoint (AI_AUTH=google).
+vertex = ["google-auth[requests]>=2.30,<3"]
 
 [dependency-groups]
 dev = [
