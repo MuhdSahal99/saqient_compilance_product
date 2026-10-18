@@ -360,3 +360,30 @@ def test_pillar_two_paper_through_the_api(tenant_a: Tenant, db: Session) -> None
     assert bad.status_code == 200
     r = admin.post(f"/api/workpapers/{wp['id']}/compute")
     assert r.status_code == 422 and "country code" in r.json()["detail"]
+
+
+def test_workpaper_exports(tenant_a: Tenant, tenant_b: Tenant, db: Session) -> None:
+    admin = login(tenant_a.users[Role.ORG_ADMIN])
+    viewer = login(tenant_a.users[Role.VIEWER])
+    entity = make_entity(db, tenant_a)
+    rpv = ct_pack(admin)
+    wp = new_paper(admin, entity.id, rpv).json()
+    put_in(admin, wp["id"], "accounting_profit", amount="1000000", label="=Synthetic profit")
+    admin.post(f"/api/workpapers/{wp['id']}/compute")
+    url = f"/api/workpapers/{wp['id']}/snapshots/1/export"
+    assert viewer.get(url, params={"format": "html"}).status_code == 404  # not signed off
+    admin.post(f"/api/workpapers/{wp['id']}/sign-off")
+
+    html = viewer.get(url, params={"format": "html"})
+    assert html.status_code == 200 and "text/html" in html.headers["content-type"]
+    assert "not a tax return" in html.text and "UNVERIFIED (draft) rule" in html.text
+    assert "Unverified rules" in html.text and "ct.tax" in html.text
+    assert "&lt;" not in html.text or "<script" not in html.text
+    csv_out = viewer.get(url, params={"format": "csv"})
+    assert csv_out.status_code == 200 and "'=Synthetic profit" in csv_out.text
+    assert "calc:tax" in csv_out.text
+    pdf = viewer.get(url, params={"format": "pdf"})
+    assert pdf.status_code == 200 and pdf.content.startswith(b"%PDF")
+    assert viewer.get(url, params={"format": "xml"}).status_code == 422
+    other = login(tenant_b.users[Role.ORG_ADMIN])
+    assert other.get(url, params={"format": "html"}).status_code == 404

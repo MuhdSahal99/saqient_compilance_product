@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from typing import Annotated, Any
 
-from fastapi import APIRouter, HTTPException, Path, Query, status
+from fastapi import APIRouter, HTTPException, Path, Query, Response, status
 from sqlalchemy import select
 
 from app.deps import DB, Ctx, Decider, Writer, get_owned_or_404
@@ -21,6 +21,8 @@ from app.schemas import (
     WorkpaperSnapshotOut,
     WorkpaperSummaryOut,
 )
+from app.services import audit
+from app.services import workpaper_reports as wr
 from app.services import workpapers as svc
 
 router = APIRouter(tags=["tax workpapers"])
@@ -264,3 +266,45 @@ def get_snapshot(workpaper_id: uuid.UUID, version: int, db: DB, ctx: Ctx) -> dic
     if snap is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found.")
     return snap.content
+
+
+@router.get(
+    "/workpapers/{workpaper_id}/snapshots/{version}/export",
+    summary="Export a signed-off workpaper",
+    description=(
+        "HTML, PDF or CSV of one sign-off version: inputs with evidence, computed lines with "
+        "steps and the rule versions read, unverified rules flagged."
+    ),
+    response_class=Response,
+)
+def export_snapshot(
+    workpaper_id: uuid.UUID,
+    version: int,
+    db: DB,
+    ctx: Ctx,
+    fmt: str = Query(alias="format", pattern="^(html|pdf|csv)$"),
+) -> Response:
+    content = get_snapshot(workpaper_id, version, db, ctx)
+    audit.record(
+        db,
+        org_id=ctx.org.id,
+        actor_id=ctx.user.id,
+        action="workpaper.exported",
+        object_type="tax_workpaper",
+        object_id=workpaper_id,
+        meta={"format": fmt, "version": version},
+    )
+    db.commit()
+    stem = f"saqient-workpaper-v{version}"
+    headers = {"Cache-Control": "private, no-store"}
+    if fmt == "html":
+        return Response(
+            wr.render_html(content), media_type="text/html; charset=utf-8", headers=headers
+        )
+    if fmt == "csv":
+        headers["Content-Disposition"] = f'attachment; filename="{stem}.csv"'
+        return Response(
+            "﻿" + wr.render_csv(content), media_type="text/csv; charset=utf-8", headers=headers
+        )
+    headers["Content-Disposition"] = f'attachment; filename="{stem}.pdf"'
+    return Response(wr.render_pdf(content), media_type="application/pdf", headers=headers)
