@@ -17,6 +17,7 @@ from app.models import (
     DatasetStatus,
     FindingStatus,
     JobStatus,
+    LineSource,
     MonitorCadence,
     MonitorRunStatus,
     PeriodFrequency,
@@ -33,6 +34,8 @@ from app.models import (
     TaxType,
     VatTreatment,
     VersionStatus,
+    WorkpaperKind,
+    WorkpaperStatus,
 )
 
 T = TypeVar("T")
@@ -1125,3 +1128,137 @@ class TaskPatch(BaseModel):
     clear_owner: bool = False
     due_date: date | None = None
     note: str | None = Field(default=None, max_length=4000)
+
+
+# ---------------------------------------------------------------- tax workpapers (Phase C)
+
+KEY_PATTERN = r"^[a-z][a-z0-9_]{0,79}$"
+PREFIX_PATTERN = r"^[a-z0-9_]+(\.[a-z0-9_]+)*$"
+
+
+class EvidenceRefIn(BaseModel):
+    """A stored source block, or rows of a dataset version, that support an input."""
+
+    model_config = ConfigDict(extra="forbid")
+    kind: Literal["source_block", "dataset_rows"]
+    source_block_id: uuid.UUID | None = None
+    dataset_version_id: uuid.UUID | None = None
+    row_ids: list[int] = Field(default_factory=list, max_length=500)
+
+    @model_validator(mode="after")
+    def _shape(self) -> EvidenceRefIn:
+        if self.kind == "source_block" and self.source_block_id is None:
+            raise ValueError("source_block evidence needs source_block_id")
+        if self.kind == "dataset_rows" and (self.dataset_version_id is None or not self.row_ids):
+            raise ValueError("dataset_rows evidence needs dataset_version_id and row_ids")
+        return self
+
+
+class WorkpaperIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    entity_id: uuid.UUID
+    kind: WorkpaperKind
+    title: str = Field(min_length=1, max_length=300)
+    period_start: date
+    period_end: date
+    rule_pack_version_id: uuid.UUID
+    rules_prefix: str = Field(
+        min_length=1,
+        max_length=80,
+        pattern=PREFIX_PATTERN,
+        description="Rule key prefix, e.g. 'ae.ct'; the formula reads <prefix>.<rule>.",
+    )
+    currency: str | None = Field(
+        default=None, pattern=r"^[A-Z]{3}$", description="Defaults to the entity's currency."
+    )
+
+
+class WorkpaperInputIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    category: str = Field(
+        default="input", max_length=60, description="'input', or an adjustment category."
+    )
+    label: str = Field(min_length=1, max_length=300)
+    amount: Decimal | None = Field(default=None, max_digits=20, decimal_places=4)
+    value: str | None = Field(
+        default=None, max_length=200, description="Non-amount inputs: true/false flags."
+    )
+    note: str = Field(default="", max_length=4000)
+    evidence: list[EvidenceRefIn] = Field(default_factory=list, max_length=20)
+
+    @model_validator(mode="after")
+    def _one(self) -> WorkpaperInputIn:
+        if (self.amount is None) == (self.value is None):
+            raise ValueError("Give either an amount or a value.")
+        return self
+
+
+class TrialBalanceLineMap(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    line_key: str = Field(pattern=KEY_PATTERN)
+    category: str = Field(default="input", max_length=60)
+    label: str = Field(min_length=1, max_length=300)
+    account_codes: list[str] = Field(min_length=1, max_length=500)
+    sign: Literal["debit", "credit"] = Field(
+        description="'credit' takes credit balances as positive (income, profit)."
+    )
+
+
+class TrialBalanceImportIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    dataset_version_id: uuid.UUID
+    lines: list[TrialBalanceLineMap] = Field(min_length=1, max_length=100)
+
+
+class ReasonIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    reason: str = Field(min_length=3, max_length=4000)
+
+
+class WorkpaperLineOut(BaseModel):
+    id: uuid.UUID
+    source: LineSource
+    section: str
+    line_key: str
+    category: str
+    label: str
+    ordinal: int
+    amount: Decimal | None
+    value: str | None
+    formula_id: str | None
+    explanation: list[dict[str, Any]]
+    rule_snapshots: list[dict[str, Any]]
+    evidence: list[dict[str, Any]]
+    note: str
+
+
+class WorkpaperSnapshotOut(BaseModel):
+    version: int
+    signed_off_by_name: str | None
+    signed_off_at: datetime
+    result_hash: str | None
+
+
+class WorkpaperSummaryOut(BaseModel):
+    id: uuid.UUID
+    entity_id: uuid.UUID
+    entity_name: str
+    kind: WorkpaperKind
+    title: str
+    period_start: date
+    period_end: date
+    currency: str
+    status: WorkpaperStatus
+    computed_at: datetime | None
+    is_demo: bool
+    created_at: datetime
+
+
+class WorkpaperOut(WorkpaperSummaryOut):
+    rule_pack_version_id: uuid.UUID
+    rules_prefix: str
+    calc_version: str | None
+    result_hash: str | None
+    warnings: list[str]
+    lines: list[WorkpaperLineOut]
+    snapshots: list[WorkpaperSnapshotOut]

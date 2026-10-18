@@ -140,6 +140,24 @@ class TaxType(str, enum.Enum):
     WHT = "wht"
 
 
+class WorkpaperKind(str, enum.Enum):
+    CORPORATE_TAX = "corporate_tax"
+    SBR_TEST = "sbr_test"
+    QFZP_TEST = "qfzp_test"
+    PILLAR_TWO = "pillar_two"
+    ZAKAT = "zakat"
+
+
+class WorkpaperStatus(str, enum.Enum):
+    DRAFT = "draft"
+    SIGNED_OFF = "signed_off"
+
+
+class LineSource(str, enum.Enum):
+    MANUAL = "manual"
+    COMPUTED = "computed"
+
+
 class TaskStatus(str, enum.Enum):
     OPEN = "open"
     IN_PROGRESS = "in_progress"
@@ -1378,6 +1396,95 @@ class ReportSnapshot(Base):
     org_id: Mapped[uuid.UUID] = _org_fk()
     review_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("reviews.id", ondelete="CASCADE"), index=True
+    )
+    version: Mapped[int] = mapped_column(Integer)
+    content: Mapped[dict[str, Any]] = mapped_column(JSONType)
+    signed_off_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    signed_off_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = _created()
+
+
+class TaxWorkpaper(Base):
+    """A direct-tax workpaper: input lines a preparer enters, lines a formula computes."""
+
+    __tablename__ = "tax_workpapers"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    entity_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("legal_entities.id", ondelete="RESTRICT"), index=True
+    )
+    kind: Mapped[WorkpaperKind] = mapped_column(_enum(WorkpaperKind, "workpaper_kind"))
+    title: Mapped[str] = mapped_column(String(300))
+    period_start: Mapped[date] = mapped_column(Date)
+    period_end: Mapped[date] = mapped_column(Date)
+    currency: Mapped[str] = mapped_column(String(3))
+    rule_pack_version_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("rule_pack_versions.id", ondelete="RESTRICT")
+    )
+    # Rule keys hang off this prefix, e.g. 'ae.ct'.
+    rules_prefix: Mapped[str] = mapped_column(String(80))
+    status: Mapped[WorkpaperStatus] = mapped_column(
+        _enum(WorkpaperStatus, "workpaper_status"), default=WorkpaperStatus.DRAFT
+    )
+    calc_version: Mapped[str | None] = mapped_column(String(40))
+    computed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # SHA-256 of inputs, rule snapshots and outputs of the latest computation.
+    result_hash: Mapped[str | None] = mapped_column(String(64))
+    warnings: Mapped[list[str]] = mapped_column(JSONType, default=list)
+    is_demo: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = _created()
+
+    entity: Mapped[LegalEntity] = relationship(lazy="joined")
+    lines: Mapped[list[WorkpaperLine]] = relationship(
+        back_populates="workpaper", order_by="WorkpaperLine.ordinal", cascade="all, delete-orphan"
+    )
+
+
+class WorkpaperLine(Base):
+    __tablename__ = "workpaper_lines"
+    __table_args__ = (UniqueConstraint("workpaper_id", "line_key"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    workpaper_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tax_workpapers.id", ondelete="CASCADE"), index=True
+    )
+    source: Mapped[LineSource] = mapped_column(_enum(LineSource, "workpaper_line_source"))
+    section: Mapped[str] = mapped_column(String(40))
+    # Input lines: the formula's input name (e.g. 'accounting_profit'), unique per paper.
+    line_key: Mapped[str] = mapped_column(String(80))
+    category: Mapped[str] = mapped_column(String(60), default="")
+    label: Mapped[str] = mapped_column(String(300))
+    ordinal: Mapped[int] = mapped_column(Integer, default=0)
+    amount: Mapped[Decimal | None] = mapped_column(Numeric(20, 4))
+    value: Mapped[str | None] = mapped_column(String(200))  # non-amount inputs (flags, dates)
+    formula_id: Mapped[str | None] = mapped_column(String(80))
+    explanation: Mapped[list[dict[str, Any]]] = mapped_column(JSONType, default=list)
+    rule_snapshots: Mapped[list[dict[str, Any]]] = mapped_column(JSONType, default=list)
+    # References to stored evidence: document source blocks or dataset rows.
+    evidence: Mapped[list[dict[str, Any]]] = mapped_column(JSONType, default=list)
+    note: Mapped[str] = mapped_column(Text, default="")
+    created_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = _created()
+
+    workpaper: Mapped[TaxWorkpaper] = relationship(back_populates="lines")
+
+
+class WorkpaperSnapshot(Base):
+    """Immutable workpaper content frozen at reviewer sign-off (like report snapshots)."""
+
+    __tablename__ = "workpaper_snapshots"
+    __table_args__ = (UniqueConstraint("workpaper_id", "version"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    workpaper_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tax_workpapers.id", ondelete="CASCADE"), index=True
     )
     version: Mapped[int] = mapped_column(Integer)
     content: Mapped[dict[str, Any]] = mapped_column(JSONType)
