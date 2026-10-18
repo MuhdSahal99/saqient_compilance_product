@@ -236,10 +236,19 @@ findings that qualified humans decide on.
 - Add or update an ADR in docs/adr/ for any significant design decision.
 
 ### UI rule
-- For any UI/visual work, use the separately provided UI skills (taste,
-  impeccable). Follow existing component patterns, i18n keys for ALL strings
-  (en + ar), RTL-safe layouts, accessible forms. Do not invent a new design
-  system.
+- For any UI/visual work, read the UI skills in `.claude/skills/`:
+  `design-taste-frontend` (taste v2), `design-taste-frontend-v1` and
+  `high-end-visual-design`. They are written mainly for public web pages.
+  In this app, apply what fits app screens: their anti-slop rules (no emoji,
+  no AI purple/indigo, no gradients or glows, no generic card rows, no stock
+  copy), full loading/empty/error states, labels above inputs, transform and
+  opacity-only motion with a `prefers-reduced-motion` fallback, one accent.
+- Where a skill conflicts with this repo, the repo wins: keep the existing
+  design system in `frontend/src/index.css` (Inter + IBM Plex Sans Arabic,
+  navy/teal palette, vendored shadcn components), Lucide icons, i18n keys for
+  ALL strings (en + ar), RTL-safe layouts and accessible forms. Do not invent
+  a new design system, and never use the skills' fake data or placeholder
+  images (synthetic data must be labelled as such).
 
 ## Definition of done
 
