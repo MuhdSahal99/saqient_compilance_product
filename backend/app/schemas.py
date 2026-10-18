@@ -215,6 +215,8 @@ class SourceBlockOut(ORM):
     paragraph_number: int | None
     section_heading: str | None
     text: str
+    is_ocr: bool = False
+    ocr_confidence: int | None = None
 
 
 # ---------------------------------------------------------------- checklists

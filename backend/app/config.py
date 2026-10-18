@@ -71,6 +71,14 @@ class Settings(BaseSettings):
     password_reset_rate_window_seconds: int = 900
     reminder_days_ahead: int = 3
 
+    # OCR for PDF pages without a text layer. "tesseract" runs the local binary.
+    ocr_provider: Literal["disabled", "tesseract"] = "disabled"
+    ocr_languages: str = "eng+ara"
+    ocr_tesseract_cmd: str = "tesseract"
+    ocr_dpi: int = 200
+    ocr_max_pages: int = 50
+    ocr_page_timeout_seconds: int = 60
+
     max_upload_mb: int = 20
     dataset_max_upload_mb: int = 100
     dataset_max_rows: int = 1_000_000

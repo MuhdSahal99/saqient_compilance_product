@@ -19,7 +19,10 @@ Features listed here are either absent or deliberately labelled in the UI.
   (the run shows a warning when that happens).
 
 ## Documents
-- **No OCR.** Scanned/image-only PDFs fail with a clear message.
+- **OCR is optional and off by default.** With `OCR_PROVIDER=tesseract`, PDF pages
+  with no text layer are read by local Tesseract (English and Arabic) and their
+  blocks are marked as OCR; recognition can be wrong. Images inside pages that do
+  have a text layer are not read. With OCR off, scanned PDFs fail with a clear message.
 - **No malware scanning.** Uploads are validated by extension, MIME type and
   file signature; DOCX macros and oversized archives are rejected. The UI says
   files are not scanned.

@@ -72,9 +72,14 @@ DATA_LIMITATION = (
     "to look at, not a conclusion."
 )
 
+OCR_LIMITATION = (
+    "Some pages had no text layer and were read with OCR. OCR text can contain recognition "
+    "errors, and quotes from those pages were matched against the OCR text, not the page image."
+)
+
 LIMITATIONS = [
     "Deterministic checks match text only; they do not interpret meaning or context.",
-    "Content in images or scanned pages is not reviewed unless OCR is enabled (it is not).",
+    "Content in images or scanned pages was not reviewed; no OCR was used for this document.",
     "Checklist content is only as accurate as its sources; see each requirement's source "
     "and verification status.",
 ]
@@ -627,6 +632,12 @@ def build_snapshot(
 
     ai_findings = [f for f in findings if f.ai_suggestion is not None]
     limitations = list(LIMITATIONS)
+    if dv is not None and db.scalar(
+        select(SourceBlock.id)
+        .where(SourceBlock.document_version_id == dv.id, SourceBlock.is_ocr.is_(True))
+        .limit(1)
+    ):
+        limitations[1] = OCR_LIMITATION
     if review.datasets:
         limitations.insert(1, DATA_LIMITATION)
     if not ai_findings:

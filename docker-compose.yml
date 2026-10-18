@@ -34,6 +34,9 @@ x-backend-env: &backend-env
   AI_ALLOW_INSECURE_HTTP: ${AI_ALLOW_INSECURE_HTTP:-false}
   AI_SERVING_INTERFACE_VERIFIED: ${AI_SERVING_INTERFACE_VERIFIED:-false}
   AI_AUTH: ${AI_AUTH:-api_key}
+  # OCR for scanned PDF pages: build with INSTALL_TESSERACT=true, then OCR_PROVIDER=tesseract.
+  OCR_PROVIDER: ${OCR_PROVIDER:-disabled}
+  OCR_LANGUAGES: ${OCR_LANGUAGES:-eng+ara}
 
 services:
   db:
@@ -65,7 +68,10 @@ services:
 
   migrate:
     image: saqient-backend:local
-    build: ./backend
+    build:
+      context: ./backend
+      args:
+        INSTALL_TESSERACT: ${INSTALL_TESSERACT:-false}
     environment: *backend-env
     command: ["alembic", "upgrade", "head"]
     depends_on:
@@ -74,7 +80,10 @@ services:
 
   api:
     image: saqient-backend:local
-    build: ./backend
+    build:
+      context: ./backend
+      args:
+        INSTALL_TESSERACT: ${INSTALL_TESSERACT:-false}
     environment: *backend-env
     volumes:
       - storage:/data/storage
@@ -89,7 +98,10 @@ services:
 
   worker:
     image: saqient-backend:local
-    build: ./backend
+    build:
+      context: ./backend
+      args:
+        INSTALL_TESSERACT: ${INSTALL_TESSERACT:-false}
     environment: *backend-env
     command: ["celery", "-A", "app.worker.celery_app", "worker", "-l", "info", "-c", "2"]
     volumes:
@@ -101,7 +113,10 @@ services:
   # Celery beat: schedules the daily task due-date reminders (one instance only).
   beat:
     image: saqient-backend:local
-    build: ./backend
+    build:
+      context: ./backend
+      args:
+        INSTALL_TESSERACT: ${INSTALL_TESSERACT:-false}
     environment: *backend-env
     command: ["celery", "-A", "app.worker.celery_app", "beat", "-l", "info", "-s", "/tmp/celerybeat-schedule"]
     depends_on:

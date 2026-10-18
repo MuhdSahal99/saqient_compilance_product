@@ -58,7 +58,7 @@ organizations ─┬─ memberships ── users ── user_sessions
 |---|---|---|
 | `documents` | title, description, document_type, tags[], is_demo, created_by_id, deleted_at | Logical document. Soft-deleted rows keep only metadata. |
 | `document_versions` | document_id, version_number, original_filename (metadata only), file_format, mime_type, size_bytes, sha256, storage_key, status, failure_message, page_count, block_count, extraction_warnings[] | Unique (document_id, version_number). `storage_key` is never returned by the API. Status: pending → processing → ready / failed. Deleting clears `storage_key` and source blocks. |
-| `source_blocks` | document_version_id, ordinal, ref, page_number (PDF only), paragraph_number, section_heading, text | Unique (version, ordinal). The only place extracted text lives; evidence points here. |
+| `source_blocks` | document_version_id, ordinal, ref, page_number (PDF only), paragraph_number, section_heading, text, is_ocr, ocr_confidence | Unique (version, ordinal). The only place extracted text lives; evidence points here. OCR blocks (ref `p3.ocr1`) come from pages with no text layer when `OCR_PROVIDER=tesseract`. |
 
 ## Checklists
 

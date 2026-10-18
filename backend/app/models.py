@@ -609,6 +609,9 @@ class SourceBlock(Base):
     paragraph_number: Mapped[int | None] = mapped_column(Integer)  # DOCX/TXT only
     section_heading: Mapped[str | None] = mapped_column(String(300))
     text: Mapped[str] = mapped_column(Text)
+    # Read from a page image by OCR; recognition can be wrong.
+    is_ocr: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    ocr_confidence: Mapped[int | None] = mapped_column(Integer)  # mean word confidence 0-100
 
 
 # ---------------------------------------------------------------- checklists

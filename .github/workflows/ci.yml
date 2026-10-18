@@ -40,6 +40,9 @@ jobs:
         with:
           version: ${{ env.UV_VERSION }}
           python-version: "3.13"
+      # Tesseract lets the OCR tests run end to end (they skip without it).
+      - run: sudo apt-get update -q && sudo apt-get install -y -q tesseract-ocr
+        working-directory: .
       - run: uv sync --frozen
       - run: uv run ruff check .
       - run: uv run ruff format --check .

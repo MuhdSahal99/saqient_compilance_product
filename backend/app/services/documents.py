@@ -9,7 +9,14 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.extraction import ExtractionError, ValidationError, detect_format, extract
+from app.extraction import (
+    ExtractionError,
+    OcrOptions,
+    ValidationError,
+    detect_format,
+    extract,
+)
+from app.extraction.ocr import get_ocr
 from app.models import (
     Document,
     DocumentVersion,
@@ -138,9 +145,11 @@ def process_version(db: Session, job: Job, checkpoint: Checkpoint) -> None:
     checkpoint(10)
 
     data = get_storage().get(version.storage_key)
+    engine = get_ocr(settings)
+    ocr = OcrOptions(engine, settings.ocr_dpi, settings.ocr_max_pages) if engine else None
     try:
         result = extract(
-            version.file_format, data, settings.max_pdf_pages, settings.max_extracted_chars
+            version.file_format, data, settings.max_pdf_pages, settings.max_extracted_chars, ocr
         )
     except ExtractionError as exc:
         raise PermanentJobError(str(exc)) from exc
@@ -158,6 +167,8 @@ def process_version(db: Session, job: Job, checkpoint: Checkpoint) -> None:
             paragraph_number=b.paragraph_number,
             section_heading=b.section_heading,
             text=b.text,
+            is_ocr=b.is_ocr,
+            ocr_confidence=b.ocr_confidence,
         )
         for i, b in enumerate(result.blocks)
     )

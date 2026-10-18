@@ -11,6 +11,10 @@ import io
 import re
 import zipfile
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.extraction.ocr import OcrEngine
 
 ALLOWED_FORMATS: dict[str, set[str]] = {
     "pdf": {"application/pdf"},
@@ -42,6 +46,8 @@ class ExtractedBlock:
     page_number: int | None = None
     paragraph_number: int | None = None
     section_heading: str | None = None
+    is_ocr: bool = False
+    ocr_confidence: int | None = None
 
 
 @dataclass
@@ -49,6 +55,19 @@ class ExtractionResult:
     blocks: list[ExtractedBlock]
     page_count: int | None = None
     warnings: list[str] = field(default_factory=list)
+    ocr_pages: list[int] = field(default_factory=list)
+
+
+@dataclass
+class OcrOptions:
+    engine: OcrEngine
+    dpi: int = 200
+    max_pages: int = 50
+
+
+def _pages(pages: list[int]) -> str:
+    shown = ", ".join(str(p) for p in pages[:10])
+    return shown + (" and others" if len(pages) > 10 else "")
 
 
 def detect_format(filename: str, declared_mime: str, data: bytes) -> str:
@@ -152,7 +171,9 @@ def _pdf_page_text(page: object) -> str:
     return "".join(out)
 
 
-def extract_pdf(data: bytes, max_pages: int, max_chars: int) -> ExtractionResult:
+def extract_pdf(
+    data: bytes, max_pages: int, max_chars: int, ocr: OcrOptions | None = None
+) -> ExtractionResult:
     from pypdf import PdfReader
     from pypdf.errors import PdfReadError
 
@@ -166,7 +187,7 @@ def extract_pdf(data: bytes, max_pages: int, max_chars: int) -> ExtractionResult
     if page_count > max_pages:
         raise ExtractionError(f"The PDF has {page_count} pages; the limit is {max_pages}.")
 
-    blocks: list[ExtractedBlock] = []
+    by_page: dict[int, list[ExtractedBlock]] = {}
     warnings: list[str] = []
     empty_pages: list[int] = []
     total = 0
@@ -182,21 +203,100 @@ def extract_pdf(data: bytes, max_pages: int, max_chars: int) -> ExtractionResult
         for i, para in enumerate(paragraphs, start=1):
             total += len(para)
             _check_chars(total, max_chars)
-            blocks.append(
+            by_page.setdefault(page_index, []).append(
                 ExtractedBlock(ref=f"p{page_index}.b{i}", text=para, page_number=page_index)
             )
+
+    ocr_pages: list[int] = []
+    if empty_pages and ocr is not None:
+        total, ocr_pages = _ocr_pages(data, empty_pages, ocr, by_page, warnings, total, max_chars)
+        empty_pages = [p for p in empty_pages if p not in by_page]
+
+    blocks = [b for p in sorted(by_page) for b in by_page[p]]
     if not blocks:
         raise ExtractionError(
-            "No extractable text was found. The PDF may be scanned; OCR is not enabled."
+            "No text was found, even with OCR."
+            if ocr is not None
+            else "No extractable text was found. The PDF may be scanned; OCR is not enabled."
         )
     if empty_pages:
-        shown = ", ".join(str(p) for p in empty_pages[:10])
-        warnings.append(
-            f"No text found on page(s) {shown}"
-            + (" and others" if len(empty_pages) > 10 else "")
-            + ". These pages may be images; OCR is not enabled, so they were not reviewed."
+        reason = (
+            "OCR found no text on them either"
+            if ocr is not None
+            else "OCR is not enabled, so they were not reviewed"
         )
-    return ExtractionResult(blocks=blocks, page_count=page_count, warnings=warnings)
+        warnings.append(
+            f"No text found on page(s) {_pages(empty_pages)}. These pages may be images; {reason}."
+        )
+    return ExtractionResult(
+        blocks=blocks, page_count=page_count, warnings=warnings, ocr_pages=ocr_pages
+    )
+
+
+def _ocr_pages(
+    data: bytes,
+    pages: list[int],
+    ocr: OcrOptions,
+    by_page: dict[int, list[ExtractedBlock]],
+    warnings: list[str],
+    total: int,
+    max_chars: int,
+) -> tuple[int, list[int]]:
+    """Read pages without a text layer with OCR, adding blocks marked ``is_ocr``."""
+    import pypdfium2 as pdfium
+
+    from app.extraction.ocr import OcrError, render_page_png
+
+    done: list[int] = []
+    low: list[int] = []
+    failed: list[int] = []
+    todo, skipped = pages[: ocr.max_pages], pages[ocr.max_pages :]
+    pdf = pdfium.PdfDocument(data)
+    try:
+        for page_no in todo:
+            try:
+                paragraphs = ocr.engine.recognize(render_page_png(pdf, page_no - 1, ocr.dpi))
+            except OcrError:
+                failed.append(page_no)
+                continue
+            n = 0
+            confidences = []
+            for para in paragraphs:
+                for chunk in _split_paragraphs(para.text):
+                    n += 1
+                    total += len(chunk)
+                    _check_chars(total, max_chars)
+                    by_page.setdefault(page_no, []).append(
+                        ExtractedBlock(
+                            ref=f"p{page_no}.ocr{n}",
+                            text=chunk,
+                            page_number=page_no,
+                            is_ocr=True,
+                            ocr_confidence=para.confidence,
+                        )
+                    )
+                    confidences.append(para.confidence)
+            if n:
+                done.append(page_no)
+                if sum(confidences) / len(confidences) < 60:
+                    low.append(page_no)
+    finally:
+        pdf.close()
+    if done:
+        warnings.append(
+            f"Page(s) {_pages(done)} had no text layer and were read with OCR "
+            f"({ocr.engine.name}, {ocr.engine.languages}). OCR text can contain errors; "
+            "check quotes against the original page."
+        )
+    if low:
+        warnings.append(f"OCR confidence was low on page(s) {_pages(low)}.")
+    if failed:
+        warnings.append(f"OCR could not read page(s) {_pages(failed)}.")
+    if skipped:
+        warnings.append(
+            f"OCR stopped after {ocr.max_pages} page(s); page(s) {_pages(skipped)} were not read."
+        )
+    return total, done
 
 
 def extract_docx(data: bytes, max_chars: int) -> ExtractionResult:
@@ -274,9 +374,15 @@ def extract_txt(data: bytes, max_chars: int) -> ExtractionResult:
     return ExtractionResult(blocks=blocks)
 
 
-def extract(file_format: str, data: bytes, max_pages: int, max_chars: int) -> ExtractionResult:
+def extract(
+    file_format: str,
+    data: bytes,
+    max_pages: int,
+    max_chars: int,
+    ocr: OcrOptions | None = None,
+) -> ExtractionResult:
     if file_format == "pdf":
-        return extract_pdf(data, max_pages, max_chars)
+        return extract_pdf(data, max_pages, max_chars, ocr)
     if file_format == "docx":
         return extract_docx(data, max_chars)
     if file_format == "txt":
