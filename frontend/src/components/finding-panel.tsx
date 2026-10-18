@@ -28,7 +28,8 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar } from "@/components/ui/avatar";
 import { FieldError, Input, Label, Select, Textarea } from "@/components/ui/input";
 import { errorMessage, FindingStatusBadge, OutcomeBadge, SeverityBadge, useUnsavedChangesWarning } from "./common";
-import { EvidenceQuote } from "./evidence";
+import { EvidenceItem } from "./evidence";
+import { evidenceKey } from "@/lib/evidence";
 import { MockNotice } from "./ai-suggestions";
 
 const DECIDABLE = new Set(["proposed", "in_review", "confirmed", "dismissed", "accepted_risk"]);
@@ -344,7 +345,7 @@ export function FindingPanel({ finding, onLocate }: { finding: Finding; onLocate
         {finding.evidence.length === 0 ? (
           <p className="rounded-lg border border-dashed border-slate-300 px-3 py-2.5 text-xs leading-relaxed text-slate-600">{t("findings.noEvidence")}</p>
         ) : (
-          finding.evidence.map((e, i) => <EvidenceQuote key={`${e.block_id}-${i}`} evidence={e} onLocate={onLocate} />)
+          finding.evidence.map((e, i) => <EvidenceItem key={evidenceKey(e, i)} evidence={e} onLocate={onLocate} />)
         )}
       </section>
 

@@ -4,7 +4,7 @@ import uuid
 from datetime import date, datetime
 from typing import Any, Generic, Literal, TypeVar
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 
 from app.models import (
     AIAssessment,
@@ -12,10 +12,14 @@ from app.models import (
     ChecklistKind,
     ChecklistState,
     CheckOutcome,
+    DatasetKind,
+    DatasetStatus,
     FindingStatus,
     JobStatus,
     ReviewStatus,
     Role,
+    RuleValueType,
+    RuleVerification,
     Severity,
     SourceVerification,
     VersionStatus,
@@ -46,6 +50,54 @@ class LoginIn(BaseModel):
 class ChangePasswordIn(BaseModel):
     current_password: str = Field(max_length=256)
     new_password: str = Field(min_length=12, max_length=256)
+
+
+class PasswordResetRequestIn(BaseModel):
+    email: EmailStr
+
+
+class PasswordResetConfirmIn(BaseModel):
+    token: str = Field(min_length=20, max_length=200)
+    new_password: str = Field(min_length=12, max_length=256)
+
+
+class InvitationIn(BaseModel):
+    email: EmailStr
+    role: Role
+
+
+class InvitationOut(BaseModel):
+    id: uuid.UUID
+    email: str
+    role: Role
+    invited_by_name: str | None
+    created_at: datetime
+    expires_at: datetime
+    is_expired: bool
+    last_sent_at: datetime | None
+    last_delivery: str | None = None  # sent | failed | disabled
+
+
+class InvitationLookupIn(BaseModel):
+    token: str = Field(min_length=20, max_length=200)
+
+
+class InvitationLookupOut(BaseModel):
+    organization_name: str
+    email: str
+    role: Role
+    has_account: bool
+    expires_at: datetime
+
+
+class InvitationAcceptIn(BaseModel):
+    token: str = Field(min_length=20, max_length=200)
+    password: str = Field(min_length=1, max_length=256)
+    full_name: str | None = Field(default=None, max_length=200)
+
+
+class MemberRoleIn(BaseModel):
+    role: Role
 
 
 class SwitchOrgIn(BaseModel):
@@ -80,6 +132,8 @@ class MeOut(BaseModel):
     csrf_token: str
     demo_mode: bool
     ai_enabled: bool
+    malware_scan_enabled: bool = False
+    ocr_enabled: bool = False
 
 
 class MemberOut(BaseModel):
@@ -87,6 +141,8 @@ class MemberOut(BaseModel):
     full_name: str
     email: str
     role: Role
+    membership_id: uuid.UUID | None = None
+    joined_at: datetime | None = None
 
 
 # ---------------------------------------------------------------- jobs
@@ -161,6 +217,8 @@ class SourceBlockOut(ORM):
     paragraph_number: int | None
     section_heading: str | None
     text: str
+    is_ocr: bool = False
+    ocr_confidence: int | None = None
 
 
 # ---------------------------------------------------------------- checklists
@@ -253,8 +311,28 @@ class RequirementsReplaceIn(BaseModel):
 
 class ReviewCreateIn(BaseModel):
     title: str = Field(min_length=1, max_length=300)
-    document_version_id: uuid.UUID
     checklist_version_id: uuid.UUID
+    document_version_id: uuid.UUID | None = None
+    dataset_version_ids: list[uuid.UUID] = Field(default_factory=list, max_length=5)
+    rule_pack_version_id: uuid.UUID | None = None
+    as_of_date: date | None = None
+
+    @model_validator(mode="after")
+    def _has_input(self) -> ReviewCreateIn:
+        if self.document_version_id is None and not self.dataset_version_ids:
+            raise ValueError("choose a document, at least one dataset, or both")
+        if len(set(self.dataset_version_ids)) != len(self.dataset_version_ids):
+            raise ValueError("dataset versions must be distinct")
+        return self
+
+
+class ReviewDatasetOut(BaseModel):
+    kind: DatasetKind
+    dataset_id: uuid.UUID
+    dataset_name: str
+    dataset_version_id: uuid.UUID
+    version_number: int
+    row_count: int | None
 
 
 class ReviewRunOut(ORM):
@@ -262,6 +340,7 @@ class ReviewRunOut(ORM):
     engine_version: str
     engine_mode: str
     warnings: list[str]
+    inputs_snapshot: dict[str, Any] = {}
     created_at: datetime
     started_at: datetime | None
     finished_at: datetime | None
@@ -276,10 +355,15 @@ class ReviewOut(BaseModel):
     created_at: datetime
     signed_off_at: datetime | None
     signed_off_by_name: str | None
-    document_id: uuid.UUID
-    document_title: str
-    document_version_id: uuid.UUID
-    document_version_number: int
+    document_id: uuid.UUID | None
+    document_title: str | None
+    document_version_id: uuid.UUID | None
+    document_version_number: int | None
+    datasets: list[ReviewDatasetOut] = []
+    rule_pack_version_id: uuid.UUID | None = None
+    rule_pack_name: str | None = None
+    rule_pack_version_number: int | None = None
+    as_of_date: date | None = None
     checklist_id: uuid.UUID
     checklist_name: str
     checklist_version_id: uuid.UUID
@@ -299,6 +383,8 @@ class CheckResultOut(ORM):
     needs_attention: bool
     message: str
     evidence: list[dict[str, Any]]
+    meta: dict[str, Any] = {}
+    result_hash: str | None = None
 
 
 class ReopenIn(BaseModel):
@@ -399,6 +485,20 @@ class AuditEventOut(BaseModel):
     object_id: uuid.UUID | None
     meta: dict[str, Any]
     created_at: datetime
+    seq: int
+    hash: str
+
+
+class AuditVerificationOut(BaseModel):
+    ok: bool = Field(description="True when every event in the chain matches its hash.")
+    checked: int = Field(description="Events checked, oldest first, up to the first break.")
+    head_seq: int | None = Field(description="Position of the last event checked.")
+    head_hash: str | None = Field(
+        description="Hash of the last event checked. Keep it outside the system to detect "
+        "later removal of the newest events."
+    )
+    first_broken_seq: int | None = None
+    reason: str | None = None
 
 
 # ---------------------------------------------------------------- AI suggestions
@@ -441,3 +541,243 @@ class AISuggestionsOut(BaseModel):
 
 class AIDecisionIn(BaseModel):
     note: str = Field(default="", max_length=2000)
+
+
+# ---------------------------------------------------------------- legal entities
+
+_COUNTRY = r"^[A-Z]{2}$"
+_CURRENCY = r"^[A-Z]{3}$"
+_TRN = r"^[A-Za-z0-9]{5,20}$"
+
+
+class TaxGroupIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=1, max_length=200)
+    country: str = Field(pattern=_COUNTRY, description="ISO 3166-1 alpha-2 code.")
+    trn: str | None = Field(default=None, pattern=_TRN, description="Group tax number.")
+
+
+class TaxGroupPatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    trn: str | None = Field(default=None, pattern=_TRN)
+
+
+class TaxGroupOut(BaseModel):
+    id: uuid.UUID
+    name: str
+    country: str
+    trn_masked: str | None = Field(description="Only the last four characters are shown.")
+    entity_count: int = 0
+    created_at: datetime
+
+
+class LegalEntityIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=1, max_length=200)
+    country: str = Field(pattern=_COUNTRY, description="ISO 3166-1 alpha-2 code.")
+    trn: str | None = Field(
+        default=None, pattern=_TRN, description="TRN / VAT number. Stored encrypted."
+    )
+    fiscal_year_end_month: int = Field(ge=1, le=12)
+    fiscal_year_end_day: int = Field(ge=1, le=31)
+    functional_currency: str = Field(pattern=_CURRENCY, description="ISO 4217 code.")
+    timezone: str = Field(default="Asia/Dubai", max_length=64, description="IANA time zone.")
+    tax_group_id: uuid.UUID | None = None
+    is_free_zone: bool = False
+
+
+class LegalEntityPatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    trn: str | None = Field(default=None, pattern=_TRN)
+    clear_trn: bool = False
+    fiscal_year_end_month: int | None = Field(default=None, ge=1, le=12)
+    fiscal_year_end_day: int | None = Field(default=None, ge=1, le=31)
+    functional_currency: str | None = Field(default=None, pattern=_CURRENCY)
+    timezone: str | None = Field(default=None, max_length=64)
+    tax_group_id: uuid.UUID | None = None
+    clear_tax_group: bool = False
+    is_free_zone: bool | None = None
+    is_active: bool | None = None
+
+
+class LegalEntityOut(BaseModel):
+    id: uuid.UUID
+    name: str
+    country: str
+    trn_masked: str | None = Field(description="Only the last four characters are shown.")
+    fiscal_year_end_month: int
+    fiscal_year_end_day: int
+    functional_currency: str
+    timezone: str
+    tax_group_id: uuid.UUID | None
+    tax_group_name: str | None
+    is_free_zone: bool
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+# ---------------------------------------------------------------- rule packs
+
+_RULE_KEY = r"^[a-z0-9]+(?:[._][a-z0-9]+)*$"
+
+
+class RulePackCreateIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=1, max_length=200)
+    jurisdiction: str = Field(
+        pattern=r"^[A-Z]{2}(-[A-Z0-9]{1,10})?$|^SYNTHETIC$",
+        description="ISO 3166-1 alpha-2 (optionally with a subdivision), or SYNTHETIC.",
+    )
+    description: str = Field(default="", max_length=4000)
+
+
+class RuleIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    rule_key: str = Field(min_length=1, max_length=120, pattern=_RULE_KEY)
+    title: str = Field(min_length=1, max_length=300)
+    value_type: RuleValueType
+    value: str = Field(min_length=1, max_length=200, description="Parsed by value_type.")
+    unit: str = Field(default="", max_length=40)
+    effective_from: date
+    effective_to: date | None = None
+    source_url: str | None = Field(
+        default=None, max_length=500, pattern=r"^https://", description="Official source URL."
+    )
+    source_note: str = Field(default="", max_length=4000)
+    todo: str = Field(default="", max_length=4000, description="Open question; keeps it draft.")
+
+
+class RulesReplaceIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    rules: list[RuleIn] = Field(max_length=500)
+
+
+class RuleOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    rule_key: str
+    title: str
+    value_type: RuleValueType
+    value: str
+    unit: str
+    effective_from: date
+    effective_to: date | None
+    source_url: str | None
+    source_note: str
+    todo: str
+    verification_status: RuleVerification
+    verified_by_name: str | None = None
+    verified_at: datetime | None
+
+
+class RulePackVersionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    rule_pack_id: uuid.UUID
+    version_number: int
+    state: ChecklistState
+    published_at: datetime | None
+    created_at: datetime
+    rule_count: int = 0
+    unverified_count: int = 0
+
+
+class RulePackVersionDetailOut(RulePackVersionOut):
+    pack_name: str
+    jurisdiction: str
+    is_synthetic: bool
+    rules: list[RuleOut]
+
+
+class RulePackOut(BaseModel):
+    id: uuid.UUID
+    name: str
+    jurisdiction: str
+    description: str
+    is_synthetic: bool
+    created_at: datetime
+    versions: list[RulePackVersionOut]
+
+
+# ---------------------------------------------------------------- datasets
+
+
+class DatasetVersionOut(ORM):
+    id: uuid.UUID
+    version_number: int
+    original_filename: str
+    file_format: str
+    size_bytes: int
+    raw_sha256: str
+    status: DatasetStatus
+    failure_message: str | None
+    source_columns: list[str]
+    source_row_count: int | None
+    column_mapping: dict[str, str] = Field(
+        description="Proposed from header names until confirmed (mapping_confirmed_at set)."
+    )
+    parse_options: dict[str, str]
+    mapping_confirmed_at: datetime | None
+    parquet_sha256: str | None
+    row_count: int | None
+    derived_fields: list[str]
+    totals: dict[str, str] = Field(description="Column sums as exact decimal strings.")
+    errors: list[dict[str, Any]] = Field(description="First rejected values, by row id.")
+    error_count: int
+    created_at: datetime
+    processed_at: datetime | None
+
+
+class DatasetVersionDetailOut(DatasetVersionOut):
+    dataset_id: uuid.UUID
+    kind: DatasetKind
+    preview: list[dict[str, Any]] = Field(description="First rows of the raw file, as text.")
+    latest_job: JobOut | None = None
+
+
+class DatasetOut(BaseModel):
+    id: uuid.UUID
+    entity_id: uuid.UUID
+    entity_name: str
+    kind: DatasetKind
+    name: str
+    period_start: date | None
+    period_end: date | None
+    is_demo: bool
+    created_at: datetime
+    latest_version: DatasetVersionOut | None
+
+
+class DatasetDetailOut(DatasetOut):
+    versions: list[DatasetVersionOut]
+
+
+class MappingIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    mapping: dict[str, str] = Field(description="Canonical field -> source column header.")
+    date_format: Literal["%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y", "%d-%m-%Y", "%d.%m.%Y", "%Y/%m/%d"] = (
+        "%Y-%m-%d"
+    )
+    decimal_separator: Literal[".", ","] = "."
+
+
+class CanonicalFieldOut(BaseModel):
+    name: str
+    type: str
+    required: bool
+
+
+class DatasetKindOut(BaseModel):
+    kind: DatasetKind
+    fields: list[CanonicalFieldOut]
+    require_any: list[list[str]]
+
+
+class DatasetRowsOut(BaseModel):
+    version_id: uuid.UUID
+    columns: list[str]
+    rows: list[dict[str, Any]] = Field(description="Amounts and dates as strings.")
+    total: int

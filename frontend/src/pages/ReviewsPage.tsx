@@ -2,15 +2,15 @@ import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { ClipboardCheck, ClipboardList, ClipboardPlus, FileText, Info, Loader2, Search } from "lucide-react";
+import { ClipboardCheck, ClipboardList, ClipboardPlus, FileText, Info, Loader2, Search, Table2, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 import { api, qs } from "@/lib/api";
-import type { Checklist, DocumentSummary, Page, Review, ReviewStatus } from "@/lib/types";
+import type { Checklist, Dataset, DocumentSummary, Page, Review, ReviewStatus, RulePack } from "@/lib/types";
 import { useAuth } from "@/lib/auth";
-import { formatDate } from "@/lib/utils";
+import { cn, formatDate } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from "@/components/ui/dialog";
@@ -29,11 +29,16 @@ import {
   useDebounced,
 } from "@/components/common";
 
-const schema = z.object({
-  title: z.string().trim().min(1).max(300),
-  document_version_id: z.string().min(1),
-  checklist_version_id: z.string().min(1),
-});
+const schema = z
+  .object({
+    title: z.string().trim().min(1).max(300),
+    document_version_id: z.string(),
+    checklist_version_id: z.string().min(1),
+    dataset_version_ids: z.array(z.string()).max(5),
+    rule_pack_version_id: z.string(),
+    as_of_date: z.string(),
+  })
+  .refine((v) => v.document_version_id || v.dataset_version_ids.length > 0, { path: ["document_version_id"], message: "input" });
 type Values = z.infer<typeof schema>;
 
 function NewReviewDialog({ open, onOpenChange, initialVersionId }: { open: boolean; onOpenChange: (o: boolean) => void; initialVersionId?: string }) {
@@ -46,10 +51,21 @@ function NewReviewDialog({ open, onOpenChange, initialVersionId }: { open: boole
     enabled: open,
   });
   const lists = useQuery({ queryKey: ["checklists"], queryFn: () => api<Checklist[]>("/checklists"), enabled: open });
+  const datasets = useQuery({ queryKey: ["datasets", { kind: "" }], queryFn: () => api<Dataset[]>("/datasets"), enabled: open });
+  const packs = useQuery({ queryKey: ["rule-packs"], queryFn: () => api<RulePack[]>("/rule-packs"), enabled: open });
+  const readyDatasets = (datasets.data ?? []).filter((d) => d.latest_version?.status === "ready");
+  const publishedPacks = (packs.data ?? []).flatMap((p) => p.versions.filter((v) => v.state === "published").map((v) => ({ p, v })));
   const published = (lists.data ?? []).flatMap((c) => c.versions.filter((v) => v.state === "published").map((v) => ({ c, v })));
   const form = useForm<Values>({
     resolver: zodResolver(schema),
-    defaultValues: { title: "", document_version_id: initialVersionId ?? "", checklist_version_id: "" },
+    defaultValues: {
+      title: "",
+      document_version_id: initialVersionId ?? "",
+      checklist_version_id: "",
+      dataset_version_ids: [],
+      rule_pack_version_id: "",
+      as_of_date: "",
+    },
   });
   useEffect(() => {
     if (initialVersionId) form.setValue("document_version_id", initialVersionId);
@@ -59,8 +75,22 @@ function NewReviewDialog({ open, onOpenChange, initialVersionId }: { open: boole
     if (first && !form.getValues("checklist_version_id")) form.setValue("checklist_version_id", first.v.id);
   }, [published, form]);
 
+  const chosen = useWatch({ control: form.control, name: "dataset_version_ids" });
+  const packId = useWatch({ control: form.control, name: "rule_pack_version_id" });
+  const selectedPack = publishedPacks.find((x) => x.v.id === packId);
+
   const create = useMutation({
-    mutationFn: (v: Values) => api<Review>("/reviews", { json: v }),
+    mutationFn: (v: Values) =>
+      api<Review>("/reviews", {
+        json: {
+          title: v.title,
+          checklist_version_id: v.checklist_version_id,
+          document_version_id: v.document_version_id || null,
+          dataset_version_ids: v.dataset_version_ids,
+          rule_pack_version_id: v.rule_pack_version_id || null,
+          as_of_date: v.as_of_date || null,
+        },
+      }),
     onSuccess: (r) => {
       void qc.invalidateQueries({ queryKey: ["reviews"] });
       toast.success(t("reviews.created"));
@@ -81,9 +111,19 @@ function NewReviewDialog({ open, onOpenChange, initialVersionId }: { open: boole
             <DialogDescription>{t("reviews.newHint")}</DialogDescription>
           </div>
         </div>
-        {(docs.isLoading || lists.isLoading) && <LoadingState rows={3} />}
-        {(docs.isError || lists.isError) && <ErrorState error={docs.error ?? lists.error} onRetry={() => void (docs.isError ? docs.refetch() : lists.refetch())} />}
-        {docs.data && lists.data && (
+        {(docs.isLoading || lists.isLoading || datasets.isLoading || packs.isLoading) && <LoadingState rows={3} />}
+        {(docs.isError || lists.isError || datasets.isError || packs.isError) && (
+          <ErrorState
+            error={docs.error ?? lists.error ?? datasets.error ?? packs.error}
+            onRetry={() => {
+              void docs.refetch();
+              void lists.refetch();
+              void datasets.refetch();
+              void packs.refetch();
+            }}
+          />
+        )}
+        {docs.data && lists.data && datasets.data && packs.data && (
           <form className="mt-5 space-y-4" onSubmit={form.handleSubmit((v) => create.mutate(v))} noValidate>
             <div className="space-y-1.5">
               <Label htmlFor="review-title">{t("reviews.titleField")}</Label>
@@ -93,7 +133,7 @@ function NewReviewDialog({ open, onOpenChange, initialVersionId }: { open: boole
             <div className="space-y-1.5">
               <Label htmlFor="review-doc">{t("reviews.document")}</Label>
               <Select id="review-doc" aria-invalid={!!form.formState.errors.document_version_id} {...form.register("document_version_id")}>
-                <option value="">{t("reviews.chooseDocument")}</option>
+                <option value="">{t("reviews.noDocument")}</option>
                 {docs.data.items.map((d) =>
                   d.latest_version ? (
                     <option key={d.id} value={d.latest_version.id}>
@@ -102,14 +142,80 @@ function NewReviewDialog({ open, onOpenChange, initialVersionId }: { open: boole
                   ) : null,
                 )}
               </Select>
-              <FieldError message={form.formState.errors.document_version_id ? t("reviews.documentRequired") : undefined} />
-              {docs.data.items.length === 0 && (
-                <p className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-                  <Info className="size-3.5 shrink-0" aria-hidden />
-                  {t("reviews.noReadyDocuments")}
-                </p>
-              )}
             </div>
+            <fieldset className="space-y-1.5">
+              <legend className="text-sm font-medium text-slate-700">{t("reviews.datasets")}</legend>
+              {readyDatasets.length === 0 ? (
+                <p className="text-xs text-slate-500">{t("reviews.noReadyDatasets")}</p>
+              ) : (
+                <ul className="max-h-40 space-y-1 overflow-y-auto rounded-lg border border-slate-200 p-2">
+                  {readyDatasets.map((d) => {
+                    const id = d.latest_version!.id;
+                    const checked = chosen.includes(id);
+                    const kindTaken = !checked && readyDatasets.some((o) => o.kind === d.kind && chosen.includes(o.latest_version!.id));
+                    return (
+                      <li key={d.id}>
+                        <label className={cn("flex items-center gap-2 rounded-md px-2 py-1 text-sm", kindTaken ? "text-slate-400" : "text-slate-700 hover:bg-slate-50")}>
+                          <input
+                            type="checkbox"
+                            className="size-4 rounded border-slate-300 accent-teal-600"
+                            checked={checked}
+                            disabled={kindTaken || (!checked && chosen.length >= 5)}
+                            onChange={(e) =>
+                              form.setValue("dataset_version_ids", e.target.checked ? [...chosen, id] : chosen.filter((x) => x !== id), {
+                                shouldValidate: form.formState.isSubmitted,
+                              })
+                            }
+                          />
+                          <span className="min-w-0 flex-1 truncate">
+                            {d.name} <span className="text-xs tabular-nums text-slate-400">v{d.latest_version!.version_number}</span>
+                          </span>
+                          <span className="shrink-0 text-xs text-slate-500">{t(`datasetKind.${d.kind}`)}</span>
+                        </label>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+              <p className="text-xs text-slate-500">{t("reviews.oneDatasetPerKind")}</p>
+            </fieldset>
+            <FieldError message={form.formState.errors.document_version_id ? t("reviews.inputRequired") : undefined} />
+            {docs.data.items.length === 0 && readyDatasets.length === 0 && (
+              <p className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                <Info className="size-3.5 shrink-0" aria-hidden />
+                {t("reviews.noReadyInputs")}
+              </p>
+            )}
+            {chosen.length > 0 && (
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="review-pack">{t("reviews.rulePack")}</Label>
+                  <Select id="review-pack" {...form.register("rule_pack_version_id")}>
+                    <option value="">{t("reviews.noRulePack")}</option>
+                    {publishedPacks.map(({ p, v }) => (
+                      <option key={v.id} value={v.id}>
+                        {p.name} · v{v.version_number}
+                        {p.is_synthetic ? ` · ${t("common.synthetic")}` : ""}
+                        {v.unverified_count > 0 ? ` · ${t("rulePacks.unverifiedCount", { count: v.unverified_count })}` : ""}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="review-asof">{t("reviews.asOfDate")}</Label>
+                  <Input id="review-asof" type="date" aria-describedby="review-asof-hint" {...form.register("as_of_date")} />
+                </div>
+                <p id="review-asof-hint" className="text-xs text-slate-500 sm:col-span-2">
+                  {t("reviews.asOfHint")}
+                </p>
+                {selectedPack && selectedPack.v.unverified_count > 0 && (
+                  <p className="flex items-start gap-2 rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-xs text-orange-900 sm:col-span-2">
+                    <TriangleAlert className="mt-px size-3.5 shrink-0" aria-hidden />
+                    {t("reviews.unverifiedPackWarning")}
+                  </p>
+                )}
+              </div>
+            )}
             <div className="space-y-1.5">
               <Label htmlFor="review-checklist">{t("reviews.checklist")}</Label>
               <Select id="review-checklist" aria-invalid={!!form.formState.errors.checklist_version_id} {...form.register("checklist_version_id")}>
@@ -258,11 +364,20 @@ export function ReviewsPage() {
                         </div>
                       </TD>
                       <TD className="text-[13px]">
-                        <div className="flex items-center gap-1.5 text-slate-700">
-                          <FileText className="size-3.5 shrink-0 text-slate-400" aria-hidden />
-                          <span className="truncate">{r.document_title}</span>
-                          <span className="shrink-0 text-xs tabular-nums text-slate-400">v{r.document_version_number}</span>
-                        </div>
+                        {r.document_title && (
+                          <div className="flex items-center gap-1.5 text-slate-700">
+                            <FileText className="size-3.5 shrink-0 text-slate-400" aria-hidden />
+                            <span className="truncate">{r.document_title}</span>
+                            <span className="shrink-0 text-xs tabular-nums text-slate-400">v{r.document_version_number}</span>
+                          </div>
+                        )}
+                        {r.datasets.map((d) => (
+                          <div key={d.dataset_version_id} className="flex items-center gap-1.5 text-slate-700">
+                            <Table2 className="size-3.5 shrink-0 text-slate-400" aria-hidden />
+                            <span className="truncate">{d.dataset_name}</span>
+                            <span className="shrink-0 text-xs tabular-nums text-slate-400">v{d.version_number}</span>
+                          </div>
+                        ))}
                         <div className="mt-0.5 flex items-center gap-1.5 text-slate-500">
                           <ClipboardList className="size-3.5 shrink-0 text-slate-400" aria-hidden />
                           <span className="truncate">{r.checklist_name}</span>

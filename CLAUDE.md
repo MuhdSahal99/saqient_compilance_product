@@ -140,20 +140,9 @@ pnpm e2e            # needs backend + worker running with demo seed
 - Development email (tokens) goes to the console mail sink only when
   `APP_ENV=development`; production must use a real mailer and never print tokens.
 
-## Definition of done (per change)
+## Finance compliance expansion (Phase A onward)
 
-1. Code + migration + tests for the behaviour, including permission and
-   cross-tenant cases for new endpoints.
-2. `ruff`, `mypy`, `pytest`, `pnpm lint`, `pnpm typecheck`, `pnpm test`,
-   `pnpm build` run; results reported honestly. Anything not executed is
-   recorded as **not executed** with the reason.
-3. No secrets, real customer data or real personal data committed.
-4. Docs touched by the change are updated (keep them short and accurate).
-5. `docs/STATUS.md` updated after each milestone: completed work, tests actually
-
-# Saqient: Project Instructions
-
-## Mission
+### Mission
 Extend Saqient from a document compliance review workspace into the leading GCC
 finance compliance, tax and audit assurance layer. Saqient CHECKS and EVIDENCES
 finance work done in the client's own systems (ERP, accounting, invoicing). It does
@@ -161,7 +150,7 @@ NOT become an ERP, does NOT file returns with FTA/ZATCA, and does NOT act as an
 e-invoicing ASP. It never certifies compliance; it produces evidence-linked
 findings that qualified humans decide on.
 
-## Existing system (do not break)
+### Existing system (do not break)
 - Backend: FastAPI, Pydantic v2, SQLAlchemy 2, Alembic, PostgreSQL 16, Celery + Redis.
 - Frontend: React 19, TypeScript strict, Vite, Tailwind 4, TanStack Query,
   React Hook Form + Zod, i18next (English + Arabic, RTL).
@@ -177,7 +166,7 @@ findings that qualified humans decide on.
 - Source of truth docs: docs/PRODUCT_SPEC.md, docs/ARCHITECTURE.md,
   docs/DATA_MODEL.md, docs/STATUS.md, docs/KNOWN_LIMITATIONS.md, docs/adr/.
 
-## Working rules (token efficiency)
+### Working rules (token efficiency)
 1. Before coding, read ONLY: this file, docs/STATUS.md, and the files directly
    relevant to the current task. Do not read the whole repo. Use search
    (rg / grep / glob) to locate code instead of opening many files.
@@ -196,7 +185,7 @@ findings that qualified humans decide on.
    across many files.
 10. Do not add dependencies without stating why and checking licence + maintenance.
 
-## Security and safety rules (non-negotiable)
+### Security and safety rules (non-negotiable)
 - Never commit secrets. Config via environment variables only; update
   .env.example with placeholders. Production guard must still refuse demo
   mode and default secrets.
@@ -223,7 +212,7 @@ findings that qualified humans decide on.
   quotes validated against stored evidence, model + version recorded,
   never send data to an external model unless the org has explicitly enabled it.
 
-## Domain accuracy rules (tax, audit, regulatory)
+### Domain accuracy rules (tax, audit, regulatory)
 - NEVER hardcode tax rates, thresholds or deadlines in code. Put them in
   versioned "rule packs" (data, not code) with: jurisdiction, rule id, value,
   effective_from, effective_to, official source URL, verification status
@@ -237,8 +226,8 @@ findings that qualified humans decide on.
 - If unsure about a regulatory detail, leave a TODO with the question and mark
   the rule draft. Do not invent regulations.
 
-## Quality gates (before every commit)
-- ruff/black (or project linters) clean, mypy/tsc strict clean.
+### Quality gates (before every commit)
+- ruff (lint + format) clean, mypy and tsc clean.
 - New code has unit tests; services have integration tests; each new endpoint
   has auth, tenant-isolation and validation tests.
 - Calculations have golden-file tests with hand-checked expected values.
@@ -246,16 +235,38 @@ findings that qualified humans decide on.
   feat/phase-<letter>-<slug>. Never push to main directly.
 - Add or update an ADR in docs/adr/ for any significant design decision.
 
-## UI rule
-- For any UI/visual work, use the separately provided UI skills (taste,
-  impeccable). Follow existing component patterns, i18n keys for ALL strings
-  (en + ar), RTL-safe layouts, accessible forms. Do not invent a new design
-  system.
+### UI rule
+- For any UI/visual work, read the UI skills in `.claude/skills/`:
+  `design-taste-frontend` (taste v2), `design-taste-frontend-v1` and
+  `high-end-visual-design`. They are written mainly for public web pages.
+  In this app, apply what fits app screens: their anti-slop rules (no emoji,
+  no AI purple/indigo, no gradients or glows, no generic card rows, no stock
+  copy), full loading/empty/error states, labels above inputs, transform and
+  opacity-only motion with a `prefers-reduced-motion` fallback, one accent.
+- Where a skill conflicts with this repo, the repo wins: keep the existing
+  design system in `frontend/src/index.css` (Inter + IBM Plex Sans Arabic,
+  navy/teal palette, vendored shadcn components), Lucide icons, i18n keys for
+  ALL strings (en + ar), RTL-safe layouts and accessible forms. Do not invent
+  a new design system, and never use the skills' fake data or placeholder
+  images (synthetic data must be labelled as such).
 
-## Definition of done (per feature)
-Backend + migration + tests + API docs (OpenAPI descriptions) + i18n strings +
-minimal UI via UI skills + STATUS.md updated + demo seed data (synthetic only).
+## Definition of done
+
+Every change:
+
+1. Code + migration + tests for the behaviour, including permission and
+   cross-tenant cases for new endpoints.
+2. `ruff`, `mypy`, `pytest`, `pnpm lint`, `pnpm typecheck`, `pnpm test`,
+   `pnpm build` run; results reported honestly. Anything not executed is
+   recorded as **not executed** with the reason.
+3. No secrets, real customer data or real personal data committed.
+4. Docs touched by the change are updated (keep them short and accurate).
+5. `docs/STATUS.md` updated after each milestone: completed work, tests actually
    executed, failures/blockers, remaining work, exact next milestone.
+
+A user-facing feature additionally needs: OpenAPI descriptions on new endpoints,
+i18n strings in `en` and `ar`, minimal UI following existing components
+(or the feature kept out of the UI), and synthetic demo seed data where useful.
 
 Do not claim a feature works unless it was tested. Do not provision cloud
 resources, deploy, or upload data externally without explicit human approval.

@@ -1,7 +1,7 @@
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Navigate, useLocation, useNavigate } from "react-router-dom";
+import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { AlertCircle, ArrowRight, Eye, EyeOff, FileSearch, ListChecks, Loader2, Lock, Mail, SquareCheckBig } from "lucide-react";
 import { useState } from "react";
@@ -146,6 +146,11 @@ export function LoginPage() {
                   </button>
                 </div>
                 <FieldError message={errors.password ? t("auth.passwordRequired") : undefined} />
+                <p className="text-end text-[13px]">
+                  <Link to="/forgot-password" className="font-medium text-teal-700 hover:underline">
+                    {t("auth.forgotLink")}
+                  </Link>
+                </p>
               </div>
               {error && (
                 <p

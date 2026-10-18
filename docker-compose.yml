@@ -13,6 +13,18 @@ x-backend-env: &backend-env
   COOKIE_SECURE: ${COOKIE_SECURE:-false}
   STORAGE_BACKEND: local
   STORAGE_LOCAL_PATH: /data/storage
+  FIELD_ENCRYPTION_KEY: ${FIELD_ENCRYPTION_KEY:-}
+  # Links in emails point here. Mail goes to .eml files under the storage volume
+  # unless MAIL_BACKEND=smtp (required in production) and the SMTP_* values are set.
+  APP_BASE_URL: ${APP_BASE_URL:-http://localhost:8080}
+  MAIL_BACKEND: ${MAIL_BACKEND:-file}
+  MAIL_FILE_DIR: /data/storage/mail
+  MAIL_FROM: ${MAIL_FROM:-Saqient <no-reply@localhost>}
+  SMTP_HOST: ${SMTP_HOST:-}
+  SMTP_PORT: ${SMTP_PORT:-587}
+  SMTP_USERNAME: ${SMTP_USERNAME:-}
+  SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+  SMTP_STARTTLS: ${SMTP_STARTTLS:-true}
   # AI stays off unless set explicitly. See docs/MODEL_INTEGRATION.md before changing.
   AI_ENABLED: ${AI_ENABLED:-false}
   AI_PROVIDER: ${AI_PROVIDER:-disabled}
@@ -22,6 +34,13 @@ x-backend-env: &backend-env
   AI_ALLOW_INSECURE_HTTP: ${AI_ALLOW_INSECURE_HTTP:-false}
   AI_SERVING_INTERFACE_VERIFIED: ${AI_SERVING_INTERFACE_VERIFIED:-false}
   AI_AUTH: ${AI_AUTH:-api_key}
+  # OCR for scanned PDF pages: build with INSTALL_TESSERACT=true, then OCR_PROVIDER=tesseract.
+  # Malware scanning: start the optional clamav service (--profile clamav) and set
+  # MALWARE_SCAN=clamav. Uploads are refused while the scanner is unreachable.
+  MALWARE_SCAN: ${MALWARE_SCAN:-disabled}
+  CLAMAV_HOST: clamav
+  OCR_PROVIDER: ${OCR_PROVIDER:-disabled}
+  OCR_LANGUAGES: ${OCR_LANGUAGES:-eng+ara}
 
 services:
   db:
@@ -53,7 +72,10 @@ services:
 
   migrate:
     image: saqient-backend:local
-    build: ./backend
+    build:
+      context: ./backend
+      args:
+        INSTALL_TESSERACT: ${INSTALL_TESSERACT:-false}
     environment: *backend-env
     command: ["alembic", "upgrade", "head"]
     depends_on:
@@ -62,7 +84,10 @@ services:
 
   api:
     image: saqient-backend:local
-    build: ./backend
+    build:
+      context: ./backend
+      args:
+        INSTALL_TESSERACT: ${INSTALL_TESSERACT:-false}
     environment: *backend-env
     volumes:
       - storage:/data/storage
@@ -77,11 +102,27 @@ services:
 
   worker:
     image: saqient-backend:local
-    build: ./backend
+    build:
+      context: ./backend
+      args:
+        INSTALL_TESSERACT: ${INSTALL_TESSERACT:-false}
     environment: *backend-env
     command: ["celery", "-A", "app.worker.celery_app", "worker", "-l", "info", "-c", "2"]
     volumes:
       - storage:/data/storage
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+
+  # Celery beat: schedules the daily task due-date reminders (one instance only).
+  beat:
+    image: saqient-backend:local
+    build:
+      context: ./backend
+      args:
+        INSTALL_TESSERACT: ${INSTALL_TESSERACT:-false}
+    environment: *backend-env
+    command: ["celery", "-A", "app.worker.celery_app", "beat", "-l", "info", "-s", "/tmp/celerybeat-schedule"]
     depends_on:
       migrate: { condition: service_completed_successfully }
       redis: { condition: service_healthy }
@@ -93,6 +134,14 @@ services:
       - "127.0.0.1:${WEB_PORT:-8080}:8080"
     depends_on:
       api: { condition: service_healthy }
+
+  # Optional ClamAV daemon for upload scanning: `docker compose --profile clamav up -d`.
+  # It downloads signature updates from the ClamAV mirrors on start. No port is published.
+  clamav:
+    image: clamav/clamav:1.4
+    profiles: ["clamav"]
+    volumes:
+      - clamav:/var/lib/clamav
 
   # Optional self-hosted model server (Jais or Falcon via vLLM). Never starts by
   # default: it needs `--profile ai`, an NVIDIA GPU host and INFERENCE_MODEL set to a
@@ -125,3 +174,4 @@ volumes:
   pgdata:
   storage:
   model-cache:
+  clamav:

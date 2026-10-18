@@ -108,6 +108,8 @@ def request_suggestions(db: Session, review: Review, actor: User) -> Job:
         raise AIError("AI suggestions are not enabled for this deployment.")
     if review.status == ReviewStatus.SIGNED_OFF:
         raise AIError("Reopen the review before requesting AI suggestions.")
+    if review.document_version_id is None:
+        raise AIError("AI suggestions need a document; this review only uses datasets.")
     if review.status not in (ReviewStatus.IN_REVIEW, ReviewStatus.DRAFT):
         raise AIError("Wait for the checks to finish before requesting AI suggestions.")
     active = db.scalar(

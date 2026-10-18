@@ -14,6 +14,8 @@ os.environ["CELERY_TASK_ALWAYS_EAGER"] = "true"
 os.environ["DEMO_MODE"] = "false"
 os.environ["STORAGE_LOCAL_PATH"] = tempfile.mkdtemp(prefix="saqient-test-storage-")
 os.environ["CORS_ORIGINS"] = "http://localhost:5173"
+os.environ["MAIL_BACKEND"] = "memory"
+os.environ["APP_BASE_URL"] = "http://localhost:5173"
 
 import pytest  # noqa: E402
 from alembic.config import Config  # noqa: E402

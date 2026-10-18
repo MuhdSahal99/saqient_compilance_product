@@ -10,12 +10,24 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
-from app.api import ai, auth, checklists, documents, reviews, workspace
+from app.api import (
+    ai,
+    auth,
+    checklists,
+    datasets,
+    documents,
+    entities,
+    members,
+    reviews,
+    rule_packs,
+    workspace,
+)
 from app.config import get_settings
 from app.db import get_engine
 
 # Register job handlers for the API process too (eager mode uses them).
 from app.services import ai_suggestions as _ai_jobs  # noqa: F401
+from app.services import datasets as _dataset_jobs  # noqa: F401
 from app.services import documents as _doc_jobs  # noqa: F401
 from app.services import reviews as _review_jobs  # noqa: F401
 
@@ -90,7 +102,18 @@ def create_app() -> FastAPI:
             status_code=500, content={"detail": "Something went wrong. Please try again."}
         )
 
-    for module in (auth, documents, checklists, reviews, ai, workspace):
+    for module in (
+        auth,
+        documents,
+        checklists,
+        reviews,
+        ai,
+        workspace,
+        entities,
+        rule_packs,
+        datasets,
+        members,
+    ):
         app.include_router(module.router, prefix="/api")
 
     @app.get("/api/health", tags=["health"])

@@ -103,6 +103,36 @@ class SourceVerification(str, enum.Enum):
     VERIFIED = "verified"
 
 
+class RuleVerification(str, enum.Enum):
+    DRAFT = "draft"
+    VERIFIED = "verified"
+
+
+class RuleValueType(str, enum.Enum):
+    DECIMAL = "decimal"
+    INTEGER = "integer"
+    STRING = "string"
+    BOOLEAN = "boolean"
+    DATE = "date"
+
+
+class DatasetKind(str, enum.Enum):
+    TRIAL_BALANCE = "trial_balance"
+    GENERAL_LEDGER = "general_ledger"
+    SALES_REGISTER = "sales_register"
+    PURCHASE_REGISTER = "purchase_register"
+    BANK_STATEMENT = "bank_statement"
+
+
+class DatasetStatus(str, enum.Enum):
+    PENDING = "pending"
+    PARSING = "parsing"
+    NEEDS_MAPPING = "needs_mapping"
+    PROCESSING = "processing"
+    READY = "ready"
+    FAILED = "failed"
+
+
 class Severity(str, enum.Enum):
     LOW = "low"
     MEDIUM = "medium"
@@ -116,12 +146,17 @@ class CheckOutcome(str, enum.Enum):
     NEEDS_HUMAN_REVIEW = "needs_human_review"
     PROCESSING_ERROR = "processing_error"
     NOT_APPLICABLE = "not_applicable"
+    # Data checks (engine deterministic-1.1.0).
+    EXCEPTIONS_FOUND = "exceptions_found"
+    NO_EXCEPTIONS = "no_exceptions"
 
 
 class JobKind(str, enum.Enum):
     EXTRACT = "extract"
     REVIEW_RUN = "review_run"
     AI_SUGGEST = "ai_suggest"
+    DATASET_PARSE = "dataset_parse"
+    DATASET_BUILD = "dataset_build"
 
 
 class AIAssessment(str, enum.Enum):
@@ -219,6 +254,284 @@ class UserSession(Base):
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class Invitation(Base):
+    """An emailed, single-use invitation to join an organisation with a role."""
+
+    __tablename__ = "invitations"
+    __table_args__ = (
+        # One open invitation per email per organisation.
+        Index(
+            "uq_invitations_org_email_open",
+            "org_id",
+            "email",
+            unique=True,
+            postgresql_where="accepted_at IS NULL AND revoked_at IS NULL",
+        ),
+    )
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    email: Mapped[str] = mapped_column(String(320))
+    role: Mapped[Role] = mapped_column(_enum(Role, "invitation_role"))
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    invited_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = _created()
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    accepted_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    organization: Mapped[Organization] = relationship(lazy="joined")
+    invited_by: Mapped[User | None] = relationship(foreign_keys=[invited_by_id], lazy="joined")
+
+
+class PasswordResetToken(Base):
+    """Single-use, short-lived. Account-level (not tenant data), like users."""
+
+    __tablename__ = "password_reset_tokens"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    created_at: Mapped[datetime] = _created()
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class NotificationKind(str, enum.Enum):
+    INVITATION = "invitation"
+    TASK_DUE_REMINDER = "task_due_reminder"
+
+
+class NotificationStatus(str, enum.Enum):
+    SENT = "sent"
+    FAILED = "failed"
+    DISABLED = "disabled"
+
+
+class NotificationLog(Base):
+    """Outgoing org notifications. Bodies are not stored (they can hold links)."""
+
+    __tablename__ = "notification_log"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    kind: Mapped[NotificationKind] = mapped_column(_enum(NotificationKind, "notification_kind"))
+    recipient_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    recipient_email: Mapped[str] = mapped_column(String(320))
+    subject: Mapped[str] = mapped_column(String(300))
+    object_type: Mapped[str] = mapped_column(String(40))
+    object_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    # Reminders: one per finding, due date and day, so retries cannot send twice.
+    dedupe_key: Mapped[str | None] = mapped_column(String(200), unique=True)
+    status: Mapped[NotificationStatus] = mapped_column(
+        _enum(NotificationStatus, "notification_status")
+    )
+    error: Mapped[str | None] = mapped_column(String(300))
+    created_at: Mapped[datetime] = _created()
+
+
+# ---------------------------------------------------------------- entities
+
+
+class TaxGroup(Base):
+    """A VAT/tax group that several legal entities of one organisation belong to."""
+
+    __tablename__ = "tax_groups"
+    __table_args__ = (UniqueConstraint("org_id", "name"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    name: Mapped[str] = mapped_column(String(200))
+    country: Mapped[str] = mapped_column(String(2))
+    # Encrypted (app/crypto.py); only the last four characters are kept in clear.
+    trn_encrypted: Mapped[str | None] = mapped_column(Text)
+    trn_last4: Mapped[str | None] = mapped_column(String(4))
+    created_at: Mapped[datetime] = _created()
+
+
+class LegalEntity(Base):
+    __tablename__ = "legal_entities"
+    __table_args__ = (UniqueConstraint("org_id", "name"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    name: Mapped[str] = mapped_column(String(200))
+    country: Mapped[str] = mapped_column(String(2))  # ISO 3166-1 alpha-2
+    trn_encrypted: Mapped[str | None] = mapped_column(Text)
+    trn_last4: Mapped[str | None] = mapped_column(String(4))
+    fiscal_year_end_month: Mapped[int] = mapped_column(Integer)
+    fiscal_year_end_day: Mapped[int] = mapped_column(Integer)
+    functional_currency: Mapped[str] = mapped_column(String(3))  # ISO 4217
+    timezone: Mapped[str] = mapped_column(String(64))  # IANA, e.g. Asia/Dubai
+    tax_group_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tax_groups.id", ondelete="RESTRICT"), index=True
+    )
+    is_free_zone: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = _created()
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    tax_group: Mapped[TaxGroup | None] = relationship(lazy="joined")
+
+
+# ---------------------------------------------------------------- rule packs
+
+
+class RulePack(Base):
+    """Versioned tax/regulatory parameters, held as data rather than code."""
+
+    __tablename__ = "rule_packs"
+    __table_args__ = (UniqueConstraint("org_id", "name"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    name: Mapped[str] = mapped_column(String(200))
+    jurisdiction: Mapped[str] = mapped_column(String(20))
+    description: Mapped[str] = mapped_column(Text, default="")
+    is_synthetic: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = _created()
+
+    versions: Mapped[list[RulePackVersion]] = relationship(
+        back_populates="rule_pack", order_by="RulePackVersion.version_number"
+    )
+
+
+class RulePackVersion(Base):
+    __tablename__ = "rule_pack_versions"
+    __table_args__ = (UniqueConstraint("rule_pack_id", "version_number"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    rule_pack_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("rule_packs.id", ondelete="CASCADE"), index=True
+    )
+    version_number: Mapped[int] = mapped_column(Integer)
+    state: Mapped[ChecklistState] = mapped_column(
+        _enum(ChecklistState, "rule_pack_state"), default=ChecklistState.DRAFT
+    )
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    published_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = _created()
+
+    rule_pack: Mapped[RulePack] = relationship(back_populates="versions", lazy="joined")
+    rules: Mapped[list[Rule]] = relationship(
+        back_populates="version", order_by="[Rule.rule_key, Rule.effective_from]"
+    )
+
+
+class Rule(Base):
+    """One parameter, valid for a date range. Values are strings parsed by type (no floats)."""
+
+    __tablename__ = "rules"
+    __table_args__ = (UniqueConstraint("rule_pack_version_id", "rule_key", "effective_from"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    rule_pack_version_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("rule_pack_versions.id", ondelete="CASCADE"), index=True
+    )
+    rule_key: Mapped[str] = mapped_column(String(120))
+    title: Mapped[str] = mapped_column(String(300))
+    value_type: Mapped[RuleValueType] = mapped_column(_enum(RuleValueType, "rule_value_type"))
+    value: Mapped[str] = mapped_column(String(200))
+    unit: Mapped[str] = mapped_column(String(40), default="")
+    effective_from: Mapped[date] = mapped_column(Date)
+    effective_to: Mapped[date | None] = mapped_column(Date)
+    source_url: Mapped[str | None] = mapped_column(String(500))
+    source_note: Mapped[str] = mapped_column(Text, default="")
+    # Open questions about the rule; a rule with a TODO stays draft.
+    todo: Mapped[str] = mapped_column(Text, default="")
+    verification_status: Mapped[RuleVerification] = mapped_column(
+        _enum(RuleVerification, "rule_verification"), default=RuleVerification.DRAFT
+    )
+    verified_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    version: Mapped[RulePackVersion] = relationship(back_populates="rules")
+    verified_by: Mapped[User | None] = relationship(lazy="joined")
+
+
+# ---------------------------------------------------------------- datasets
+
+
+class Dataset(Base):
+    """A logical finance dataset (e.g. FY2025 general ledger) for one legal entity."""
+
+    __tablename__ = "datasets"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    entity_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("legal_entities.id", ondelete="RESTRICT"), index=True
+    )
+    kind: Mapped[DatasetKind] = mapped_column(_enum(DatasetKind, "dataset_kind"))
+    name: Mapped[str] = mapped_column(String(200))
+    period_start: Mapped[date | None] = mapped_column(Date)
+    period_end: Mapped[date | None] = mapped_column(Date)
+    is_demo: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = _created()
+
+    entity: Mapped[LegalEntity] = relationship(lazy="joined")
+    versions: Mapped[list[DatasetVersion]] = relationship(
+        back_populates="dataset", order_by="DatasetVersion.version_number"
+    )
+
+
+class DatasetVersion(Base):
+    """One imported file: raw bytes hashed and stored, canonical Parquet once mapped."""
+
+    __tablename__ = "dataset_versions"
+    __table_args__ = (UniqueConstraint("dataset_id", "version_number"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    dataset_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("datasets.id", ondelete="CASCADE"), index=True
+    )
+    version_number: Mapped[int] = mapped_column(Integer)
+    original_filename: Mapped[str] = mapped_column(String(255))
+    file_format: Mapped[str] = mapped_column(String(10))
+    size_bytes: Mapped[int] = mapped_column(BigInteger)
+    raw_sha256: Mapped[str] = mapped_column(String(64), index=True)
+    raw_storage_key: Mapped[str] = mapped_column(String(200))
+    status: Mapped[DatasetStatus] = mapped_column(
+        _enum(DatasetStatus, "dataset_status"), default=DatasetStatus.PENDING
+    )
+    failure_message: Mapped[str | None] = mapped_column(Text)
+    source_columns: Mapped[list[str]] = mapped_column(JSONType, default=list)
+    source_row_count: Mapped[int | None] = mapped_column(Integer)
+    # Proposed (by header names) until confirmed by a user.
+    column_mapping: Mapped[dict[str, str]] = mapped_column(JSONType, default=dict)
+    parse_options: Mapped[dict[str, str]] = mapped_column(JSONType, default=dict)
+    mapping_confirmed_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    mapping_confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    parquet_storage_key: Mapped[str | None] = mapped_column(String(200))
+    parquet_sha256: Mapped[str | None] = mapped_column(String(64))
+    row_count: Mapped[int | None] = mapped_column(Integer)
+    derived_fields: Mapped[list[str]] = mapped_column(JSONType, default=list)
+    totals: Mapped[dict[str, str]] = mapped_column(JSONType, default=dict)
+    errors: Mapped[list[dict[str, Any]]] = mapped_column(JSONType, default=list)
+    error_count: Mapped[int] = mapped_column(Integer, default=0)
+    uploaded_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = _created()
+    processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    dataset: Mapped[Dataset] = relationship(back_populates="versions", lazy="joined")
+
+
 # ---------------------------------------------------------------- documents
 
 
@@ -296,6 +609,9 @@ class SourceBlock(Base):
     paragraph_number: Mapped[int | None] = mapped_column(Integer)  # DOCX/TXT only
     section_heading: Mapped[str | None] = mapped_column(String(300))
     text: Mapped[str] = mapped_column(Text)
+    # Read from a page image by OCR; recognition can be wrong.
+    is_ocr: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    ocr_confidence: Mapped[int | None] = mapped_column(Integer)  # mean word confidence 0-100
 
 
 # ---------------------------------------------------------------- checklists
@@ -412,12 +728,18 @@ class Review(Base):
     id: Mapped[uuid.UUID] = _uuid_pk()
     org_id: Mapped[uuid.UUID] = _org_fk()
     title: Mapped[str] = mapped_column(String(300))
-    document_version_id: Mapped[uuid.UUID] = mapped_column(
+    # A review needs a document, datasets (review_datasets), or both; the service checks.
+    document_version_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("document_versions.id", ondelete="RESTRICT")
     )
     checklist_version_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("checklist_versions.id", ondelete="RESTRICT")
     )
+    rule_pack_version_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("rule_pack_versions.id", ondelete="RESTRICT")
+    )
+    # Date rule values are resolved for; defaults to the datasets' period end.
+    as_of_date: Mapped[date | None] = mapped_column(Date)
     status: Mapped[ReviewStatus] = mapped_column(
         _enum(ReviewStatus, "review_status"), default=ReviewStatus.DRAFT
     )
@@ -431,11 +753,33 @@ class Review(Base):
     )
     signed_off_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
-    document_version: Mapped[DocumentVersion] = relationship(lazy="joined")
+    document_version: Mapped[DocumentVersion | None] = relationship(lazy="joined")
     checklist_version: Mapped[ChecklistVersion] = relationship(lazy="joined")
     runs: Mapped[list[ReviewRun]] = relationship(
         back_populates="review", order_by="ReviewRun.created_at"
     )
+    datasets: Mapped[list[ReviewDataset]] = relationship(
+        back_populates="review", order_by="ReviewDataset.kind", cascade="all, delete-orphan"
+    )
+
+
+class ReviewDataset(Base):
+    """One dataset version per kind used as a review input."""
+
+    __tablename__ = "review_datasets"
+    __table_args__ = (UniqueConstraint("review_id", "kind"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    review_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("reviews.id", ondelete="CASCADE"), index=True
+    )
+    kind: Mapped[DatasetKind] = mapped_column(_enum(DatasetKind, "review_dataset_kind"))
+    dataset_version_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("dataset_versions.id", ondelete="RESTRICT")
+    )
+
+    review: Mapped[Review] = relationship(back_populates="datasets")
+    dataset_version: Mapped[DatasetVersion] = relationship(lazy="joined")
 
 
 class ReviewRun(Base):
@@ -446,11 +790,13 @@ class ReviewRun(Base):
         UUID(as_uuid=True), ForeignKey("reviews.id", ondelete="CASCADE"), index=True
     )
     job_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("jobs.id"))
-    document_version_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    document_version_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     checklist_version_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
     engine_version: Mapped[str] = mapped_column(String(40))
     engine_mode: Mapped[str] = mapped_column(String(40), default="deterministic")
     config_snapshot: Mapped[list[dict[str, Any]]] = mapped_column(JSONType, default=list)
+    # Dataset versions (with parquet hashes), rule pack version and as-of date used.
+    inputs_snapshot: Mapped[dict[str, Any]] = mapped_column(JSONType, default=dict)
     warnings: Mapped[list[str]] = mapped_column(JSONType, default=list)
     created_at: Mapped[datetime] = _created()
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -476,6 +822,10 @@ class CheckResult(Base):
     needs_attention: Mapped[bool] = mapped_column(Boolean)
     message: Mapped[str] = mapped_column(Text, default="")
     evidence: Mapped[list[dict[str, Any]]] = mapped_column(JSONType, default=list)
+    meta: Mapped[dict[str, Any]] = mapped_column(JSONType, default=dict)
+    # SHA-256 of the canonical result (outcome, message, evidence, meta): equal inputs,
+    # equal hash. Null for results written before engine 1.1.0.
+    result_hash: Mapped[str | None] = mapped_column(String(64))
 
     run: Mapped[ReviewRun] = relationship(back_populates="results")
     requirement: Mapped[Requirement] = relationship(lazy="joined")
@@ -641,21 +991,32 @@ class ReportSnapshot(Base):
 
 
 class AuditEvent(Base):
-    """Application audit trail. Not tamper-proof."""
+    """Append-only, hash-chained audit trail (one chain per organisation).
+
+    See ``app/services/audit.py``. A database trigger rejects UPDATE.
+    """
 
     __tablename__ = "audit_events"
-    __table_args__ = (Index("ix_audit_org_created", "org_id", "created_at"),)
+    __table_args__ = (
+        Index("ix_audit_org_created", "org_id", "created_at"),
+        UniqueConstraint(
+            "org_id", "seq", name="uq_audit_events_org_seq", postgresql_nulls_not_distinct=True
+        ),
+    )
     id: Mapped[uuid.UUID] = _uuid_pk()
     org_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE")
     )
-    actor_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
-    )
+    # No ON DELETE action: the actor is part of the hashed content, so users with
+    # audit history are deactivated rather than deleted.
+    actor_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     action: Mapped[str] = mapped_column(String(80))
     object_type: Mapped[str] = mapped_column(String(60))
     object_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     meta: Mapped[dict[str, Any]] = mapped_column("metadata", JSONType, default=dict)
     created_at: Mapped[datetime] = _created()
+    seq: Mapped[int] = mapped_column(BigInteger)
+    prev_hash: Mapped[str] = mapped_column(String(64))
+    hash: Mapped[str] = mapped_column(String(64))
 
     actor: Mapped[User | None] = relationship(lazy="joined")

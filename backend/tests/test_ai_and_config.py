@@ -118,12 +118,22 @@ def test_production_rejects_insecure_defaults() -> None:
         Settings(_env_file=None, app_env="production", demo_mode=True).validate_for_production()  # type: ignore[call-arg]
     msg = str(exc.value)
     assert "SECRET_KEY" in msg and "DEMO_MODE" in msg and "COOKIE_SECURE" in msg
+    assert "FIELD_ENCRYPTION_KEY" in msg
+    assert "MAIL_BACKEND" in msg and "APP_BASE_URL" in msg
+    with pytest.raises(ConfigError, match="SMTP_HOST"):
+        Settings(
+            _env_file=None, app_env="production", mail_backend="smtp"
+        ).validate_for_production()  # type: ignore[call-arg]
     Settings(
         _env_file=None,
         app_env="production",
         secret_key="x" * 40,  # type: ignore[call-arg]
+        field_encryption_key="QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUE=",  # 32 bytes, test only
         cookie_secure=True,
         celery_task_always_eager=False,
+        mail_backend="smtp",
+        smtp_host="smtp.example.org",
+        app_base_url="https://app.example.org",
     ).validate_for_production()
 
 

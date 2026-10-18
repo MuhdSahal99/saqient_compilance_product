@@ -3,7 +3,8 @@ import userEvent from "@testing-library/user-event";
 import i18n from "@/i18n";
 import type { Evidence } from "@/lib/types";
 import { ConfirmDialog, FindingStatusBadge, SeverityBadge, SyntheticBadge } from "./common";
-import { EvidenceQuote, evidenceLocation } from "./evidence";
+import { EvidenceQuote } from "./evidence";
+import { evidenceLocation } from "@/lib/evidence";
 
 afterEach(async () => {
   await act(() => i18n.changeLanguage("en"));

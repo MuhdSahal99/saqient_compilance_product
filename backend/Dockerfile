@@ -11,6 +11,13 @@ COPY . .
 RUN uv sync --frozen --no-dev $(for e in $EXTRAS; do printf -- "--extra %s " "$e"; done)
 
 FROM python:3.13-slim
+# Optional local OCR engine for scanned PDF pages (OCR_PROVIDER=tesseract).
+ARG INSTALL_TESSERACT=false
+RUN if [ "$INSTALL_TESSERACT" = "true" ]; then \
+      apt-get update && apt-get install -y --no-install-recommends \
+        tesseract-ocr tesseract-ocr-eng tesseract-ocr-ara \
+      && rm -rf /var/lib/apt/lists/*; \
+    fi
 RUN groupadd --system app && useradd --system --gid app --home /app app \
     && mkdir -p /data/storage && chown app:app /data/storage
 WORKDIR /app

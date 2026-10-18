@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import binascii
 from functools import lru_cache
 from typing import Literal
 
@@ -13,6 +15,13 @@ AIProviderName = Literal["disabled", "mock", "openai_compatible", "jais", "falco
 
 class ConfigError(RuntimeError):
     pass
+
+
+def _is_32_byte_b64(value: str) -> bool:
+    try:
+        return len(base64.b64decode(value, validate=True)) == 32
+    except (binascii.Error, ValueError):
+        return False
 
 
 class Settings(BaseSettings):
@@ -40,7 +49,46 @@ class Settings(BaseSettings):
     s3_region: str = ""
     gcs_bucket: str = ""
 
+    # 32 random bytes, base64. Required in production; dev/test derive one from SECRET_KEY.
+    field_encryption_key: str = Field(default="", repr=False)
+
+    # Public URL of the web app, used for links in emails (invitations, password reset).
+    app_base_url: str = "http://localhost:5173"
+    # file: writes .eml files to MAIL_FILE_DIR (development only); memory: tests only;
+    # smtp: real delivery; disabled: nothing is sent.
+    mail_backend: Literal["disabled", "file", "memory", "smtp"] = "file"
+    mail_from: str = "Saqient <no-reply@localhost>"
+    mail_file_dir: str = "./var/mail"
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_username: str = ""
+    smtp_password: str = Field(default="", repr=False)
+    smtp_starttls: bool = True
+    smtp_timeout_seconds: int = 10
+    invitation_ttl_days: int = 7
+    password_reset_ttl_minutes: int = 60
+    password_reset_rate_limit: int = 5  # requests per window per ip+email
+    password_reset_rate_window_seconds: int = 900
+    reminder_days_ahead: int = 3
+
+    # OCR for PDF pages without a text layer. "tesseract" runs the local binary.
+    ocr_provider: Literal["disabled", "tesseract"] = "disabled"
+    ocr_languages: str = "eng+ara"
+    ocr_tesseract_cmd: str = "tesseract"
+    ocr_dpi: int = 200
+    ocr_max_pages: int = 50
+    ocr_page_timeout_seconds: int = 60
+
+    # Malware scanning of uploads through clamd (INSTREAM). Fails closed by default.
+    malware_scan: Literal["disabled", "clamav"] = "disabled"
+    clamav_host: str = "clamav"
+    clamav_port: int = 3310
+    clamav_timeout_seconds: int = 30
+    malware_scan_fail_open: bool = False
+
     max_upload_mb: int = 20
+    dataset_max_upload_mb: int = 100
+    dataset_max_rows: int = 1_000_000
     max_pdf_pages: int = 300
     max_extracted_chars: int = 2_000_000
     processing_time_limit_seconds: int = 120
@@ -77,6 +125,10 @@ class Settings(BaseSettings):
         return self.max_upload_mb * 1024 * 1024
 
     @property
+    def dataset_max_upload_bytes(self) -> int:
+        return self.dataset_max_upload_mb * 1024 * 1024
+
+    @property
     def is_production(self) -> bool:
         return self.app_env == "production"
 
@@ -89,12 +141,20 @@ class Settings(BaseSettings):
             problems.append("SECRET_KEY must be set to a random value of at least 32 characters")
         if self.demo_mode:
             problems.append("DEMO_MODE must be false in production")
+        if not _is_32_byte_b64(self.field_encryption_key):
+            problems.append("FIELD_ENCRYPTION_KEY must be set to 32 random bytes, base64")
         if not self.cookie_secure:
             problems.append("COOKIE_SECURE must be true in production")
         if self.celery_task_always_eager:
             problems.append("CELERY_TASK_ALWAYS_EAGER must be false in production")
         if self.ai_provider == "mock":
             problems.append("AI_PROVIDER=mock is not allowed in production")
+        if self.mail_backend in ("file", "memory"):
+            problems.append("MAIL_BACKEND must be smtp or disabled in production")
+        if self.mail_backend == "smtp" and not self.smtp_host:
+            problems.append("MAIL_BACKEND=smtp requires SMTP_HOST")
+        if not self.app_base_url.startswith("https://"):
+            problems.append("APP_BASE_URL must be an https URL in production")
         if problems:
             raise ConfigError("; ".join(problems))
 

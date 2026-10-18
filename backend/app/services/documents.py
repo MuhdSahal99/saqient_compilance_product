@@ -8,8 +8,16 @@ from datetime import UTC, datetime
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
+from app import malware
 from app.config import get_settings
-from app.extraction import ExtractionError, ValidationError, detect_format, extract
+from app.extraction import (
+    ExtractionError,
+    OcrOptions,
+    ValidationError,
+    detect_format,
+    extract,
+)
+from app.extraction.ocr import get_ocr
 from app.models import (
     Document,
     DocumentVersion,
@@ -73,6 +81,7 @@ def create_version(
     if len(data) > settings.max_upload_bytes:
         raise ValidationError(f"The file is larger than the {settings.max_upload_mb} MB limit.")
     file_format = detect_format(filename, declared_mime, data)
+    malware.ensure_clean(data)  # before anything is stored
     sha256 = hashlib.sha256(data).hexdigest()
     if not allow_duplicate:
         dup = find_duplicate(db, org_id, sha256)
@@ -138,9 +147,11 @@ def process_version(db: Session, job: Job, checkpoint: Checkpoint) -> None:
     checkpoint(10)
 
     data = get_storage().get(version.storage_key)
+    engine = get_ocr(settings)
+    ocr = OcrOptions(engine, settings.ocr_dpi, settings.ocr_max_pages) if engine else None
     try:
         result = extract(
-            version.file_format, data, settings.max_pdf_pages, settings.max_extracted_chars
+            version.file_format, data, settings.max_pdf_pages, settings.max_extracted_chars, ocr
         )
     except ExtractionError as exc:
         raise PermanentJobError(str(exc)) from exc
@@ -158,6 +169,8 @@ def process_version(db: Session, job: Job, checkpoint: Checkpoint) -> None:
             paragraph_number=b.paragraph_number,
             section_heading=b.section_heading,
             text=b.text,
+            is_ocr=b.is_ocr,
+            ocr_confidence=b.ocr_confidence,
         )
         for i, b in enumerate(result.blocks)
     )

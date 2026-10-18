@@ -6,6 +6,7 @@ import { Command } from "cmdk";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import {
   Activity,
+  Building,
   ClipboardCheck,
   CornerDownLeft,
   FileSearch,
@@ -14,9 +15,11 @@ import {
   LayoutDashboard,
   ListChecks,
   Loader2,
+  Scale,
   Search,
   Settings,
   SquareCheckBig,
+  Table2,
   Upload,
 } from "lucide-react";
 import { api, qs } from "@/lib/api";
@@ -29,6 +32,9 @@ const PAGES = [
   { to: "/reviews", key: "reviews", icon: ClipboardCheck },
   { to: "/documents", key: "documents", icon: FolderOpen },
   { to: "/checklists", key: "checklists", icon: ListChecks },
+  { to: "/datasets", key: "datasets", icon: Table2 },
+  { to: "/entities", key: "entities", icon: Building },
+  { to: "/rule-packs", key: "rulePacks", icon: Scale },
   { to: "/findings", key: "findings", icon: FileSearch },
   { to: "/tasks", key: "tasks", icon: SquareCheckBig },
   { to: "/reports", key: "reports", icon: FileText },
@@ -132,7 +138,7 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
                     <Command.Item key={r.id} value={`review-${r.id}`} onSelect={() => go(`/reviews/${r.id}`)} className={itemCls}>
                       <ClipboardCheck aria-hidden />
                       <span className="flex-1 truncate">{r.title}</span>
-                      <span className="truncate text-xs text-slate-400">{r.document_title}</span>
+                      <span className="truncate text-xs text-slate-400">{r.document_title ?? r.datasets[0]?.dataset_name}</span>
                     </Command.Item>
                   ))}
                 </Command.Group>

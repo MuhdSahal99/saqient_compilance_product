@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 import uuid
 from datetime import UTC, date, datetime
@@ -10,12 +12,17 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.engine import ENGINE_VERSION, CheckEvaluation, DocumentContext, evaluate, parse_config
+from app.engine import CheckEvaluation, DocumentContext, evaluate
+from app.engine.data_checks import DataContext, LoadedDataset, datasets_used, evaluate_data
+from app.engine.versions import ENGINE_VERSION, is_data_check, parse_check
 from app.models import (
     ChecklistState,
     ChecklistVersion,
     CheckOutcome,
     CheckResult,
+    DatasetKind,
+    DatasetStatus,
+    DatasetVersion,
     Document,
     DocumentVersion,
     Finding,
@@ -26,13 +33,16 @@ from app.models import (
     ReportSnapshot,
     Requirement,
     Review,
+    ReviewDataset,
     ReviewRun,
     ReviewStatus,
+    RulePackVersion,
     SourceBlock,
     User,
     VersionStatus,
 )
-from app.services import audit
+from app.services import audit, rule_packs
+from app.services.datasets import DatasetNotReady, load_frame
 from app.services.jobs import Checkpoint, PermanentJobError, handler, on_unsuccessful
 
 logger = logging.getLogger("saqient.reviews")
@@ -56,9 +66,20 @@ AI_MOCK_LIMITATION = (
     "not analysis."
 )
 
+DATA_LIMITATION = (
+    "Data checks test the uploaded dataset versions as mapped by a user; they do not verify "
+    "that the data is complete or matches the accounting system. An exception is something "
+    "to look at, not a conclusion."
+)
+
+OCR_LIMITATION = (
+    "Some pages had no text layer and were read with OCR. OCR text can contain recognition "
+    "errors, and quotes from those pages were matched against the OCR text, not the page image."
+)
+
 LIMITATIONS = [
     "Deterministic checks match text only; they do not interpret meaning or context.",
-    "Content in images or scanned pages is not reviewed unless OCR is enabled (it is not).",
+    "Content in images or scanned pages was not reviewed; no OCR was used for this document.",
     "Checklist content is only as accurate as its sources; see each requirement's source "
     "and verification status.",
 ]
@@ -81,24 +102,46 @@ def create_review(
     org_id: uuid.UUID,
     user_id: uuid.UUID,
     title: str,
-    document_version: DocumentVersion,
+    document_version: DocumentVersion | None,
     checklist_version: ChecklistVersion,
+    dataset_versions: list[DatasetVersion] | None = None,
+    rule_pack_version: RulePackVersion | None = None,
+    as_of_date: date | None = None,
 ) -> tuple[Review, Job]:
-    if document_version.status != VersionStatus.READY:
+    dataset_versions = dataset_versions or []
+    if document_version is None and not dataset_versions:
+        raise ReviewError("Choose a document, at least one dataset, or both.")
+    if document_version is not None and document_version.status != VersionStatus.READY:
         raise ReviewError("The document has not finished processing.")
     if checklist_version.state != ChecklistState.PUBLISHED:
         raise ReviewError("Only published checklist versions can be used for a review.")
-    doc = db.get(Document, document_version.document_id)
+    if rule_pack_version is not None and rule_pack_version.state != ChecklistState.PUBLISHED:
+        raise ReviewError("Only published rule pack versions can be used for a review.")
+    kinds = [v.dataset.kind for v in dataset_versions]
+    if len(kinds) != len(set(kinds)):
+        raise ReviewError("Use one dataset version per dataset kind.")
+    if any(v.status != DatasetStatus.READY for v in dataset_versions):
+        raise ReviewError("Every dataset version must be ready (mapping confirmed and built).")
+    doc = db.get(Document, document_version.document_id) if document_version else None
     review = Review(
         org_id=org_id,
         title=title,
-        document_version_id=document_version.id,
+        document_version_id=document_version.id if document_version else None,
         checklist_version_id=checklist_version.id,
+        rule_pack_version_id=rule_pack_version.id if rule_pack_version else None,
+        as_of_date=as_of_date,
         status=ReviewStatus.DRAFT,
-        is_demo=bool(doc and doc.is_demo),
+        is_demo=bool(doc and doc.is_demo) or any(v.dataset.is_demo for v in dataset_versions),
         created_by_id=user_id,
     )
     db.add(review)
+    db.flush()
+    for v in dataset_versions:
+        db.add(
+            ReviewDataset(
+                org_id=org_id, review_id=review.id, kind=v.dataset.kind, dataset_version_id=v.id
+            )
+        )
     db.flush()
     audit.record(
         db,
@@ -109,7 +152,9 @@ def create_review(
         object_id=review.id,
         meta={
             "checklist_version": checklist_version.version_number,
-            "document_version": document_version.version_number,
+            "document_version": document_version.version_number if document_version else None,
+            "dataset_version_ids": [str(v.id) for v in dataset_versions],
+            "rule_pack_version": rule_pack_version.version_number if rule_pack_version else None,
         },
     )
     job = start_run(db, review, user_id)
@@ -168,8 +213,84 @@ def _attention_title(req: Requirement, ev: CheckEvaluation) -> str:
         CheckOutcome.MATCH_FOUND: "Flagged content found",
         CheckOutcome.NEEDS_HUMAN_REVIEW: "Needs human review",
         CheckOutcome.PROCESSING_ERROR: "Check could not be completed",
+        CheckOutcome.EXCEPTIONS_FOUND: "Data exceptions found",
+        CheckOutcome.NOT_APPLICABLE: "Check could not run",
     }.get(ev.outcome, "Review")
     return f"{prefix}: {req.title}"[:300]
+
+
+def result_hash(ev: CheckEvaluation, meta: dict[str, Any]) -> str:
+    """SHA-256 over the canonical result. Same inputs and engine version, same hash."""
+    body = {
+        "outcome": ev.outcome.value,
+        "needs_attention": ev.needs_attention,
+        "message": ev.message,
+        "evidence": ev.evidence,
+        "meta": meta,
+    }
+    canonical = json.dumps(
+        body, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str
+    )
+    return hashlib.sha256(canonical.encode()).hexdigest()
+
+
+def _data_context(
+    db: Session, review: Review, org_id: uuid.UUID
+) -> tuple[DataContext, dict[str, Any]]:
+    """Load the review's dataset versions and build the rule resolver and as-of date."""
+    loaded: dict[DatasetKind, LoadedDataset] = {}
+    described: list[dict[str, Any]] = []
+    for link in review.datasets:
+        try:
+            v, frame = load_frame(db, link.dataset_version_id, org_id)
+        except DatasetNotReady as exc:
+            raise PermanentJobError(str(exc)) from exc
+        ds = v.dataset
+        loaded[link.kind] = LoadedDataset(
+            version_id=str(v.id),
+            version_number=v.version_number,
+            kind=link.kind,
+            frame=frame,
+            period_start=ds.period_start,
+            period_end=ds.period_end,
+        )
+        described.append(
+            {
+                "kind": link.kind.value,
+                "dataset_id": str(ds.id),
+                "dataset_name": ds.name,
+                "dataset_version_id": str(v.id),
+                "version_number": v.version_number,
+                "parquet_sha256": v.parquet_sha256,
+                "raw_sha256": v.raw_sha256,
+                "row_count": v.row_count,
+                "period_start": ds.period_start.isoformat() if ds.period_start else None,
+                "period_end": ds.period_end.isoformat() if ds.period_end else None,
+            }
+        )
+    ends = [d.period_end for d in loaded.values() if d.period_end]
+    if review.as_of_date:
+        as_of, source = review.as_of_date, "review"
+    elif ends:
+        as_of, source = max(ends), "dataset_period_end"
+    else:
+        as_of, source = date.today(), "run_date"
+    pack_id = review.rule_pack_version_id
+
+    def resolve_rule(key: str) -> rule_packs.ResolvedRule:
+        if pack_id is None:
+            raise rule_packs.RuleNotFound(
+                f"This check needs rule '{key}', but the review has no rule pack."
+            )
+        return rule_packs.resolve(db, org_id, pack_id, key, as_of)
+
+    inputs: dict[str, Any] = {
+        "datasets": described,
+        "rule_pack_version_id": str(pack_id) if pack_id else None,
+        "as_of_date": as_of.isoformat(),
+        "as_of_source": source,
+    }
+    return DataContext(datasets=loaded, resolve_rule=resolve_rule, as_of=as_of), inputs
 
 
 @handler(JobKind.REVIEW_RUN)
@@ -180,16 +301,33 @@ def execute_run(db: Session, job: Job, checkpoint: Checkpoint) -> None:
     if run is None:
         raise PermanentJobError("The review run no longer exists.")
     review = run.review
-    version = db.scalar(
-        select(DocumentVersion).where(
-            DocumentVersion.id == run.document_version_id,
-            DocumentVersion.org_id == job.org_id,
+    version: DocumentVersion | None = None
+    doc_ctx: DocumentContext | None = None
+    if run.document_version_id is not None:
+        version = db.scalar(
+            select(DocumentVersion).where(
+                DocumentVersion.id == run.document_version_id,
+                DocumentVersion.org_id == job.org_id,
+            )
         )
-    )
-    if version is None or version.status != VersionStatus.READY:
-        raise PermanentJobError("The document version is not available for review.")
-    document = db.get(Document, version.document_id)
-    assert document is not None and document.org_id == job.org_id
+        if version is None or version.status != VersionStatus.READY:
+            raise PermanentJobError("The document version is not available for review.")
+        document = db.get(Document, version.document_id)
+        assert document is not None and document.org_id == job.org_id
+        blocks = list(
+            db.scalars(
+                select(SourceBlock)
+                .where(SourceBlock.document_version_id == version.id)
+                .order_by(SourceBlock.ordinal)
+            )
+        )
+        doc_ctx = DocumentContext(
+            title=document.title,
+            description=document.description,
+            document_type=document.document_type,
+            tags=list(document.tags or []),
+            blocks=blocks,
+        )
     requirements = list(
         db.scalars(
             select(Requirement)
@@ -200,23 +338,12 @@ def execute_run(db: Session, job: Job, checkpoint: Checkpoint) -> None:
             .order_by(Requirement.ordinal)
         )
     )
-    blocks = list(
-        db.scalars(
-            select(SourceBlock)
-            .where(SourceBlock.document_version_id == version.id)
-            .order_by(SourceBlock.ordinal)
-        )
-    )
-    ctx = DocumentContext(
-        title=document.title,
-        description=document.description,
-        document_type=document.document_type,
-        tags=list(document.tags or []),
-        blocks=blocks,
-    )
+    data_ctx, inputs = _data_context(db, review, job.org_id)
+    inputs["document_version_id"] = str(version.id) if version else None
+    inputs["document_sha256"] = version.sha256 if version else None
     started = _now()
-    warnings: list[str] = list(version.extraction_warnings or [])
-    evaluations: list[tuple[Requirement, CheckEvaluation]] = []
+    warnings: list[str] = list(version.extraction_warnings or []) if version else []
+    evaluations: list[tuple[Requirement, CheckEvaluation, dict[str, Any]]] = []
     snapshot: list[dict[str, Any]] = []
     total = max(1, len(requirements))
     for i, req in enumerate(requirements):
@@ -224,8 +351,9 @@ def execute_run(db: Session, job: Job, checkpoint: Checkpoint) -> None:
         snapshot.append(
             {"requirement_id": str(req.id), "code": req.code, "check_config": req.check_config}
         )
+        meta: dict[str, Any] = {}
         try:
-            ev = evaluate(parse_config(req.check_config), ctx)
+            config = parse_check(req.check_config, run.engine_version)
         except (PydanticValidationError, ValueError) as exc:
             logger.warning(
                 "invalid check config",
@@ -237,7 +365,35 @@ def execute_run(db: Session, job: Job, checkpoint: Checkpoint) -> None:
                 "The check configuration is invalid; review manually.",
             )
             warnings.append(f"{req.code}: check configuration invalid.")
-        evaluations.append((req, ev))
+        else:
+            if is_data_check(config):
+                missing = sorted(
+                    k.value
+                    for k in datasets_used(config)  # type: ignore[arg-type]
+                    if k not in data_ctx.datasets
+                )
+                if missing:
+                    ev = CheckEvaluation(
+                        CheckOutcome.NOT_APPLICABLE,
+                        False,
+                        f"Not run: this review has no {', '.join(missing)} dataset.",
+                    )
+                else:
+                    dev = evaluate_data(config, data_ctx)  # type: ignore[arg-type]
+                    ev = CheckEvaluation(
+                        dev.outcome, dev.needs_attention, dev.message, dev.evidence
+                    )
+                    meta = dev.meta
+                    for w in dev.meta.get("warnings", []):
+                        if f"{req.code}: {w}" not in warnings:
+                            warnings.append(f"{req.code}: {w}")
+            elif doc_ctx is None:
+                ev = CheckEvaluation(
+                    CheckOutcome.NOT_APPLICABLE, False, "Not run: this review has no document."
+                )
+            else:
+                ev = evaluate(config, doc_ctx)  # type: ignore[arg-type]
+        evaluations.append((req, ev, meta))
     checkpoint(95)
 
     # Write everything in one transaction. Unique constraints back this up.
@@ -251,7 +407,7 @@ def execute_run(db: Session, job: Job, checkpoint: Checkpoint) -> None:
             )
         )
     )
-    for req, ev in evaluations:
+    for req, ev, meta in evaluations:
         if req.id in existing_results:
             continue
         result = CheckResult(
@@ -262,6 +418,8 @@ def execute_run(db: Session, job: Job, checkpoint: Checkpoint) -> None:
             needs_attention=ev.needs_attention,
             message=ev.message,
             evidence=ev.evidence,
+            meta=meta,
+            result_hash=result_hash(ev, meta),
         )
         db.add(result)
         db.flush()
@@ -281,6 +439,7 @@ def execute_run(db: Session, job: Job, checkpoint: Checkpoint) -> None:
                 )
             )
     run.config_snapshot = snapshot
+    run.inputs_snapshot = inputs
     run.warnings = warnings
     run.started_at = started
     run.finished_at = _now()
@@ -408,13 +567,47 @@ def _user_name(db: Session, user_id: uuid.UUID | None) -> str | None:
     return u.full_name if u else None
 
 
+def _rule_pack_scope(db: Session, review: Review) -> dict[str, Any] | None:
+    if review.rule_pack_version_id is None:
+        return None
+    v = db.get(RulePackVersion, review.rule_pack_version_id)
+    if v is None:
+        return None
+    return {
+        "name": v.rule_pack.name,
+        "jurisdiction": v.rule_pack.jurisdiction,
+        "version": v.version_number,
+        "is_synthetic": v.rule_pack.is_synthetic,
+    }
+
+
+def _report_evidence(e: dict[str, Any]) -> dict[str, Any]:
+    if e.get("type") == "dataset_rows":
+        return {
+            "type": "dataset_rows",
+            "dataset_kind": e.get("dataset_kind"),
+            "version_number": e.get("version_number"),
+            "label": e.get("label"),
+            "row_ids": e.get("row_ids", []),
+            "row_count": e.get("row_count"),
+            "columns": e.get("columns", []),
+            "rows": e.get("rows", [])[:20],
+            "detail": e.get("detail", {}),
+        }
+    return {
+        "ref": e.get("ref"),
+        "page_number": e.get("page_number"),
+        "paragraph_number": e.get("paragraph_number"),
+        "quote": e.get("quote"),
+    }
+
+
 def build_snapshot(
     db: Session, review: Review, signer: User, signed_at: datetime, version: int
 ) -> dict[str, Any]:
     dv = review.document_version
     cv = review.checklist_version
-    doc = db.get(Document, dv.document_id)
-    assert doc is not None
+    doc = db.get(Document, dv.document_id) if dv else None
     run = db.scalar(
         select(ReviewRun)
         .where(ReviewRun.review_id == review.id)
@@ -439,6 +632,14 @@ def build_snapshot(
 
     ai_findings = [f for f in findings if f.ai_suggestion is not None]
     limitations = list(LIMITATIONS)
+    if dv is not None and db.scalar(
+        select(SourceBlock.id)
+        .where(SourceBlock.document_version_id == dv.id, SourceBlock.is_ocr.is_(True))
+        .limit(1)
+    ):
+        limitations[1] = OCR_LIMITATION
+    if review.datasets:
+        limitations.insert(1, DATA_LIMITATION)
     if not ai_findings:
         limitations.insert(2, AI_DISABLED_LIMITATION)
     else:
@@ -453,13 +654,16 @@ def build_snapshot(
         "organization_is_demo": bool(org and org.is_demo),
         "review": {"id": str(review.id), "title": review.title, "is_demo": review.is_demo},
         "scope": {
-            "document_title": doc.title,
-            "document_type": doc.document_type,
-            "document_version": dv.version_number,
-            "original_filename": dv.original_filename,
-            "file_format": dv.file_format,
-            "sha256": dv.sha256,
-            "page_count": dv.page_count,
+            "document_title": doc.title if doc else None,
+            "document_type": doc.document_type if doc else None,
+            "document_version": dv.version_number if dv else None,
+            "original_filename": dv.original_filename if dv else None,
+            "file_format": dv.file_format if dv else None,
+            "sha256": dv.sha256 if dv else None,
+            "page_count": dv.page_count if dv else None,
+            "datasets": list((run.inputs_snapshot or {}).get("datasets", [])) if run else [],
+            "rule_pack": _rule_pack_scope(db, review),
+            "as_of_date": (run.inputs_snapshot or {}).get("as_of_date") if run else None,
             "checklist_name": cv.checklist.name,
             "checklist_kind": cv.checklist.kind.value,
             "checklist_version": cv.version_number,
@@ -473,7 +677,7 @@ def build_snapshot(
             "run_finished_at": run.finished_at.isoformat() if run and run.finished_at else None,
             "ai_enabled": bool(ai_findings),
         },
-        "extraction_warnings": list(dv.extraction_warnings or []),
+        "extraction_warnings": list(dv.extraction_warnings or []) if dv else [],
         "run_warnings": list(run.warnings or []) if run else [],
         "check_results": [
             {
@@ -510,15 +714,7 @@ def build_snapshot(
                 }
                 if f.ai_suggestion
                 else None,
-                "evidence": [
-                    {
-                        "ref": e.get("ref"),
-                        "page_number": e.get("page_number"),
-                        "paragraph_number": e.get("paragraph_number"),
-                        "quote": e.get("quote"),
-                    }
-                    for e in f.evidence
-                ],
+                "evidence": [_report_evidence(e) for e in f.evidence],
             }
             for f in findings
         ],

@@ -1,0 +1,944 @@
+[
+ {
+  "format": "txt",
+  "document_type": "policy",
+  "code": "DEMO-01",
+  "outcome": "match_found",
+  "needs_attention": false,
+  "message": "Found: policy owner.",
+  "evidence": [
+   {
+    "block_id": "00000000-0000-0000-0000-000000000003",
+    "ref": "para-3",
+    "page_number": null,
+    "paragraph_number": 3,
+    "quote": "Policy owner",
+    "context": "Policy owner: Head of Information Security (fictional role).",
+    "highlight_start": 0,
+    "highlight_end": 12
+   }
+  ]
+ },
+ {
+  "format": "txt",
+  "document_type": "policy",
+  "code": "DEMO-02",
+  "outcome": "match_found",
+  "needs_attention": false,
+  "message": "Pattern found.",
+  "evidence": [
+   {
+    "block_id": "00000000-0000-0000-0000-000000000004",
+    "ref": "para-4",
+    "page_number": null,
+    "paragraph_number": 4,
+    "quote": "Effective date: 01/03/2026",
+    "context": "Effective date: 01/03/2026. Next review date: 01/03/2027.",
+    "highlight_start": 0,
+    "highlight_end": 26
+   }
+  ]
+ },
+ {
+  "format": "txt",
+  "document_type": "policy",
+  "code": "DEMO-03",
+  "outcome": "match_found",
+  "needs_attention": false,
+  "message": "Found: retention.",
+  "evidence": [
+   {
+    "block_id": "00000000-0000-0000-0000-000000000007",
+    "ref": "para-7",
+    "page_number": null,
+    "paragraph_number": 7,
+    "quote": "retention",
+    "context": "2. Data retention",
+    "highlight_start": 8,
+    "highlight_end": 17
+   },
+   {
+    "block_id": "00000000-0000-0000-0000-000000000008",
+    "ref": "para-8",
+    "page_number": null,
+    "paragraph_number": 8,
+    "quote": "Retention",
+    "context": "Vendors keep shared data only for as long as the contract requires. Retention periods are listed in each data sharing schedule.",
+    "highlight_start": 68,
+    "highlight_end": 77
+   }
+  ]
+ },
+ {
+  "format": "txt",
+  "document_type": "policy",
+  "code": "DEMO-04",
+  "outcome": "match_found",
+  "needs_attention": false,
+  "message": "All phrase groups found.",
+  "evidence": [
+   {
+    "block_id": "00000000-0000-0000-0000-00000000000a",
+    "ref": "para-10",
+    "page_number": null,
+    "paragraph_number": 10,
+    "quote": "incident",
+    "context": "3. Security incidents",
+    "highlight_start": 12,
+    "highlight_end": 20
+   },
+   {
+    "block_id": "00000000-0000-0000-0000-00000000000b",
+    "ref": "para-11",
+    "page_number": null,
+    "paragraph_number": 11,
+    "quote": "incident",
+    "context": "Vendors must notify Example Trading Co. of any security incident affecting shared data without undue delay.",
+    "highlight_start": 56,
+    "highlight_end": 64
+   },
+   {
+    "block_id": "00000000-0000-0000-0000-00000000000b",
+    "ref": "para-11",
+    "page_number": null,
+    "paragraph_number": 11,
+    "quote": "notify",
+    "context": "Vendors must notify Example Trading Co. of any security incident affecting shared data without undu",
+    "highlight_start": 13,
+    "highlight_end": 19
+   }
+  ]
+ },
+ {
+  "format": "txt",
+  "document_type": "policy",
+  "code": "DEMO-05",
+  "outcome": "match_found",
+  "needs_attention": true,
+  "message": "Prohibited term(s) present: 100% secure.",
+  "evidence": [
+   {
+    "block_id": "00000000-0000-0000-0000-00000000000c",
+    "ref": "para-12",
+    "page_number": null,
+    "paragraph_number": 12,
+    "quote": "100% secure",
+    "context": "Our systems are 100% secure, so incidents are not expected.",
+    "highlight_start": 16,
+    "highlight_end": 27
+   }
+  ]
+ },
+ {
+  "format": "txt",
+  "document_type": "policy",
+  "code": "DEMO-06",
+  "outcome": "no_match_found",
+  "needs_attention": true,
+  "message": "None of the expected phrases were found.",
+  "evidence": []
+ },
+ {
+  "format": "txt",
+  "document_type": "policy",
+  "code": "DEMO-07",
+  "outcome": "match_found",
+  "needs_attention": false,
+  "message": "Metadata 'document_type' satisfied.",
+  "evidence": []
+ },
+ {
+  "format": "txt",
+  "document_type": "policy",
+  "code": "DEMO-08",
+  "outcome": "needs_human_review",
+  "needs_attention": true,
+  "message": "Manual review required.",
+  "evidence": []
+ },
+ {
+  "format": "txt",
+  "document_type": "contract",
+  "code": "DEMO-01",
+  "outcome": "match_found",
+  "needs_attention": false,
+  "message": "Found: policy owner.",
+  "evidence": [
+   {
+    "block_id": "00000000-0000-0000-0000-000000000003",
+    "ref": "para-3",
+    "page_number": null,
+    "paragraph_number": 3,
+    "quote": "Policy owner",
+    "context": "Policy owner: Head of Information Security (fictional role).",
+    "highlight_start": 0,
+    "highlight_end": 12
+   }
+  ]
+ },
+ {
+  "format": "txt",
+  "document_type": "contract",
+  "code": "DEMO-02",
+  "outcome": "match_found",
+  "needs_attention": false,
+  "message": "Pattern found.",
+  "evidence": [
+   {
+    "block_id": "00000000-0000-0000-0000-000000000004",
+    "ref": "para-4",
+    "page_number": null,
+    "paragraph_number": 4,
+    "quote": "Effective date: 01/03/2026",
+    "context": "Effective date: 01/03/2026. Next review date: 01/03/2027.",
+    "highlight_start": 0,
+    "highlight_end": 26
+   }
+  ]
+ },
+ {
+  "format": "txt",
+  "document_type": "contract",
+  "code": "DEMO-03",
+  "outcome": "match_found",
+  "needs_attention": false,
+  "message": "Found: retention.",
+  "evidence": [
+   {
+    "block_id": "00000000-0000-0000-0000-000000000007",
+    "ref": "para-7",
+    "page_number": null,
+    "paragraph_number": 7,
+    "quote": "retention",
+    "context": "2. Data retention",
+    "highlight_start": 8,
+    "highlight_end": 17
+   },
+   {
+    "block_id": "00000000-0000-0000-0000-000000000008",
+    "ref": "para-8",
+    "page_number": null,
+    "paragraph_number": 8,
+    "quote": "Retention",
+    "context": "Vendors keep shared data only for as long as the contract requires. Retention periods are listed in each data sharing schedule.",
+    "highlight_start": 68,
+    "highlight_end": 77
+   }
+  ]
+ },
+ {
+  "format": "txt",
+  "document_type": "contract",
+  "code": "DEMO-04",
+  "outcome": "match_found",
+  "needs_attention": false,
+  "message": "All phrase groups found.",
+  "evidence": [
+   {
+    "block_id": "00000000-0000-0000-0000-00000000000a",
+    "ref": "para-10",
+    "page_number": null,
+    "paragraph_number": 10,
+    "quote": "incident",
+    "context": "3. Security incidents",
+    "highlight_start": 12,
+    "highlight_end": 20
+   },
+   {
+    "block_id": "00000000-0000-0000-0000-00000000000b",
+    "ref": "para-11",
+    "page_number": null,
+    "paragraph_number": 11,
+    "quote": "incident",
+    "context": "Vendors must notify Example Trading Co. of any security incident affecting shared data without undue delay.",
+    "highlight_start": 56,
+    "highlight_end": 64
+   },
+   {
+    "block_id": "00000000-0000-0000-0000-00000000000b",
+    "ref": "para-11",
+    "page_number": null,
+    "paragraph_number": 11,
+    "quote": "notify",
+    "context": "Vendors must notify Example Trading Co. of any security incident affecting shared data without undu",
+    "highlight_start": 13,
+    "highlight_end": 19
+   }
+  ]
+ },
+ {
+  "format": "txt",
+  "document_type": "contract",
+  "code": "DEMO-05",
+  "outcome": "match_found",
+  "needs_attention": true,
+  "message": "Prohibited term(s) present: 100% secure.",
+  "evidence": [
+   {
+    "block_id": "00000000-0000-0000-0000-00000000000c",
+    "ref": "para-12",
+    "page_number": null,
+    "paragraph_number": 12,
+    "quote": "100% secure",
+    "context": "Our systems are 100% secure, so incidents are not expected.",
+    "highlight_start": 16,
+    "highlight_end": 27
+   }
+  ]
+ },
+ {
+  "format": "txt",
+  "document_type": "contract",
+  "code": "DEMO-06",
+  "outcome": "no_match_found",
+  "needs_attention": true,
+  "message": "None of the expected phrases were found.",
+  "evidence": []
+ },
+ {
+  "format": "txt",
+  "document_type": "contract",
+  "code": "DEMO-07",
+  "outcome": "no_match_found",
+  "needs_attention": true,
+  "message": "Metadata 'document_type' not satisfied (expected 'policy').",
+  "evidence": []
+ },
+ {
+  "format": "txt",
+  "document_type": "contract",
+  "code": "DEMO-08",
+  "outcome": "needs_human_review",
+  "needs_attention": true,
+  "message": "Manual review required.",
+  "evidence": []
+ },
+ {
+  "format": "docx",
+  "document_type": "policy",
+  "code": "DEMO-01",
+  "outcome": "match_found",
+  "needs_attention": false,
+  "message": "Found: policy owner.",
+  "evidence": [
+   {
+    "block_id": "00000000-0000-0000-0000-000000000003",
+    "ref": "para-3",
+    "page_number": null,
+    "paragraph_number": 3,
+    "quote": "Policy owner",
+    "context": "Policy owner: Head of Information Security (fictional role).",
+    "highlight_start": 0,
+    "highlight_end": 12
+   }
+  ]
+ },
+ {
+  "format": "docx",
+  "document_type": "policy",
+  "code": "DEMO-02",
+  "outcome": "match_found",
+  "needs_attention": false,
+  "message": "Pattern found.",
+  "evidence": [
+   {
+    "block_id": "00000000-0000-0000-0000-000000000004",
+    "ref": "para-4",
+    "page_number": null,
+    "paragraph_number": 4,
+    "quote": "Effective date: 01/03/2026",
+    "context": "Effective date: 01/03/2026. Next review date: 01/03/2027.",
+    "highlight_start": 0,
+    "highlight_end": 26
+   }
+  ]
+ },
+ {
+  "format": "docx",
+  "document_type": "policy",
+  "code": "DEMO-03",
+  "outcome": "match_found",
+  "needs_attention": false,
+  "message": "Found: retention.",
+  "evidence": [
+   {
+    "block_id": "00000000-0000-0000-0000-000000000007",
+    "ref": "para-7",
+    "page_number": null,
+    "paragraph_number": 7,
+    "quote": "retention",
+    "context": "2. Data retention",
+    "highlight_start": 8,
+    "highlight_end": 17
+   },
+   {
+    "block_id": "00000000-0000-0000-0000-000000000008",
+    "ref": "para-8",
+    "page_number": null,
+    "paragraph_number": 8,
+    "quote": "Retention",
+    "context": "Vendors keep shared data only for as long as the contract requires. Retention periods are listed in each data sharing schedule.",
+    "highlight_start": 68,
+    "highlight_end": 77
+   }
+  ]
+ },
+ {
+  "format": "docx",
+  "document_type": "policy",
+  "code": "DEMO-04",
+  "outcome": "match_found",
+  "needs_attention": false,
+  "message": "All phrase groups found.",
+  "evidence": [
+   {
+    "block_id": "00000000-0000-0000-0000-00000000000a",
+    "ref": "para-10",
+    "page_number": null,
+    "paragraph_number": 10,
+    "quote": "incident",
+    "context": "3. Security incidents",
+    "highlight_start": 12,
+    "highlight_end": 20
+   },
+   {
+    "block_id": "00000000-0000-0000-0000-00000000000b",
+    "ref": "para-11",
+    "page_number": null,
+    "paragraph_number": 11,
+    "quote": "incident",
+    "context": "Vendors must notify Example Trading Co. of any security incident affecting shared data without undue delay.",
+    "highlight_start": 56,
+    "highlight_end": 64
+   },
+   {
+    "block_id": "00000000-0000-0000-0000-00000000000b",
+    "ref": "para-11",
+    "page_number": null,
+    "paragraph_number": 11,
+    "quote": "notify",
+    "context": "Vendors must notify Example Trading Co. of any security incident affecting shared data without undu",
+    "highlight_start": 13,
+    "highlight_end": 19
+   }
+  ]
+ },
+ {
+  "format": "docx",
+  "document_type": "policy",
+  "code": "DEMO-05",
+  "outcome": "match_found",
+  "needs_attention": true,
+  "message": "Prohibited term(s) present: 100% secure.",
+  "evidence": [
+   {
+    "block_id": "00000000-0000-0000-0000-00000000000c",
+    "ref": "para-12",
+    "page_number": null,
+    "paragraph_number": 12,
+    "quote": "100% secure",
+    "context": "Our systems are 100% secure, so incidents are not expected.",
+    "highlight_start": 16,
+    "highlight_end": 27
+   }
+  ]
+ },
+ {
+  "format": "docx",
+  "document_type": "policy",
+  "code": "DEMO-06",
+  "outcome": "no_match_found",
+  "needs_attention": true,
+  "message": "None of the expected phrases were found.",
+  "evidence": []
+ },
+ {
+  "format": "docx",
+  "document_type": "policy",
+  "code": "DEMO-07",
+  "outcome": "match_found",
+  "needs_attention": false,
+  "message": "Metadata 'document_type' satisfied.",
+  "evidence": []
+ },
+ {
+  "format": "docx",
+  "document_type": "policy",
+  "code": "DEMO-08",
+  "outcome": "needs_human_review",
+  "needs_attention": true,
+  "message": "Manual review required.",
+  "evidence": []
+ },
+ {
+  "format": "docx",
+  "document_type": "contract",
+  "code": "DEMO-01",
+  "outcome": "match_found",
+  "needs_attention": false,
+  "message": "Found: policy owner.",
+  "evidence": [
+   {
+    "block_id": "00000000-0000-0000-0000-000000000003",
+    "ref": "para-3",
+    "page_number": null,
+    "paragraph_number": 3,
+    "quote": "Policy owner",
+    "context": "Policy owner: Head of Information Security (fictional role).",
+    "highlight_start": 0,
+    "highlight_end": 12
+   }
+  ]
+ },
+ {
+  "format": "docx",
+  "document_type": "contract",
+  "code": "DEMO-02",
+  "outcome": "match_found",
+  "needs_attention": false,
+  "message": "Pattern found.",
+  "evidence": [
+   {
+    "block_id": "00000000-0000-0000-0000-000000000004",
+    "ref": "para-4",
+    "page_number": null,
+    "paragraph_number": 4,
+    "quote": "Effective date: 01/03/2026",
+    "context": "Effective date: 01/03/2026. Next review date: 01/03/2027.",
+    "highlight_start": 0,
+    "highlight_end": 26
+   }
+  ]
+ },
+ {
+  "format": "docx",
+  "document_type": "contract",
+  "code": "DEMO-03",
+  "outcome": "match_found",
+  "needs_attention": false,
+  "message": "Found: retention.",
+  "evidence": [
+   {
+    "block_id": "00000000-0000-0000-0000-000000000007",
+    "ref": "para-7",
+    "page_number": null,
+    "paragraph_number": 7,
+    "quote": "retention",
+    "context": "2. Data retention",
+    "highlight_start": 8,
+    "highlight_end": 17
+   },
+   {
+    "block_id": "00000000-0000-0000-0000-000000000008",
+    "ref": "para-8",
+    "page_number": null,
+    "paragraph_number": 8,
+    "quote": "Retention",
+    "context": "Vendors keep shared data only for as long as the contract requires. Retention periods are listed in each data sharing schedule.",
+    "highlight_start": 68,
+    "highlight_end": 77
+   }
+  ]
+ },
+ {
+  "format": "docx",
+  "document_type": "contract",
+  "code": "DEMO-04",
+  "outcome": "match_found",
+  "needs_attention": false,
+  "message": "All phrase groups found.",
+  "evidence": [
+   {
+    "block_id": "00000000-0000-0000-0000-00000000000a",
+    "ref": "para-10",
+    "page_number": null,
+    "paragraph_number": 10,
+    "quote": "incident",
+    "context": "3. Security incidents",
+    "highlight_start": 12,
+    "highlight_end": 20
+   },
+   {
+    "block_id": "00000000-0000-0000-0000-00000000000b",
+    "ref": "para-11",
+    "page_number": null,
+    "paragraph_number": 11,
+    "quote": "incident",
+    "context": "Vendors must notify Example Trading Co. of any security incident affecting shared data without undue delay.",
+    "highlight_start": 56,
+    "highlight_end": 64
+   },
+   {
+    "block_id": "00000000-0000-0000-0000-00000000000b",
+    "ref": "para-11",
+    "page_number": null,
+    "paragraph_number": 11,
+    "quote": "notify",
+    "context": "Vendors must notify Example Trading Co. of any security incident affecting shared data without undu",
+    "highlight_start": 13,
+    "highlight_end": 19
+   }
+  ]
+ },
+ {
+  "format": "docx",
+  "document_type": "contract",
+  "code": "DEMO-05",
+  "outcome": "match_found",
+  "needs_attention": true,
+  "message": "Prohibited term(s) present: 100% secure.",
+  "evidence": [
+   {
+    "block_id": "00000000-0000-0000-0000-00000000000c",
+    "ref": "para-12",
+    "page_number": null,
+    "paragraph_number": 12,
+    "quote": "100% secure",
+    "context": "Our systems are 100% secure, so incidents are not expected.",
+    "highlight_start": 16,
+    "highlight_end": 27
+   }
+  ]
+ },
+ {
+  "format": "docx",
+  "document_type": "contract",
+  "code": "DEMO-06",
+  "outcome": "no_match_found",
+  "needs_attention": true,
+  "message": "None of the expected phrases were found.",
+  "evidence": []
+ },
+ {
+  "format": "docx",
+  "document_type": "contract",
+  "code": "DEMO-07",
+  "outcome": "no_match_found",
+  "needs_attention": true,
+  "message": "Metadata 'document_type' not satisfied (expected 'policy').",
+  "evidence": []
+ },
+ {
+  "format": "docx",
+  "document_type": "contract",
+  "code": "DEMO-08",
+  "outcome": "needs_human_review",
+  "needs_attention": true,
+  "message": "Manual review required.",
+  "evidence": []
+ },
+ {
+  "format": "pdf",
+  "document_type": "policy",
+  "code": "DEMO-01",
+  "outcome": "match_found",
+  "needs_attention": false,
+  "message": "Found: policy owner.",
+  "evidence": [
+   {
+    "block_id": "00000000-0000-0000-0000-000000000003",
+    "ref": "p1.b3",
+    "page_number": 1,
+    "paragraph_number": null,
+    "quote": "Policy owner",
+    "context": "Policy owner: Head of Information Security (fictional role).",
+    "highlight_start": 0,
+    "highlight_end": 12
+   }
+  ]
+ },
+ {
+  "format": "pdf",
+  "document_type": "policy",
+  "code": "DEMO-02",
+  "outcome": "match_found",
+  "needs_attention": false,
+  "message": "Pattern found.",
+  "evidence": [
+   {
+    "block_id": "00000000-0000-0000-0000-000000000004",
+    "ref": "p1.b4",
+    "page_number": 1,
+    "paragraph_number": null,
+    "quote": "Effective date: 01/03/2026",
+    "context": "Effective date: 01/03/2026. Next review date: 01/03/2027.",
+    "highlight_start": 0,
+    "highlight_end": 26
+   }
+  ]
+ },
+ {
+  "format": "pdf",
+  "document_type": "policy",
+  "code": "DEMO-03",
+  "outcome": "match_found",
+  "needs_attention": false,
+  "message": "Found: retention.",
+  "evidence": [
+   {
+    "block_id": "00000000-0000-0000-0000-000000000007",
+    "ref": "p1.b7",
+    "page_number": 1,
+    "paragraph_number": null,
+    "quote": "retention",
+    "context": "2. Data retention",
+    "highlight_start": 8,
+    "highlight_end": 17
+   },
+   {
+    "block_id": "00000000-0000-0000-0000-000000000008",
+    "ref": "p1.b8",
+    "page_number": 1,
+    "paragraph_number": null,
+    "quote": "Retention",
+    "context": "Vendors keep shared data only for as long as the contract requires. Retention periods are listed in each data sharing schedule.",
+    "highlight_start": 68,
+    "highlight_end": 77
+   }
+  ]
+ },
+ {
+  "format": "pdf",
+  "document_type": "policy",
+  "code": "DEMO-04",
+  "outcome": "match_found",
+  "needs_attention": false,
+  "message": "All phrase groups found.",
+  "evidence": [
+   {
+    "block_id": "00000000-0000-0000-0000-00000000000a",
+    "ref": "p2.b1",
+    "page_number": 2,
+    "paragraph_number": null,
+    "quote": "incident",
+    "context": "3. Security incidents",
+    "highlight_start": 12,
+    "highlight_end": 20
+   },
+   {
+    "block_id": "00000000-0000-0000-0000-00000000000b",
+    "ref": "p2.b2",
+    "page_number": 2,
+    "paragraph_number": null,
+    "quote": "incident",
+    "context": "Vendors must notify Example Trading Co. of any security incident affecting shared data without undue delay.",
+    "highlight_start": 56,
+    "highlight_end": 64
+   },
+   {
+    "block_id": "00000000-0000-0000-0000-00000000000b",
+    "ref": "p2.b2",
+    "page_number": 2,
+    "paragraph_number": null,
+    "quote": "notify",
+    "context": "Vendors must notify Example Trading Co. of any security incident affecting shared data without undu",
+    "highlight_start": 13,
+    "highlight_end": 19
+   }
+  ]
+ },
+ {
+  "format": "pdf",
+  "document_type": "policy",
+  "code": "DEMO-05",
+  "outcome": "match_found",
+  "needs_attention": true,
+  "message": "Prohibited term(s) present: 100% secure.",
+  "evidence": [
+   {
+    "block_id": "00000000-0000-0000-0000-00000000000c",
+    "ref": "p2.b3",
+    "page_number": 2,
+    "paragraph_number": null,
+    "quote": "100% secure",
+    "context": "Our systems are 100% secure, so incidents are not expected.",
+    "highlight_start": 16,
+    "highlight_end": 27
+   }
+  ]
+ },
+ {
+  "format": "pdf",
+  "document_type": "policy",
+  "code": "DEMO-06",
+  "outcome": "no_match_found",
+  "needs_attention": true,
+  "message": "None of the expected phrases were found.",
+  "evidence": []
+ },
+ {
+  "format": "pdf",
+  "document_type": "policy",
+  "code": "DEMO-07",
+  "outcome": "match_found",
+  "needs_attention": false,
+  "message": "Metadata 'document_type' satisfied.",
+  "evidence": []
+ },
+ {
+  "format": "pdf",
+  "document_type": "policy",
+  "code": "DEMO-08",
+  "outcome": "needs_human_review",
+  "needs_attention": true,
+  "message": "Manual review required.",
+  "evidence": []
+ },
+ {
+  "format": "pdf",
+  "document_type": "contract",
+  "code": "DEMO-01",
+  "outcome": "match_found",
+  "needs_attention": false,
+  "message": "Found: policy owner.",
+  "evidence": [
+   {
+    "block_id": "00000000-0000-0000-0000-000000000003",
+    "ref": "p1.b3",
+    "page_number": 1,
+    "paragraph_number": null,
+    "quote": "Policy owner",
+    "context": "Policy owner: Head of Information Security (fictional role).",
+    "highlight_start": 0,
+    "highlight_end": 12
+   }
+  ]
+ },
+ {
+  "format": "pdf",
+  "document_type": "contract",
+  "code": "DEMO-02",
+  "outcome": "match_found",
+  "needs_attention": false,
+  "message": "Pattern found.",
+  "evidence": [
+   {
+    "block_id": "00000000-0000-0000-0000-000000000004",
+    "ref": "p1.b4",
+    "page_number": 1,
+    "paragraph_number": null,
+    "quote": "Effective date: 01/03/2026",
+    "context": "Effective date: 01/03/2026. Next review date: 01/03/2027.",
+    "highlight_start": 0,
+    "highlight_end": 26
+   }
+  ]
+ },
+ {
+  "format": "pdf",
+  "document_type": "contract",
+  "code": "DEMO-03",
+  "outcome": "match_found",
+  "needs_attention": false,
+  "message": "Found: retention.",
+  "evidence": [
+   {
+    "block_id": "00000000-0000-0000-0000-000000000007",
+    "ref": "p1.b7",
+    "page_number": 1,
+    "paragraph_number": null,
+    "quote": "retention",
+    "context": "2. Data retention",
+    "highlight_start": 8,
+    "highlight_end": 17
+   },
+   {
+    "block_id": "00000000-0000-0000-0000-000000000008",
+    "ref": "p1.b8",
+    "page_number": 1,
+    "paragraph_number": null,
+    "quote": "Retention",
+    "context": "Vendors keep shared data only for as long as the contract requires. Retention periods are listed in each data sharing schedule.",
+    "highlight_start": 68,
+    "highlight_end": 77
+   }
+  ]
+ },
+ {
+  "format": "pdf",
+  "document_type": "contract",
+  "code": "DEMO-04",
+  "outcome": "match_found",
+  "needs_attention": false,
+  "message": "All phrase groups found.",
+  "evidence": [
+   {
+    "block_id": "00000000-0000-0000-0000-00000000000a",
+    "ref": "p2.b1",
+    "page_number": 2,
+    "paragraph_number": null,
+    "quote": "incident",
+    "context": "3. Security incidents",
+    "highlight_start": 12,
+    "highlight_end": 20
+   },
+   {
+    "block_id": "00000000-0000-0000-0000-00000000000b",
+    "ref": "p2.b2",
+    "page_number": 2,
+    "paragraph_number": null,
+    "quote": "incident",
+    "context": "Vendors must notify Example Trading Co. of any security incident affecting shared data without undue delay.",
+    "highlight_start": 56,
+    "highlight_end": 64
+   },
+   {
+    "block_id": "00000000-0000-0000-0000-00000000000b",
+    "ref": "p2.b2",
+    "page_number": 2,
+    "paragraph_number": null,
+    "quote": "notify",
+    "context": "Vendors must notify Example Trading Co. of any security incident affecting shared data without undu",
+    "highlight_start": 13,
+    "highlight_end": 19
+   }
+  ]
+ },
+ {
+  "format": "pdf",
+  "document_type": "contract",
+  "code": "DEMO-05",
+  "outcome": "match_found",
+  "needs_attention": true,
+  "message": "Prohibited term(s) present: 100% secure.",
+  "evidence": [
+   {
+    "block_id": "00000000-0000-0000-0000-00000000000c",
+    "ref": "p2.b3",
+    "page_number": 2,
+    "paragraph_number": null,
+    "quote": "100% secure",
+    "context": "Our systems are 100% secure, so incidents are not expected.",
+    "highlight_start": 16,
+    "highlight_end": 27
+   }
+  ]
+ },
+ {
+  "format": "pdf",
+  "document_type": "contract",
+  "code": "DEMO-06",
+  "outcome": "no_match_found",
+  "needs_attention": true,
+  "message": "None of the expected phrases were found.",
+  "evidence": []
+ },
+ {
+  "format": "pdf",
+  "document_type": "contract",
+  "code": "DEMO-07",
+  "outcome": "no_match_found",
+  "needs_attention": true,
+  "message": "Metadata 'document_type' not satisfied (expected 'policy').",
+  "evidence": []
+ },
+ {
+  "format": "pdf",
+  "document_type": "contract",
+  "code": "DEMO-08",
+  "outcome": "needs_human_review",
+  "needs_attention": true,
+  "message": "Manual review required.",
+  "evidence": []
+ }
+]

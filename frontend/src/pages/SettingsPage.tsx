@@ -4,17 +4,18 @@ import { useTranslation } from "react-i18next";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Bot, Building2, Info, KeyRound, Languages, Loader2, ShieldCheck, Users, type LucideIcon } from "lucide-react";
+import { Bot, Building2, Info, KeyRound, Languages, Loader2, ShieldCheck, type LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
-import type { AIStatus, Member } from "@/lib/types";
+import type { AIStatus } from "@/lib/types";
+import { MembersCard } from "@/components/members-card";
 import { MockNotice } from "@/components/ai-suggestions";
 import { useAuth } from "@/lib/auth";
 import { LANGUAGES } from "@/i18n";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { FieldError, Input, Label, Select } from "@/components/ui/input";
 import { ErrorState, errorMessage, LoadingState, PageHeader, SyntheticBadge, useUnsavedChangesWarning } from "@/components/common";
 
@@ -71,7 +72,6 @@ function PasswordForm() {
 export function SettingsPage() {
   const { t, i18n } = useTranslation();
   const { me, switchOrg } = useAuth();
-  const members = useQuery({ queryKey: ["members"], queryFn: () => api<Member[]>("/members") });
   const ai = useQuery({
     queryKey: ["ai-status"],
     queryFn: () => api<AIStatus>("/ai/status"),
@@ -114,28 +114,7 @@ export function SettingsPage() {
               <PasswordForm />
             </CardContent>
           </Card>
-          <Card className="overflow-hidden">
-            <CardHeader>
-              <SectionTitle icon={Users}>{t("settings.members")}</SectionTitle>
-              <CardDescription>{t("settings.membersHint")}</CardDescription>
-            </CardHeader>
-            {members.isLoading && <LoadingState rows={3} />}
-            {members.isError && <ErrorState error={members.error} onRetry={() => void members.refetch()} />}
-            {members.data && (
-              <ul className="divide-y divide-slate-100">
-                {members.data.map((m) => (
-                  <li key={m.user_id} className="flex items-center gap-3 px-5 py-3">
-                    <Avatar name={m.full_name} />
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium text-navy-900">{m.full_name}</p>
-                      <p className="truncate text-xs text-slate-500">{m.email}</p>
-                    </div>
-                    <Badge tone={m.role === "org_admin" ? "navy" : "neutral"}>{t(`roles.${m.role}`)}</Badge>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </Card>
+          <MembersCard />
         </div>
         <div className="space-y-6">
           <Card>

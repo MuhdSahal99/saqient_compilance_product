@@ -7,7 +7,7 @@ sends data to external services. The steps below are for a human operator.
 
 ```bash
 cp .env.example .env            # optional; compose has development defaults
-docker compose up -d --build    # db, redis, migrate (one-shot), api, worker, web
+docker compose up -d --build    # db, redis, migrate (one-shot), api, worker, beat, web
 docker compose exec api python -m app.seed --reset   # synthetic demo data, DEMO_MODE=true only
 open http://localhost:8080
 ```
@@ -20,7 +20,9 @@ Services:
 | `redis` | redis:7-alpine | Celery broker and login rate limiting. No persistence. |
 | `migrate` | backend image | Runs `alembic upgrade head` once, then exits. `api` and `worker` wait for it. |
 | `api` | backend image | FastAPI on :8000 (internal only). Health: `/api/health`, readiness: `/api/health/ready` (checks DB and Redis). |
-| `worker` | backend image | Celery worker: extraction and check runs. |
+| `worker` | backend image | Celery worker: extraction, dataset imports, check runs, reminder emails. |
+| `beat` | backend image | Celery beat: schedules the daily task due-date reminders (05:00 UTC). Run exactly one. |
+| `clamav` | clamav/clamav:1.4 | Optional (`--profile clamav`): clamd for upload scanning with `MALWARE_SCAN=clamav`. Not published. |
 | `web` | frontend image (nginx) | SPA plus `/api` reverse proxy on 127.0.0.1:`${WEB_PORT:-8080}`. Same origin, so the session cookie stays first-party. |
 
 Volumes: `pgdata` (database) and `storage` (uploaded files, shared by `api` and
@@ -28,15 +30,23 @@ Volumes: `pgdata` (database) and `storage` (uploaded files, shared by `api` and
 
 Host ports can be changed with `DB_PORT`, `REDIS_PORT`, `WEB_PORT`.
 
+Email: in development, invitations, password-reset links and reminders are
+written as `.eml` files to `storage/mail/` in the `storage` volume (read them
+with `docker compose exec api ls /data/storage/mail`). Nothing is sent.
+
 ## Production configuration
 
 The API refuses to start with `APP_ENV=production` unless:
 
 - `SECRET_KEY` is a random value of at least 32 characters (not the example value);
+- `FIELD_ENCRYPTION_KEY` is 32 random bytes, base64-encoded (encrypts TRNs; losing it
+  makes stored TRNs unreadable, so back it up with the database credentials);
 - `DEMO_MODE=false` (demo users cannot sign in);
 - `COOKIE_SECURE=true` (serve over HTTPS only);
 - `CELERY_TASK_ALWAYS_EAGER=false`;
-- the AI provider is not `mock`.
+- the AI provider is not `mock`;
+- `MAIL_BACKEND` is `smtp` (with `SMTP_HOST`) or `disabled`, and `APP_BASE_URL`
+  is the https web URL used in email links.
 
 Also set `CORS_ORIGINS` to the exact web origin, a strong `POSTGRES_PASSWORD`,
 and keep `AI_ENABLED=false` unless docs/MODEL_INTEGRATION.md has been followed.

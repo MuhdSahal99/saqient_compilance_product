@@ -19,6 +19,11 @@ import { ReportsPage } from "@/pages/ReportsPage";
 import { ActivityPage } from "@/pages/ActivityPage";
 import { SettingsPage } from "@/pages/SettingsPage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
+import { EntitiesPage } from "@/pages/EntitiesPage";
+import { DatasetsPage } from "@/pages/DatasetsPage";
+import { DatasetDetailPage } from "@/pages/DatasetDetailPage";
+import { RulePacksPage, RulePackVersionPage } from "@/pages/RulePacksPage";
+import { AcceptInvitePage, ForgotPasswordPage, ResetPasswordPage } from "@/pages/PublicAuthPages";
 
 function RequireAuth() {
   const { me, loading } = useAuth();
@@ -54,6 +59,9 @@ export const routes = [
     element: <Root />,
     children: [
       { path: "/login", element: <LoginPage /> },
+      { path: "/forgot-password", element: <ForgotPasswordPage /> },
+      { path: "/reset-password", element: <ResetPasswordPage /> },
+      { path: "/accept-invite", element: <AcceptInvitePage /> },
       {
         element: <RequireAuth />,
         children: [
@@ -67,6 +75,11 @@ export const routes = [
               { path: "/documents/:documentId", element: <DocumentDetailPage /> },
               { path: "/checklists", element: <ChecklistsPage /> },
               { path: "/checklists/versions/:versionId", element: <ChecklistVersionPage /> },
+              { path: "/entities", element: <EntitiesPage /> },
+              { path: "/datasets", element: <DatasetsPage /> },
+              { path: "/datasets/:datasetId", element: <DatasetDetailPage /> },
+              { path: "/rule-packs", element: <RulePacksPage /> },
+              { path: "/rule-packs/versions/:versionId", element: <RulePackVersionPage /> },
               { path: "/findings", element: <FindingsPage /> },
               { path: "/tasks", element: <TasksPage /> },
               { path: "/reports", element: <ReportsPage /> },

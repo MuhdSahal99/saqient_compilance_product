@@ -8,9 +8,11 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import exists, func, or_, select
 from sqlalchemy.orm import Session, aliased
 
+from app.api.uploads import scan_refusal
 from app.config import get_settings
 from app.deps import DB, Ctx, Decider, Writer, get_owned_or_404
 from app.extraction import ValidationError
+from app.malware import MalwareFound, ScannerUnavailable
 from app.models import (
     Document,
     DocumentVersion,
@@ -186,6 +188,8 @@ async def upload_document(
     except ValidationError as exc:
         db.rollback()
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+    except (MalwareFound, ScannerUnavailable) as exc:
+        raise scan_refusal(db, ctx, exc, data, "document") from exc
     except DuplicateDocument as exc:
         db.rollback()
         return _duplicate_response(exc)
@@ -255,6 +259,8 @@ async def upload_version(
     except ValidationError as exc:
         db.rollback()
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+    except (MalwareFound, ScannerUnavailable) as exc:
+        raise scan_refusal(db, ctx, exc, data, "document") from exc
     except DuplicateDocument as exc:
         db.rollback()
         return _duplicate_response(exc)

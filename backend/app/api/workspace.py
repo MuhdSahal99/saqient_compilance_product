@@ -11,7 +11,7 @@ from sqlalchemy import func, select
 
 from app.ai import get_provider
 from app.config import get_settings
-from app.deps import DB, Ctx
+from app.deps import DB, Admin, Ctx
 from app.models import (
     AuditEvent,
     CheckResult,
@@ -28,7 +28,8 @@ from app.models import (
     ReviewStatus,
     VersionStatus,
 )
-from app.schemas import AuditEventOut, MemberOut, Page
+from app.schemas import AuditEventOut, AuditVerificationOut, MemberOut, Page
+from app.services import audit
 from app.services.ai_suggestions import FEATURE
 
 router = APIRouter(tags=["workspace"])
@@ -175,7 +176,7 @@ def audit_events(
     total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
     rows = (
         db.scalars(
-            stmt.order_by(AuditEvent.created_at.desc())
+            stmt.order_by(AuditEvent.created_at.desc(), AuditEvent.seq.desc())
             .offset((page - 1) * page_size)
             .limit(page_size)
         )
@@ -192,6 +193,8 @@ def audit_events(
                 object_id=e.object_id,
                 meta=e.meta,
                 created_at=e.created_at,
+                seq=e.seq,
+                hash=e.hash,
             )
             for e in rows
         ],
@@ -201,13 +204,29 @@ def audit_events(
     )
 
 
+@router.get(
+    "/audit-events/verify",
+    response_model=AuditVerificationOut,
+    summary="Verify the organisation's audit chain",
+    description="Recomputes every audit event hash in order. Organisation admins only.",
+)
+def verify_audit_events(ctx: Admin, db: DB) -> AuditVerificationOut:
+    result = audit.verify_chain(db, ctx.org_id)
+    return AuditVerificationOut(**vars(result))
+
+
 @router.get("/members", response_model=list[MemberOut])
 def members(ctx: Ctx, db: DB) -> list[MemberOut]:
     rows = db.scalars(select(Membership).where(Membership.org_id == ctx.org_id)).unique().all()
     return sorted(
         [
             MemberOut(
-                user_id=m.user_id, full_name=m.user.full_name, email=m.user.email, role=m.role
+                user_id=m.user_id,
+                full_name=m.user.full_name,
+                email=m.user.email,
+                role=m.role,
+                membership_id=m.id,
+                joined_at=m.created_at,
             )
             for m in rows
         ],

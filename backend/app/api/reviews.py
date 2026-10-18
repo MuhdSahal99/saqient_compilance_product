@@ -13,6 +13,7 @@ from app.models import (
     ChecklistVersion,
     CheckResult,
     Comment,
+    DatasetVersion,
     Document,
     DocumentVersion,
     Finding,
@@ -23,6 +24,7 @@ from app.models import (
     Review,
     ReviewRun,
     ReviewStatus,
+    RulePackVersion,
     Severity,
     SourceBlock,
     User,
@@ -42,6 +44,7 @@ from app.schemas import (
     ReopenIn,
     ReportOut,
     ReviewCreateIn,
+    ReviewDatasetOut,
     ReviewOut,
     ReviewRunOut,
 )
@@ -57,8 +60,8 @@ OPEN_TASK_STATUSES = [FindingStatus.REMEDIATION_IN_PROGRESS, FindingStatus.READY
 def _review_out(db: Session, r: Review) -> ReviewOut:
     dv = r.document_version
     cv: ChecklistVersion = r.checklist_version
-    doc = db.get(Document, dv.document_id)
-    assert doc is not None
+    doc = db.get(Document, dv.document_id) if dv else None
+    rpv = db.get(RulePackVersion, r.rule_pack_version_id) if r.rule_pack_version_id else None
     counts = dict(
         db.execute(
             select(Finding.status, func.count(Finding.id))
@@ -81,10 +84,25 @@ def _review_out(db: Session, r: Review) -> ReviewOut:
         created_at=r.created_at,
         signed_off_at=r.signed_off_at,
         signed_off_by_name=signer.full_name if signer else None,
-        document_id=doc.id,
-        document_title=doc.title,
-        document_version_id=dv.id,
-        document_version_number=dv.version_number,
+        document_id=doc.id if doc else None,
+        document_title=doc.title if doc else None,
+        document_version_id=dv.id if dv else None,
+        document_version_number=dv.version_number if dv else None,
+        datasets=[
+            ReviewDatasetOut(
+                kind=link.kind,
+                dataset_id=link.dataset_version.dataset_id,
+                dataset_name=link.dataset_version.dataset.name,
+                dataset_version_id=link.dataset_version_id,
+                version_number=link.dataset_version.version_number,
+                row_count=link.dataset_version.row_count,
+            )
+            for link in r.datasets
+        ],
+        rule_pack_version_id=r.rule_pack_version_id,
+        rule_pack_name=rpv.rule_pack.name if rpv else None,
+        rule_pack_version_number=rpv.version_number if rpv else None,
+        as_of_date=r.as_of_date,
         checklist_id=cv.checklist_id,
         checklist_name=cv.checklist.name,
         checklist_version_id=cv.id,
@@ -96,6 +114,7 @@ def _review_out(db: Session, r: Review) -> ReviewOut:
             engine_version=run.engine_version,
             engine_mode=run.engine_mode,
             warnings=run.warnings,
+            inputs_snapshot=run.inputs_snapshot or {},
             created_at=run.created_at,
             started_at=run.started_at,
             finished_at=run.finished_at,
@@ -181,11 +200,21 @@ def list_reviews(
 
 @router.post("/reviews", status_code=201, response_model=ReviewOut)
 def create_review(body: ReviewCreateIn, ctx: Writer, db: DB) -> ReviewOut:
-    dv = get_owned_or_404(db, DocumentVersion, body.document_version_id, ctx.org_id)
+    dv = None
+    if body.document_version_id is not None:
+        dv = get_owned_or_404(db, DocumentVersion, body.document_version_id, ctx.org_id)
+        doc = db.get(Document, dv.document_id)
+        if doc is None or doc.deleted_at is not None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found.")
     cv = get_owned_or_404(db, ChecklistVersion, body.checklist_version_id, ctx.org_id)
-    doc = db.get(Document, dv.document_id)
-    if doc is None or doc.deleted_at is not None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found.")
+    datasets = [
+        get_owned_or_404(db, DatasetVersion, vid, ctx.org_id) for vid in body.dataset_version_ids
+    ]
+    rpv = (
+        get_owned_or_404(db, RulePackVersion, body.rule_pack_version_id, ctx.org_id)
+        if body.rule_pack_version_id
+        else None
+    )
     try:
         review, job = reviews.create_review(
             db,
@@ -194,6 +223,9 @@ def create_review(body: ReviewCreateIn, ctx: Writer, db: DB) -> ReviewOut:
             title=body.title,
             document_version=dv,
             checklist_version=cv,
+            dataset_versions=datasets,
+            rule_pack_version=rpv,
+            as_of_date=body.as_of_date,
         )
     except reviews.ReviewError as exc:
         raise _bad(exc, status.HTTP_422_UNPROCESSABLE_ENTITY) from exc
@@ -251,6 +283,8 @@ def results(review_id: uuid.UUID, ctx: Ctx, db: DB) -> list[CheckResultOut]:
             needs_attention=r.needs_attention,
             message=r.message,
             evidence=r.evidence,
+            meta=r.meta or {},
+            result_hash=r.result_hash,
         )
         for r in rows
     ]
@@ -425,7 +459,10 @@ def manual_finding(review_id: uuid.UUID, body: ManualFindingIn, ctx: Writer, db:
     evidence = []
     for bid in body.block_ids:
         b = get_owned_or_404(db, SourceBlock, bid, ctx.org_id)
-        if b.document_version_id != review.document_version_id:
+        if (
+            review.document_version_id is None
+            or b.document_version_id != review.document_version_id
+        ):
             raise HTTPException(
                 status.HTTP_422_UNPROCESSABLE_ENTITY,
                 "Evidence must come from the reviewed document version.",
