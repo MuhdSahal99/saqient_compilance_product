@@ -115,6 +115,9 @@ class BoxLayout(_M):
     boxes: list[BoxDefinition] = Field(min_length=1, max_length=60)
     # Boxes that sum others (e.g. total output tax) — checked as box arithmetic.
     totals: list[BoxTotal] = Field(default_factory=list, max_length=20)
+    # Return boxes whose tax amounts are compared with the GL VAT accounts.
+    output_tax_boxes: list[Code] = Field(default_factory=list, max_length=40)
+    input_tax_boxes: list[Code] = Field(default_factory=list, max_length=40)
 
 
 class BoxTotal(_M):
