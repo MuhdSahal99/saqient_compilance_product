@@ -8,7 +8,7 @@ FastAPI (uvicorn) ── PostgreSQL 16  (all state, tenant rows carry org_id)
    │   │
    │   └── Storage adapter ── local private dir (default) | S3-compatible | GCS (optional)
    │
-   └── Celery (Redis broker) ── worker: extraction jobs, review-run jobs
+   └── Celery (Redis broker) ── worker: extraction, review-run and AI-suggestion jobs
 ```
 
 ## Components
@@ -18,14 +18,18 @@ FastAPI (uvicorn) ── PostgreSQL 16  (all state, tenant rows carry org_id)
   TanStack Query, React Hook Form + Zod, Recharts, i18next.
 - **API** (`backend/app`): FastAPI + Pydantic v2, SQLAlchemy 2 (psycopg 3),
   Alembic migrations.
-- **Worker**: Celery 5 with Redis broker. Tasks: `process_document_version`,
-  `run_review`. Both take `(id, org_id)`, re-verify tenant ownership, are
-  idempotent, have soft/hard time limits and bounded retries.
-- **Storage**: `StorageAdapter` interface (`put`, `open`, `delete`). Keys are
-  generated (`{org_id}/{uuid}`), never derived from user filenames.
-- **AI**: `app/ai/providers.py` — `DisabledProvider` (default), `MockProvider`
-  (dev/test only), `OpenAICompatibleProvider` (allowlisted admin-configured
-  base URL). Not wired into any user flow in the MVP.
+- **Worker**: Celery 5 with Redis broker. One task, `saqient.run_job(job_id,
+  org_id)`, dispatches on `jobs.kind` (`extract`, `review_run`, `ai_suggest`)
+  through `services/jobs.py`. Handlers re-verify tenant ownership, are
+  idempotent, have soft/hard time limits, and attempts are bounded by
+  `jobs.max_attempts`.
+- **Storage**: `StorageAdapter` interface (`put`, `get`, `delete`, `exists`).
+  Keys are generated (`{org_id}/{uuid}`), never derived from user filenames.
+- **AI**: `app/ai/__init__.py` — `DisabledProvider` (default), `MockProvider`
+  (dev/test only, output labelled mock), `OpenAICompatibleProvider` (host
+  allowlist; API key, Google Cloud token for Vertex AI, or Google API key).
+  Used only by reviewer-accepted AI suggestions on a review
+  (`services/ai_suggestions.py`); every quote passes `app/ai/citations.py`.
 
 ## Authentication and sessions
 

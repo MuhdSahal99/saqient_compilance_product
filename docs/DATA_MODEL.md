@@ -12,6 +12,7 @@ organizations ─┬─ memberships ── users ── user_sessions
                ├─ checklists ── checklist_versions ── requirements ──(source_id)── sources
                ├─ jobs
                ├─ reviews ──┬─ review_runs ── check_results
+               │            ├─ ai_suggestion_runs ── ai_suggestions
                │            ├─ findings ── comments
                │            └─ report_snapshots
                └─ audit_events
@@ -47,11 +48,14 @@ organizations ─┬─ memberships ── users ── user_sessions
 
 | Table | Key columns | Notes |
 |---|---|---|
-| `jobs` | kind (extract, review_run), target_id, status, attempts, max_attempts, progress, cancel_requested, error | Background work record. Workers receive (job_id, org_id) and re-check ownership. |
+| `jobs` | kind (extract, review_run, ai_suggest), target_id, status, attempts, max_attempts, progress, cancel_requested, error | Background work record. Workers receive (job_id, org_id) and re-check ownership. |
 | `reviews` | title, document_version_id, checklist_version_id, status, signed_off_by_id, signed_off_at | Pinned to exact versions. Status: draft → running → in_review → signed_off (reopen returns to in_review). |
 | `review_runs` | review_id, job_id, engine_version, engine_mode, config_snapshot (JSON), warnings[] | Each run records the engine version and a copy of the requirement configs used. |
 | `check_results` | run_id, requirement_id, outcome, needs_attention, message, evidence (JSON) | Unique (run, requirement). Outcome ∈ match_found, no_match_found, needs_human_review, processing_error, not_applicable. |
 | `findings` | review_id, requirement_id, check_result_id, is_manual, title, severity, automated_outcome, evidence (JSON), status, owner_id, due_date, decided_by_id, decided_at, decision_rationale, remediation_notes | Partial unique index on (review_id, requirement_id) for automated findings, so re-runs update rather than duplicate. Tasks are findings with an owner (ADR 0005). |
+| `findings.ai_suggestion_id` | | Set when a reviewer accepted an AI suggestion; the finding is still a human decision. |
+| `ai_suggestion_runs` | review_id, job_id, requested_by_id, provider, model, prompt_version, document_version_id, checklist_version_id, warnings[], finished_at | One provider request per run; records which model produced the suggestions. |
+| `ai_suggestions` | run_id, review_id, requirement_id, assessment, summary, evidence (validated citations only), rejected_citations, status (pending/accepted/dismissed), decided_by_id, decided_at, decision_note, finding_id | Unique (run, requirement). Accepting creates a proposed finding. |
 | `comments` | finding_id, author_id, body | |
 | `report_snapshots` | review_id, version, content (JSON), signed_off_by_id, signed_off_at | Unique (review, version). Frozen at sign-off; exports render from this JSON only (ADR 0004). |
 

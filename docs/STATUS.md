@@ -1,6 +1,6 @@
 # Status
 
-Last updated: 2026-10-12 · Phase 1 (vertical slice) complete, pending review.
+Last updated: 2026-10-18 · Phase 1, UI redesign, AI suggestions and Vertex AI sign-in are merged into main. Phase A (finance foundation) in progress on `feat/phase-a-foundation`.
 
 ## Completed
 
@@ -103,7 +103,7 @@ a development mail sink; member management for org admins. Acceptance: each
 with backend permission and cross-tenant tests, component tests, and a
 Playwright flow that authors and publishes a checklist and runs a review on it.
 
-## UI/UX redesign (branch ui-redesign)
+## UI/UX redesign (merged into main)
 
 - New design system: Inter + IBM Plex Sans Arabic (bundled via @fontsource), refreshed palette, shadows,
   animations, skeleton loaders, dot status badges, severity glyphs, progress ring.
@@ -116,7 +116,7 @@ Playwright flow that authors and publishes a checklist and runs a review on it.
   reports, activity (timeline) and settings.
 - Tests run: eslint (0 errors), tsc, vitest 12/12, vite build, Playwright e2e 3/3 against the dev server.
 
-## AI suggestions (branch ai-suggestions)
+## AI suggestions and Vertex AI sign-in (merged into main)
 
 - Added: `ai_suggest` job, `ai_suggestion_runs` / `ai_suggestions` tables
   (migration 0002), mock provider that returns labelled JSON, citation checks on
