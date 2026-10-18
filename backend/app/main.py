@@ -25,6 +25,7 @@ from app.api import (
     tax_calendar,
     tax_losses,
     tax_setup,
+    transfer_pricing,
     workpapers,
     workspace,
 )
@@ -123,6 +124,7 @@ def create_app() -> FastAPI:
         tax_calendar,
         tax_losses,
         einvoices,
+        transfer_pricing,
         monitors,
         workpapers,
     ):

@@ -158,6 +158,36 @@ class LineSource(str, enum.Enum):
     COMPUTED = "computed"
 
 
+class RelatedPartyRelation(str, enum.Enum):
+    PARENT = "parent"
+    SUBSIDIARY = "subsidiary"
+    SISTER = "sister"
+    PERMANENT_ESTABLISHMENT = "permanent_establishment"
+    CONNECTED_PERSON = "connected_person"
+    OTHER = "other"
+
+
+class RPTransactionType(str, enum.Enum):
+    GOODS = "goods"
+    SERVICES = "services"
+    ROYALTIES = "royalties"
+    FINANCING = "financing"
+    GUARANTEE = "guarantee"
+    COST_SHARING = "cost_sharing"
+    ASSET_TRANSFER = "asset_transfer"
+    OTHER = "other"
+
+
+class TPMethod(str, enum.Enum):
+    CUP = "cup"
+    RESALE_PRICE = "resale_price"
+    COST_PLUS = "cost_plus"
+    TNMM = "tnmm"
+    PROFIT_SPLIT = "profit_split"
+    OTHER = "other"
+    NOT_SET = "not_set"
+
+
 class LossEntryKind(str, enum.Enum):
     INCURRED = "incurred"
     USED = "used"
@@ -1571,6 +1601,64 @@ class TaxGroupMembership(Base):
     created_at: Mapped[datetime] = _created()
 
     entity: Mapped[LegalEntity] = relationship(lazy="joined")
+
+
+class RelatedParty(Base):
+    """A related party or connected person of one entity (transfer pricing register)."""
+
+    __tablename__ = "related_parties"
+    __table_args__ = (UniqueConstraint("entity_id", "name"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    entity_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("legal_entities.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(200))
+    relation: Mapped[RelatedPartyRelation] = mapped_column(
+        _enum(RelatedPartyRelation, "related_party_relation")
+    )
+    jurisdiction: Mapped[str] = mapped_column(String(2))  # ISO 3166-1 alpha-2
+    note: Mapped[str] = mapped_column(Text, default="")
+    is_demo: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = _created()
+
+
+class RelatedPartyTransaction(Base):
+    """One controlled transaction (or an annual total of one type) with a related party."""
+
+    __tablename__ = "related_party_transactions"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    entity_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("legal_entities.id", ondelete="CASCADE"), index=True
+    )
+    related_party_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("related_parties.id", ondelete="RESTRICT"), index=True
+    )
+    period_start: Mapped[date] = mapped_column(Date)
+    period_end: Mapped[date] = mapped_column(Date)
+    transaction_type: Mapped[RPTransactionType] = mapped_column(
+        _enum(RPTransactionType, "rp_transaction_type")
+    )
+    direction: Mapped[str] = mapped_column(String(10))  # receipt | payment
+    description: Mapped[str] = mapped_column(String(500), default="")
+    amount: Mapped[Decimal] = mapped_column(Numeric(20, 4))
+    currency: Mapped[str] = mapped_column(String(3))
+    method: Mapped[TPMethod] = mapped_column(_enum(TPMethod, "tp_method"), default=TPMethod.NOT_SET)
+    # Optional arm's length range from a benchmarking study and the tested result.
+    range_low: Mapped[Decimal | None] = mapped_column(Numeric(20, 6))
+    range_high: Mapped[Decimal | None] = mapped_column(Numeric(20, 6))
+    tested_value: Mapped[Decimal | None] = mapped_column(Numeric(20, 6))
+    range_metric: Mapped[str] = mapped_column(String(80), default="")
+    benchmark_document_ids: Mapped[list[str]] = mapped_column(JSONType, default=list)
+    evidence: Mapped[list[dict[str, Any]]] = mapped_column(JSONType, default=list)
+    is_demo: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = _created()
+
+    party: Mapped[RelatedParty] = relationship(lazy="joined")
 
 
 class AuditEvent(Base):

@@ -22,8 +22,10 @@ from app.models import (
     MonitorCadence,
     MonitorRunStatus,
     PeriodFrequency,
+    RelatedPartyRelation,
     ReviewStatus,
     Role,
+    RPTransactionType,
     RuleValueType,
     RuleVerification,
     Severity,
@@ -33,6 +35,7 @@ from app.models import (
     TaxAccountRole,
     TaxPeriodStatus,
     TaxType,
+    TPMethod,
     VatTreatment,
     VersionStatus,
     WorkpaperKind,
@@ -1383,5 +1386,102 @@ class GroupTestOut(BaseModel):
 
 class LossTransferOut(BaseModel):
     entries: list[LossEntryOut]
+    lines: list[CalcLineOut]
+    warnings: list[str]
+
+
+# ---------------------------------------------------------------- transfer pricing
+
+
+class RelatedPartyIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=1, max_length=200)
+    relation: RelatedPartyRelation
+    jurisdiction: str = Field(pattern=r"^[A-Z]{2}$", description="ISO 3166-1 alpha-2 code.")
+    note: str = Field(default="", max_length=4000)
+
+
+class RelatedPartyOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    entity_id: uuid.UUID
+    name: str
+    relation: RelatedPartyRelation
+    jurisdiction: str
+    note: str
+    is_demo: bool
+
+
+class RPTransactionIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    related_party_id: uuid.UUID
+    period_start: date
+    period_end: date
+    transaction_type: RPTransactionType
+    direction: Literal["receipt", "payment"]
+    description: str = Field(default="", max_length=500)
+    amount: Decimal = Field(gt=0, max_digits=20, decimal_places=4)
+    currency: str | None = Field(
+        default=None, pattern=r"^[A-Z]{3}$", description="Must be the entity's currency."
+    )
+    method: TPMethod = TPMethod.NOT_SET
+    range_low: Decimal | None = Field(default=None, max_digits=20, decimal_places=6)
+    range_high: Decimal | None = Field(default=None, max_digits=20, decimal_places=6)
+    tested_value: Decimal | None = Field(default=None, max_digits=20, decimal_places=6)
+    range_metric: str = Field(default="", max_length=80)
+    benchmark_document_ids: list[uuid.UUID] = Field(default_factory=list, max_length=10)
+    evidence: list[EvidenceRefIn] = Field(default_factory=list, max_length=20)
+
+    @model_validator(mode="after")
+    def _range(self) -> RPTransactionIn:
+        if (self.range_low is None) != (self.range_high is None):
+            raise ValueError("Give both ends of the range, or neither.")
+        if self.range_low is not None and self.range_high is not None:
+            if self.range_low > self.range_high:
+                raise ValueError("The range low must not exceed the high.")
+        elif self.tested_value is not None:
+            raise ValueError("A tested value needs a range.")
+        return self
+
+
+class RPTransactionOut(BaseModel):
+    id: uuid.UUID
+    entity_id: uuid.UUID
+    related_party_id: uuid.UUID
+    related_party_name: str
+    period_start: date
+    period_end: date
+    transaction_type: RPTransactionType
+    direction: str
+    description: str
+    amount: Decimal
+    currency: str
+    method: TPMethod
+    range_low: Decimal | None
+    range_high: Decimal | None
+    tested_value: Decimal | None
+    range_metric: str
+    benchmark_documents: list[dict[str, Any]]
+    evidence: list[dict[str, Any]]
+    is_demo: bool
+
+
+class TPCheckIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    rule_pack_version_id: uuid.UUID
+    rules_prefix: str = Field(min_length=1, max_length=80, pattern=PREFIX_PATTERN)
+    period_start: date
+    period_end: date
+    entity_revenue: Decimal = Field(ge=0, max_digits=20, decimal_places=4)
+    in_mne_group: bool | None = None
+    group_revenue: Decimal | None = Field(default=None, ge=0, max_digits=20, decimal_places=4)
+
+
+class TPCheckOut(BaseModel):
+    currency: str
+    rp_total: Decimal
+    transaction_count: int
+    calc_version: str
+    result_hash: str
     lines: list[CalcLineOut]
     warnings: list[str]

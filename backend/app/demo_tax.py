@@ -49,6 +49,11 @@ def ct_rules(p: str = "syn.ct") -> list[dict[str, Any]]:
         row(f"{p}.qfzp_de_minimis_amount", "decimal", "4000000", "QFZP de minimis", "currency"),
         row(f"{p}.loss_transfer_min_ownership", "decimal", "0.80", "Loss transfer ownership"),
         row(f"{p}.tax_group_min_ownership", "decimal", "0.90", "Tax group ownership"),
+        row(f"{p}.tp_master_file_entity_revenue", "decimal", "150000000", "MF entity", "currency"),
+        row(f"{p}.tp_master_file_group_revenue", "decimal", "3000000000", "MF group", "currency"),
+        row(f"{p}.tp_local_file_entity_revenue", "decimal", "150000000", "LF entity", "currency"),
+        row(f"{p}.tp_local_file_group_revenue", "decimal", "3000000000", "LF group", "currency"),
+        row(f"{p}.tp_disclosure_threshold", "decimal", "30000000", "TP disclosure", "currency"),
     ]
 
 
