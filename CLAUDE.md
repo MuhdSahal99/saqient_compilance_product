@@ -150,6 +150,111 @@ pnpm e2e            # needs backend + worker running with demo seed
 3. No secrets, real customer data or real personal data committed.
 4. Docs touched by the change are updated (keep them short and accurate).
 5. `docs/STATUS.md` updated after each milestone: completed work, tests actually
+
+# Saqient: Project Instructions
+
+## Mission
+Extend Saqient from a document compliance review workspace into the leading GCC
+finance compliance, tax and audit assurance layer. Saqient CHECKS and EVIDENCES
+finance work done in the client's own systems (ERP, accounting, invoicing). It does
+NOT become an ERP, does NOT file returns with FTA/ZATCA, and does NOT act as an
+e-invoicing ASP. It never certifies compliance; it produces evidence-linked
+findings that qualified humans decide on.
+
+## Existing system (do not break)
+- Backend: FastAPI, Pydantic v2, SQLAlchemy 2, Alembic, PostgreSQL 16, Celery + Redis.
+- Frontend: React 19, TypeScript strict, Vite, Tailwind 4, TanStack Query,
+  React Hook Form + Zod, i18next (English + Arabic, RTL).
+- Core pipeline to REUSE for every new module:
+  evidence -> versioned checklist -> deterministic check -> proposed finding ->
+  human decision (rationale required) -> remediation task -> sign-off ->
+  immutable report snapshot -> HTML/PDF/CSV export.
+- Invariants: every tenant table has org_id; cross-tenant access returns 404;
+  published checklist versions are immutable; snapshots are immutable;
+  reopen requires a reason and creates version n+1; every state change writes
+  an audit event; AI output is optional, labelled, citation-validated, and never
+  auto-confirmed.
+- Source of truth docs: docs/PRODUCT_SPEC.md, docs/ARCHITECTURE.md,
+  docs/DATA_MODEL.md, docs/STATUS.md, docs/KNOWN_LIMITATIONS.md, docs/adr/.
+
+## Working rules (token efficiency)
+1. Before coding, read ONLY: this file, docs/STATUS.md, and the files directly
+   relevant to the current task. Do not read the whole repo. Use search
+   (rg / grep / glob) to locate code instead of opening many files.
+2. Do not re-read a file you already read in this session unless it changed.
+3. Plan first: write a short plan (max ~15 bullets) and wait for my "go"
+   before large changes. For small, clearly scoped tasks, proceed directly.
+4. Work in small vertical slices: model -> migration -> service -> API ->
+   tests -> minimal UI wiring. One slice per commit.
+5. Make targeted edits; never rewrite whole files to change a few lines.
+6. Do not paste large file contents, logs or diffs into chat; summarise and
+   reference paths/line numbers. Show only failing test output, trimmed.
+7. Run the narrowest test set first (single test file), full suite before commit.
+8. At the end of every session update docs/STATUS.md (done / next / blockers)
+   in <= 20 lines so the next session starts without re-discovery.
+9. If requirements are ambiguous, ask ONE concise question instead of guessing
+   across many files.
+10. Do not add dependencies without stating why and checking licence + maintenance.
+
+## Security and safety rules (non-negotiable)
+- Never commit secrets. Config via environment variables only; update
+  .env.example with placeholders. Production guard must still refuse demo
+  mode and default secrets.
+- Every new table: org_id NOT NULL, indexed, enforced in every query through the
+  existing tenant-scoping helper. Add a cross-tenant 404 test for every new
+  endpoint.
+- Authorisation: enforce existing roles (org admin, reviewer, analyst, viewer)
+  server-side on every endpoint; add a permission test per role.
+- Money: use Decimal / NUMERIC(20,4) everywhere. Never float. Store currency
+  code (ISO 4217) with every amount. Explicit rounding rules per jurisdiction.
+- Dates: store UTC; fiscal periods and tax periods are explicit entities;
+  respect entity fiscal year and time zone (Asia/Dubai, Asia/Riyadh).
+- File/data import: validate extension, MIME, signature, size, row count,
+  column schema; reject macros and formulas; neutralise CSV formula injection
+  on export; hash every imported dataset (SHA-256) and version it.
+- No raw SQL string concatenation; parameterised queries only. No user-written
+  regex; use RE2 and predefined patterns.
+- Parse XML safely (defusedxml); no external entity resolution.
+- Sensitive fields (IBAN, salary, national ID, TRN where required): encrypt at
+  field level, mask in UI and logs, never log them.
+- Audit events must be appended to a hash-chained log (implement in Phase A).
+- Migrations must be reversible (upgrade + downgrade) and tested.
+- AI features: off by default, in-region / self-hosted provider allowed,
+  quotes validated against stored evidence, model + version recorded,
+  never send data to an external model unless the org has explicitly enabled it.
+
+## Domain accuracy rules (tax, audit, regulatory)
+- NEVER hardcode tax rates, thresholds or deadlines in code. Put them in
+  versioned "rule packs" (data, not code) with: jurisdiction, rule id, value,
+  effective_from, effective_to, official source URL, verification status
+  (draft | verified), verified_by, verified_at.
+- Seed rule packs as status=draft. Only humans set verified. The UI and reports
+  must show a clear "unverified rule" warning when a draft rule is used.
+- Every calculation must be explainable: store inputs, rule pack version,
+  formula id and output, so a reviewer can reproduce it.
+- Deterministic first, AI second. Every finding must link to evidence:
+  document source block OR dataset version + row ids + column values.
+- If unsure about a regulatory detail, leave a TODO with the question and mark
+  the rule draft. Do not invent regulations.
+
+## Quality gates (before every commit)
+- ruff/black (or project linters) clean, mypy/tsc strict clean.
+- New code has unit tests; services have integration tests; each new endpoint
+  has auth, tenant-isolation and validation tests.
+- Calculations have golden-file tests with hand-checked expected values.
+- CI green. Conventional commit messages. One feature branch per phase:
+  feat/phase-<letter>-<slug>. Never push to main directly.
+- Add or update an ADR in docs/adr/ for any significant design decision.
+
+## UI rule
+- For any UI/visual work, use the separately provided UI skills (taste,
+  impeccable). Follow existing component patterns, i18n keys for ALL strings
+  (en + ar), RTL-safe layouts, accessible forms. Do not invent a new design
+  system.
+
+## Definition of done (per feature)
+Backend + migration + tests + API docs (OpenAPI descriptions) + i18n strings +
+minimal UI via UI skills + STATUS.md updated + demo seed data (synthetic only).
    executed, failures/blockers, remaining work, exact next milestone.
 
 Do not claim a feature works unless it was tested. Do not provision cloud
