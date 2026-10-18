@@ -69,6 +69,11 @@ def entity_out(e: LegalEntity) -> LegalEntityOut:
         tax_group_name=e.tax_group.name if e.tax_group else None,
         is_free_zone=e.is_free_zone,
         is_active=e.is_active,
+        size_basis_amount=e.size_basis_amount,
+        size_basis_currency=e.size_basis_currency,
+        size_basis_year=e.size_basis_year,
+        einvoice_go_live_override=e.einvoice_go_live_override,
+        einvoice_go_live_note=e.einvoice_go_live_note or "",
         created_at=e.created_at,
         updated_at=e.updated_at,
     )
@@ -150,6 +155,22 @@ def update_entity(db: Session, e: LegalEntity, body: LegalEntityPatch, actor: Us
     elif body.tax_group_id is not None:
         get_owned_or_404(db, TaxGroup, body.tax_group_id, e.org_id)
         e.tax_group_id = body.tax_group_id
+    if body.clear_size_basis:
+        e.size_basis_amount = e.size_basis_currency = e.size_basis_year = None
+    elif body.size_basis_amount is not None:
+        if not body.size_basis_currency or not body.size_basis_year:
+            raise _bad("A size basis needs an amount, a currency and a year.")
+        e.size_basis_amount = body.size_basis_amount
+        e.size_basis_currency = body.size_basis_currency
+        e.size_basis_year = body.size_basis_year
+    if body.clear_go_live_override:
+        e.einvoice_go_live_override = None
+        e.einvoice_go_live_note = ""
+    elif body.einvoice_go_live_override is not None:
+        if not (body.einvoice_go_live_note or "").strip():
+            raise _bad("Say where the go-live date comes from (for example the notification).")
+        e.einvoice_go_live_override = body.einvoice_go_live_override
+        e.einvoice_go_live_note = (body.einvoice_go_live_note or "").strip()
     if body.clear_trn:
         _set_trn(e, None, e.org_id)
     elif body.trn is not None:
