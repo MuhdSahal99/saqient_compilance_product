@@ -1,6 +1,16 @@
 # Status
 
-Last updated: 2026-10-18 · Phase A is merged into main. Phase B (e-invoicing and VAT) is complete on `feat/phase-b-einvoice-vat`, awaiting review.
+Last updated: 2026-10-18 · Phase A is merged into main. Phase B (PR #7) awaits review. Phase C (direct tax) is complete on `feat/phase-c-direct-tax`, stacked on Phase B.
+
+## Phase C — direct tax
+
+**Done:** `app/calc` explainable formulas (`calc-1.0.0`) with workpapers: inputs with evidence (source blocks, dataset rows, trial balance import), computed lines with steps, rule snapshots and a result hash, sign-off snapshots, reopen to v n+1, HTML/PDF/CSV exports. C1 CT bridge (add-backs, entertainment share, interest limitation with carry-forward, exempt income, related-party, loss cap, rate bands); C2 SBR and QFZP tests; C3 loss register, posting from signed-off papers, loss transfers and dated tax group memberships with a group test; C4 related-party register, documentation thresholds, arm's length ranges, disclosure CSV; C5 Pillar Two (scope, ETR, SBIE, simplified top-up, safe harbours, readiness); C6 zakat base and engine `deterministic-1.3.0` WHT check over a new `wht_payments` dataset kind. UI in en/ar; synthetic seed; ADR 0011. Migrations 0015–0018.
+
+**Checks executed (2026-10-18):** ruff + format, mypy (87 files), migrations upgrade/downgrade/upgrade and `alembic check` clean, pytest **322 passed, 2 skipped** (golden files for all 8 formulas, role and tenant 404 tests on every new endpoint); pnpm lint (0 errors, 8 existing warnings), typecheck, Vitest **37 passed**, build; Playwright **6 passed** against uvicorn + `vite preview` with the seed.
+
+**Not executed / not built:** UI for evidence attachment, trial balance import, loss transfers and tax group memberships (API only, tested); WHT demo seed. No real rates (see KNOWN_LIMITATIONS, TODO questions there).
+
+**Next:** review of PR #7, then the Phase C PR; then Phase D (audit).
 
 ## Phase B — e-invoicing and VAT
 

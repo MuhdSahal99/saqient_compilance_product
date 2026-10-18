@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Command } from "cmdk";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import {
+  CalculatorIcon,
   Activity,
   Building,
   CalendarClock,
@@ -36,6 +37,7 @@ const PAGES = [
   { to: "/checklists", key: "checklists", icon: ListChecks },
   { to: "/datasets", key: "datasets", icon: Table2 },
   { to: "/einvoices", key: "einvoices", icon: FileCode },
+  { to: "/workpapers", key: "directTax", icon: CalculatorIcon },
   { to: "/entities", key: "entities", icon: Building },
   { to: "/rule-packs", key: "rulePacks", icon: Scale },
   { to: "/findings", key: "findings", icon: FileSearch },
