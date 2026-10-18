@@ -83,6 +83,16 @@ DATA_LIMITATION = (
     "to look at, not a conclusion."
 )
 
+EINVOICE_LIMITATION = (
+    "E-invoice checks validate the stored XML against the rule pack's schema and rules as "
+    "entered; they do not replace validation by the e-invoicing platform or service "
+    "provider, and nothing was submitted to any platform."
+)
+VAT_LIMITATION = (
+    "VAT figures are recomputed from the registers and GL as uploaded, with the entity's "
+    "tax code mapping and the rule pack's box layout. A difference is something to "
+    "investigate; the return is not prepared or filed by Saqient."
+)
 OCR_LIMITATION = (
     "Some pages had no text layer and were read with OCR. OCR text can contain recognition "
     "errors, and quotes from those pages were matched against the OCR text, not the page image."
@@ -676,6 +686,24 @@ def _rule_pack_scope(db: Session, review: Review) -> dict[str, Any] | None:
 
 
 def _report_evidence(e: dict[str, Any]) -> dict[str, Any]:
+    if e.get("type") == "xml":
+        return {
+            k: e.get(k)
+            for k in (
+                "type",
+                "einvoice_file_id",
+                "filename",
+                "sha256",
+                "invoice_number",
+                "xpath",
+                "line",
+                "value",
+                "label",
+                "detail",
+            )
+        }
+    if e.get("type") == "computation":
+        return {"type": "computation", "label": e.get("label"), "detail": e.get("detail", {})}
     if e.get("type") == "dataset_rows":
         return {
             "type": "dataset_rows",
@@ -694,6 +722,73 @@ def _report_evidence(e: dict[str, Any]) -> dict[str, Any]:
         "paragraph_number": e.get("paragraph_number"),
         "quote": e.get("quote"),
     }
+
+
+def _tax_scope(db: Session, review: Review) -> dict[str, Any]:
+    e, tp = review.entity, review.tax_period
+    files = list(
+        db.scalars(
+            select(EInvoiceFile)
+            .join(ReviewEInvoice, ReviewEInvoice.file_id == EInvoiceFile.id)
+            .where(ReviewEInvoice.review_id == review.id)
+            .order_by(EInvoiceFile.filename)
+        )
+    )
+    return {
+        "entity": {
+            "name": e.name,
+            "country": e.country,
+            "trn": f"••••{e.trn_last4}" if e.trn_last4 else None,  # masked
+            "functional_currency": e.functional_currency,
+        }
+        if e
+        else None,
+        "tax_period": {
+            "tax_type": tp.tax_type.value,
+            "frequency": tp.frequency.value,
+            "period_start": tp.period_start.isoformat(),
+            "period_end": tp.period_end.isoformat(),
+            "status": tp.status.value,
+        }
+        if tp
+        else None,
+        "einvoice_count": len(files),
+        "einvoices": [
+            {
+                "filename": f.filename,
+                "invoice_number": f.invoice_number,
+                "issue_date": f.issue_date.isoformat() if f.issue_date else None,
+                "sha256": f.sha256,
+            }
+            for f in files[:200]
+        ],
+    }
+
+
+def _vat_pack(results: list[CheckResult]) -> dict[str, Any]:
+    """Reconciliation tables and every rule and file used, from the run's check results."""
+    pack: dict[str, Any] = {"box_table": [], "gl_table": [], "unknown_boxes": []}
+    rules: dict[str, dict[str, Any]] = {}
+    files: dict[str, dict[str, Any]] = {}
+    for r in sorted(results, key=lambda r: r.requirement.ordinal):
+        meta = r.meta or {}
+        if meta.get("box_table"):
+            pack["box_table"] = meta["box_table"]
+            pack["unknown_boxes"] = meta.get("unknown_boxes", [])
+            pack["box_tolerance"] = meta.get("tolerance")
+        if meta.get("gl_table"):
+            pack["gl_table"] = meta["gl_table"]
+            pack["gl_tolerance"] = meta.get("tolerance")
+        for rule in meta.get("rules") or []:
+            rules.setdefault(str(rule.get("rule_id")), rule)
+        for f in meta.get("files") or []:
+            files.setdefault(str(f.get("sha256")), f)
+    pack["rules_used"] = sorted(rules.values(), key=lambda x: str(x.get("rule_key")))
+    pack["files_used"] = list(files.values())
+    pack["unverified_count"] = sum(
+        1 for x in [*rules.values(), *files.values()] if x.get("verification_status") != "verified"
+    )
+    return pack
 
 
 def build_snapshot(
@@ -734,6 +829,12 @@ def build_snapshot(
         limitations[1] = OCR_LIMITATION
     if review.datasets:
         limitations.insert(1, DATA_LIMITATION)
+    tax_scope = _tax_scope(db, review)
+    vat_pack = _vat_pack(results)
+    if tax_scope["einvoice_count"]:
+        limitations.insert(1, EINVOICE_LIMITATION)
+    if vat_pack["box_table"] or vat_pack["gl_table"]:
+        limitations.insert(1, VAT_LIMITATION)
     if not ai_findings:
         limitations.insert(2, AI_DISABLED_LIMITATION)
     else:
@@ -763,7 +864,9 @@ def build_snapshot(
             "checklist_version": cv.version_number,
             "checklist_disclaimer": cv.disclaimer,
             "requirement_count": req_count,
+            **tax_scope,
         },
+        "vat_pack": vat_pack,
         "engine": {
             "version": run.engine_version if run else None,
             "mode": run.engine_mode if run else "none",

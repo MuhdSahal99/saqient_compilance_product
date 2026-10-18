@@ -576,3 +576,37 @@ def test_review_refuses_einvoices_of_another_entity_or_tenant(
         },
     )
     assert r.status_code == 404, r.text
+
+
+def test_einvoice_report_shows_xml_evidence(tenant_a: Tenant, db: Session) -> None:
+    admin = login(tenant_a.users[Role.ORG_ADMIN])
+    reviewer = login(tenant_a.users[Role.REVIEWER])
+    entity = make_entity(db, tenant_a)
+    rpv = synthetic_pack(admin)
+    cv = checklist(reviewer, [req("EINV-01", VALIDATE_AE)])
+    bad = demo.invoice_xml(demo.InvoiceSpec(number="SYN-PAY", uuid="u-p", payable_override="1"))
+    batch = upload_batch(reviewer, entity, bad, "pay.xml", XML).json()["id"]
+    r = reviewer.post(
+        "/api/reviews",
+        json={
+            "title": "PINT sample",
+            "checklist_version_id": cv,
+            "entity_id": str(entity.id),
+            "einvoice_batch_ids": [batch],
+            "rule_pack_version_id": rpv,
+        },
+    )
+    rid = r.json()["id"]
+    for f in findings(reviewer, rid):
+        reviewer.post(
+            f"/api/findings/{f['id']}/decision",
+            json={"decision": "confirmed", "rationale": "Payable amount is wrong."},
+        )
+    rep = reviewer.post(f"/api/reviews/{rid}/signoff").json()["id"]
+    html = reviewer.get(f"/api/reports/{rep}/export?format=html").text
+    assert "E-invoices in scope" in html and "pay.xml" in html
+    assert "E-invoice SYN-PAY · /inv:Invoice/cac:LegalMonetaryTotal/cbc:PayableAmount" in html
+    assert "Schema syn.einvoice.xsd" in html
+    assert "nothing was submitted to any platform" in html
+    csv_text = reviewer.get(f"/api/reports/{rep}/export?format=csv").text
+    assert "E-invoice SYN-PAY" in csv_text

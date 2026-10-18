@@ -399,3 +399,29 @@ def test_review_period_must_belong_to_the_entity(
         json={"title": "x", "checklist_version_id": other_cv, "entity_id": str(e1.id)},
     )
     assert r.status_code == 404, r.text
+
+
+def test_vat_review_pack_report(tenant_a: Tenant, db: Session) -> None:
+    analyst, rid = _vat_review(tenant_a, db)
+    reviewer = login(tenant_a.users[Role.REVIEWER])
+    for f in findings(reviewer, rid):
+        d = reviewer.post(
+            f"/api/findings/{f['id']}/decision",
+            json={"decision": "confirmed", "rationale": "Checked with the synthetic ledger."},
+        )
+        assert d.status_code == 200, d.text
+    report = reviewer.post(f"/api/reviews/{rid}/signoff")
+    assert report.status_code == 200, report.text
+    rep = report.json()["id"]
+    html = reviewer.get(f"/api/reports/{rep}/export?format=html").text
+    assert "VAT return reconciliation" in html and "Return against GL VAT accounts" in html
+    assert "P1T — Recoverable input VAT" in html and "-10.00" in html
+    assert "Tax period" in html and "2026-01-01 to 2026-03-31" in html
+    assert "UNVERIFIED (draft) rule" in html and "syn.vat.box_layout" in html
+    assert "Boxes in the return that the layout does not define: Z9" in html
+    assert "not prepared or filed by Saqient" in html
+    csv_text = reviewer.get(f"/api/reports/{rep}/export?format=csv").text
+    assert "Computation · Box P1T Recoverable input VAT" in csv_text
+    assert "difference=-10.00" in csv_text
+    pdf = reviewer.get(f"/api/reports/{rep}/export?format=pdf")
+    assert pdf.status_code == 200 and pdf.content.startswith(b"%PDF")
