@@ -1,6 +1,31 @@
 # Status
 
-Last updated: 2026-10-18 · Phase 1, UI redesign, AI suggestions and Vertex AI sign-in are merged into main. Phase A (finance foundation) is complete on `feat/phase-a-foundation` (PR #6), awaiting review.
+Last updated: 2026-10-18 · Phase A is merged into main. Phase B (e-invoicing and VAT) is complete on `feat/phase-b-einvoice-vat`, awaiting review.
+
+## Phase B — e-invoicing and VAT
+
+**Done:** rule packs hold structured `json` rules (shape-checked) and XSD bundles; engine
+`deterministic-1.2.0` with e-invoice validation (schema, mandatory fields, code lists,
+arithmetic, tax number shape, ZATCA QR, hash and counter chain, duplicates), go-live
+readiness from waves, platform rejection matching (CSV or JSON results), master data
+(TRN shape, completeness, party cross-check) and VAT return checks (box and GL
+reconciliation, reverse charge, zero-rated evidence, blocked input VAT; cut-off and
+duplicates reuse 1.1.0 checks); one finding per failure kind (`finding_key`); tax periods
+and entity VAT setup; e-invoice store; sampling monitors (Celery beat); tax calendar with
+obligation tasks in the daily digest (ADR 0009); VAT review pack sections in HTML/PDF/CSV;
+UI in English and Arabic; synthetic demo seed. ADR 0010.
+
+**Checks executed (2026-10-18):** ruff + format, mypy (71 files), migrations 0010–0014
+upgrade/downgrade/upgrade and `alembic check` clean, backend pytest **274 passed, 2 skipped**
+(golden VAT box/GL values, golden period and due-date tests, tenant 404 and role tests
+for every new endpoint, XXE and unsafe ZIP refusal); pnpm lint (0 errors, 8 existing
+warnings), typecheck, Vitest **29 passed**, build; Playwright **5 passed** against uvicorn
++ `vite preview` with eager jobs and the demo seed.
+
+**Not executed:** official PINT-AE / ZATCA schemas and the ZATCA SDK (none shipped; hash
+method unverified, see KNOWN_LIMITATIONS); a Celery beat process (task tested directly).
+
+**Next:** owner review of the Phase B PR; then Phase C (direct tax), plan in the thread.
 
 ## Phase A — finance foundation (PR #6)
 
