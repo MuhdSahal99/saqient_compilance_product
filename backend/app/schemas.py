@@ -455,3 +455,79 @@ class AISuggestionsOut(BaseModel):
 
 class AIDecisionIn(BaseModel):
     note: str = Field(default="", max_length=2000)
+
+
+# ---------------------------------------------------------------- legal entities
+
+_COUNTRY = r"^[A-Z]{2}$"
+_CURRENCY = r"^[A-Z]{3}$"
+_TRN = r"^[A-Za-z0-9]{5,20}$"
+
+
+class TaxGroupIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=1, max_length=200)
+    country: str = Field(pattern=_COUNTRY, description="ISO 3166-1 alpha-2 code.")
+    trn: str | None = Field(default=None, pattern=_TRN, description="Group tax number.")
+
+
+class TaxGroupPatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    trn: str | None = Field(default=None, pattern=_TRN)
+
+
+class TaxGroupOut(BaseModel):
+    id: uuid.UUID
+    name: str
+    country: str
+    trn_masked: str | None = Field(description="Only the last four characters are shown.")
+    entity_count: int = 0
+    created_at: datetime
+
+
+class LegalEntityIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=1, max_length=200)
+    country: str = Field(pattern=_COUNTRY, description="ISO 3166-1 alpha-2 code.")
+    trn: str | None = Field(
+        default=None, pattern=_TRN, description="TRN / VAT number. Stored encrypted."
+    )
+    fiscal_year_end_month: int = Field(ge=1, le=12)
+    fiscal_year_end_day: int = Field(ge=1, le=31)
+    functional_currency: str = Field(pattern=_CURRENCY, description="ISO 4217 code.")
+    timezone: str = Field(default="Asia/Dubai", max_length=64, description="IANA time zone.")
+    tax_group_id: uuid.UUID | None = None
+    is_free_zone: bool = False
+
+
+class LegalEntityPatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    trn: str | None = Field(default=None, pattern=_TRN)
+    clear_trn: bool = False
+    fiscal_year_end_month: int | None = Field(default=None, ge=1, le=12)
+    fiscal_year_end_day: int | None = Field(default=None, ge=1, le=31)
+    functional_currency: str | None = Field(default=None, pattern=_CURRENCY)
+    timezone: str | None = Field(default=None, max_length=64)
+    tax_group_id: uuid.UUID | None = None
+    clear_tax_group: bool = False
+    is_free_zone: bool | None = None
+    is_active: bool | None = None
+
+
+class LegalEntityOut(BaseModel):
+    id: uuid.UUID
+    name: str
+    country: str
+    trn_masked: str | None = Field(description="Only the last four characters are shown.")
+    fiscal_year_end_month: int
+    fiscal_year_end_day: int
+    functional_currency: str
+    timezone: str
+    tax_group_id: uuid.UUID | None
+    tax_group_name: str | None
+    is_free_zone: bool
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime

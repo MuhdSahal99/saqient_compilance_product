@@ -219,6 +219,50 @@ class UserSession(Base):
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+# ---------------------------------------------------------------- entities
+
+
+class TaxGroup(Base):
+    """A VAT/tax group that several legal entities of one organisation belong to."""
+
+    __tablename__ = "tax_groups"
+    __table_args__ = (UniqueConstraint("org_id", "name"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    name: Mapped[str] = mapped_column(String(200))
+    country: Mapped[str] = mapped_column(String(2))
+    # Encrypted (app/crypto.py); only the last four characters are kept in clear.
+    trn_encrypted: Mapped[str | None] = mapped_column(Text)
+    trn_last4: Mapped[str | None] = mapped_column(String(4))
+    created_at: Mapped[datetime] = _created()
+
+
+class LegalEntity(Base):
+    __tablename__ = "legal_entities"
+    __table_args__ = (UniqueConstraint("org_id", "name"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    name: Mapped[str] = mapped_column(String(200))
+    country: Mapped[str] = mapped_column(String(2))  # ISO 3166-1 alpha-2
+    trn_encrypted: Mapped[str | None] = mapped_column(Text)
+    trn_last4: Mapped[str | None] = mapped_column(String(4))
+    fiscal_year_end_month: Mapped[int] = mapped_column(Integer)
+    fiscal_year_end_day: Mapped[int] = mapped_column(Integer)
+    functional_currency: Mapped[str] = mapped_column(String(3))  # ISO 4217
+    timezone: Mapped[str] = mapped_column(String(64))  # IANA, e.g. Asia/Dubai
+    tax_group_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tax_groups.id", ondelete="RESTRICT"), index=True
+    )
+    is_free_zone: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = _created()
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    tax_group: Mapped[TaxGroup | None] = relationship(lazy="joined")
+
+
 # ---------------------------------------------------------------- documents
 
 

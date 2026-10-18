@@ -118,10 +118,12 @@ def test_production_rejects_insecure_defaults() -> None:
         Settings(_env_file=None, app_env="production", demo_mode=True).validate_for_production()  # type: ignore[call-arg]
     msg = str(exc.value)
     assert "SECRET_KEY" in msg and "DEMO_MODE" in msg and "COOKIE_SECURE" in msg
+    assert "FIELD_ENCRYPTION_KEY" in msg
     Settings(
         _env_file=None,
         app_env="production",
         secret_key="x" * 40,  # type: ignore[call-arg]
+        field_encryption_key="QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUE=",  # 32 bytes, test only
         cookie_secure=True,
         celery_task_always_eager=False,
     ).validate_for_production()

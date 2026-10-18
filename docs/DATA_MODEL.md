@@ -27,6 +27,13 @@ organizations ─┬─ memberships ── users ── user_sessions
 | `memberships` | org_id, user_id, role | Unique (org_id, user_id). Role ∈ org_admin, reviewer, analyst, viewer. Re-read on every request. |
 | `user_sessions` | token_hash (SHA-256 of the cookie token), csrf_token, user_id, org_id (active org), last_seen_at, expires_at, revoked_at | Raw session tokens are never stored. Idle and absolute expiry. |
 
+## Legal entities
+
+| Table | Key columns | Notes |
+|---|---|---|
+| `tax_groups` | name, country, trn_encrypted, trn_last4 | Unique (org, name). |
+| `legal_entities` | name, country (ISO 3166-1), trn_encrypted, trn_last4, fiscal_year_end_month/day, functional_currency (ISO 4217), timezone (IANA), tax_group_id, is_free_zone, is_active | Unique (org, name). TRN is AES-256-GCM encrypted (`app/crypto.py`), bound to org and field; API returns it masked. Archive with `is_active=false`. |
+
 ## Documents
 
 | Table | Key columns | Notes |

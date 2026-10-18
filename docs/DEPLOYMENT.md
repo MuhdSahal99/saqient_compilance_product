@@ -33,6 +33,8 @@ Host ports can be changed with `DB_PORT`, `REDIS_PORT`, `WEB_PORT`.
 The API refuses to start with `APP_ENV=production` unless:
 
 - `SECRET_KEY` is a random value of at least 32 characters (not the example value);
+- `FIELD_ENCRYPTION_KEY` is 32 random bytes, base64-encoded (encrypts TRNs; losing it
+  makes stored TRNs unreadable, so back it up with the database credentials);
 - `DEMO_MODE=false` (demo users cannot sign in);
 - `COOKIE_SECURE=true` (serve over HTTPS only);
 - `CELERY_TASK_ALWAYS_EAGER=false`;

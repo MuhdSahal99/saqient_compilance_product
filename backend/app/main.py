@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
-from app.api import ai, auth, checklists, documents, reviews, workspace
+from app.api import ai, auth, checklists, documents, entities, reviews, workspace
 from app.config import get_settings
 from app.db import get_engine
 
@@ -90,7 +90,7 @@ def create_app() -> FastAPI:
             status_code=500, content={"detail": "Something went wrong. Please try again."}
         )
 
-    for module in (auth, documents, checklists, reviews, ai, workspace):
+    for module in (auth, documents, checklists, reviews, ai, workspace, entities):
         app.include_router(module.router, prefix="/api")
 
     @app.get("/api/health", tags=["health"])

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import binascii
 from functools import lru_cache
 from typing import Literal
 
@@ -13,6 +15,13 @@ AIProviderName = Literal["disabled", "mock", "openai_compatible", "jais", "falco
 
 class ConfigError(RuntimeError):
     pass
+
+
+def _is_32_byte_b64(value: str) -> bool:
+    try:
+        return len(base64.b64decode(value, validate=True)) == 32
+    except (binascii.Error, ValueError):
+        return False
 
 
 class Settings(BaseSettings):
@@ -39,6 +48,9 @@ class Settings(BaseSettings):
     s3_endpoint_url: str = ""
     s3_region: str = ""
     gcs_bucket: str = ""
+
+    # 32 random bytes, base64. Required in production; dev/test derive one from SECRET_KEY.
+    field_encryption_key: str = Field(default="", repr=False)
 
     max_upload_mb: int = 20
     max_pdf_pages: int = 300
@@ -89,6 +101,8 @@ class Settings(BaseSettings):
             problems.append("SECRET_KEY must be set to a random value of at least 32 characters")
         if self.demo_mode:
             problems.append("DEMO_MODE must be false in production")
+        if not _is_32_byte_b64(self.field_encryption_key):
+            problems.append("FIELD_ENCRYPTION_KEY must be set to 32 random bytes, base64")
         if not self.cookie_secure:
             problems.append("COOKIE_SECURE must be true in production")
         if self.celery_task_always_eager:
