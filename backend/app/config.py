@@ -79,6 +79,13 @@ class Settings(BaseSettings):
     ocr_max_pages: int = 50
     ocr_page_timeout_seconds: int = 60
 
+    # Malware scanning of uploads through clamd (INSTREAM). Fails closed by default.
+    malware_scan: Literal["disabled", "clamav"] = "disabled"
+    clamav_host: str = "clamav"
+    clamav_port: int = 3310
+    clamav_timeout_seconds: int = 30
+    malware_scan_fail_open: bool = False
+
     max_upload_mb: int = 20
     dataset_max_upload_mb: int = 100
     dataset_max_rows: int = 1_000_000

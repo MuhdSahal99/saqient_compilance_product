@@ -12,7 +12,7 @@ storage and database; future: API ↔ model endpoint.
 | Session theft / fixation | HttpOnly cookie, new token at login, hashed storage, expiry | XSS would still allow actions within the page |
 | CSRF | Token header on unsafe methods, SameSite=Lax | — |
 | Credential stuffing | Rate limit, Argon2id | No MFA yet |
-| Malicious upload (parser exploits, zip bombs) | Signature checks, size limits, zip size check, time limits in worker | No malware scanning; parser CVEs — keep deps patched |
+| Malicious upload (parser exploits, zip bombs) | Signature checks, size limits, zip size check, time limits in worker; optional ClamAV scan before storage (fails closed) | Scanning is off by default and signature-based; parser CVEs — keep deps patched |
 | ReDoS via checklist patterns | Restricted syntax, bounded quantifiers, length limits | — |
 | Stored XSS via document text or names | React escaping; HTML report uses autoescaping templates | — |
 | Spreadsheet formula injection | CSV cell prefixing | — |

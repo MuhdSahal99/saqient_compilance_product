@@ -23,9 +23,12 @@ Features listed here are either absent or deliberately labelled in the UI.
   with no text layer are read by local Tesseract (English and Arabic) and their
   blocks are marked as OCR; recognition can be wrong. Images inside pages that do
   have a text layer are not read. With OCR off, scanned PDFs fail with a clear message.
-- **No malware scanning.** Uploads are validated by extension, MIME type and
-  file signature; DOCX macros and oversized archives are rejected. The UI says
-  files are not scanned.
+- **Malware scanning is optional and off by default.** With `MALWARE_SCAN=clamav`,
+  document and dataset uploads are streamed to clamd before storage; infected files
+  are refused and audited, and uploads stop (503) while the scanner is unreachable.
+  Signature-based scanning misses new threats. Without it, uploads are validated by
+  extension, MIME type and file signature only (DOCX macros, XLSX formulas and
+  oversized archives are rejected).
 - PDF paragraph detection uses vertical gaps between lines and can merge or
   split paragraphs on unusual layouts. Tables in PDFs are extracted as text lines.
 - DOCX/TXT have no fixed pages, so evidence uses paragraph numbers.

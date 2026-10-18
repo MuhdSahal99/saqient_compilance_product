@@ -11,10 +11,12 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
+from app.api.uploads import scan_refusal
 from app.config import get_settings
 from app.datasets.readers import DatasetFileError
 from app.datasets.schemas import SCHEMAS, MappingError
 from app.deps import DB, Ctx, Writer, get_owned_or_404
+from app.malware import MalwareFound, ScannerUnavailable
 from app.models import Dataset, DatasetKind, DatasetVersion, Job, JobKind, LegalEntity
 from app.schemas import (
     CanonicalFieldOut,
@@ -178,6 +180,8 @@ async def create_dataset(
     except DatasetFileError as exc:
         db.rollback()
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
+    except (MalwareFound, ScannerUnavailable) as exc:
+        raise scan_refusal(db, ctx, exc, data, "dataset") from exc
     except svc.DuplicateDataset as exc:
         db.rollback()
         return _duplicate(exc)
@@ -221,6 +225,8 @@ async def upload_version(
     except DatasetFileError as exc:
         db.rollback()
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
+    except (MalwareFound, ScannerUnavailable) as exc:
+        raise scan_refusal(db, ctx, exc, data, "dataset") from exc
     except svc.DuplicateDataset as exc:
         db.rollback()
         return _duplicate(exc)

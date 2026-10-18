@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
+from app import malware
 from app.config import get_settings
 from app.extraction import (
     ExtractionError,
@@ -80,6 +81,7 @@ def create_version(
     if len(data) > settings.max_upload_bytes:
         raise ValidationError(f"The file is larger than the {settings.max_upload_mb} MB limit.")
     file_format = detect_format(filename, declared_mime, data)
+    malware.ensure_clean(data)  # before anything is stored
     sha256 = hashlib.sha256(data).hexdigest()
     if not allow_duplicate:
         dup = find_duplicate(db, org_id, sha256)

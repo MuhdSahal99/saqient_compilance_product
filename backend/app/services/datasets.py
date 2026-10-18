@@ -12,6 +12,7 @@ import polars as pl
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app import malware
 from app.config import get_settings
 from app.datasets.build import BuildOptions, build_canonical, from_parquet, to_parquet
 from app.datasets.readers import DatasetFileError, RawTable, detect_format, read_table
@@ -110,6 +111,7 @@ def create_version(
             f"The file is larger than the {settings.dataset_max_upload_mb} MB limit."
         )
     fmt = detect_format(filename, declared_mime, data, dataset.kind.value)
+    malware.ensure_clean(data)  # before anything is stored
     sha256 = hashlib.sha256(data).hexdigest()
     if not allow_duplicate:
         dup = find_duplicate(db, dataset.org_id, sha256)

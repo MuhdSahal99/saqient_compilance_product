@@ -35,6 +35,10 @@ x-backend-env: &backend-env
   AI_SERVING_INTERFACE_VERIFIED: ${AI_SERVING_INTERFACE_VERIFIED:-false}
   AI_AUTH: ${AI_AUTH:-api_key}
   # OCR for scanned PDF pages: build with INSTALL_TESSERACT=true, then OCR_PROVIDER=tesseract.
+  # Malware scanning: start the optional clamav service (--profile clamav) and set
+  # MALWARE_SCAN=clamav. Uploads are refused while the scanner is unreachable.
+  MALWARE_SCAN: ${MALWARE_SCAN:-disabled}
+  CLAMAV_HOST: clamav
   OCR_PROVIDER: ${OCR_PROVIDER:-disabled}
   OCR_LANGUAGES: ${OCR_LANGUAGES:-eng+ara}
 
@@ -131,6 +135,14 @@ services:
     depends_on:
       api: { condition: service_healthy }
 
+  # Optional ClamAV daemon for upload scanning: `docker compose --profile clamav up -d`.
+  # It downloads signature updates from the ClamAV mirrors on start. No port is published.
+  clamav:
+    image: clamav/clamav:1.4
+    profiles: ["clamav"]
+    volumes:
+      - clamav:/var/lib/clamav
+
   # Optional self-hosted model server (Jais or Falcon via vLLM). Never starts by
   # default: it needs `--profile ai`, an NVIDIA GPU host and INFERENCE_MODEL set to a
   # model whose licence you have checked. No port is published; only the api and
@@ -162,3 +174,4 @@ volumes:
   pgdata:
   storage:
   model-cache:
+  clamav:

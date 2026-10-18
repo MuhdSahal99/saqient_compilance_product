@@ -22,6 +22,7 @@ Services:
 | `api` | backend image | FastAPI on :8000 (internal only). Health: `/api/health`, readiness: `/api/health/ready` (checks DB and Redis). |
 | `worker` | backend image | Celery worker: extraction, dataset imports, check runs, reminder emails. |
 | `beat` | backend image | Celery beat: schedules the daily task due-date reminders (05:00 UTC). Run exactly one. |
+| `clamav` | clamav/clamav:1.4 | Optional (`--profile clamav`): clamd for upload scanning with `MALWARE_SCAN=clamav`. Not published. |
 | `web` | frontend image (nginx) | SPA plus `/api` reverse proxy on 127.0.0.1:`${WEB_PORT:-8080}`. Same origin, so the session cookie stays first-party. |
 
 Volumes: `pgdata` (database) and `storage` (uploaded files, shared by `api` and
