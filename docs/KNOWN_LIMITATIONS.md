@@ -55,6 +55,25 @@ Features listed here are either absent or deliberately labelled in the UI.
 - **Engine messages are English.** Check messages and evidence labels stored on
   results are written in English and shown as stored in the Arabic interface.
 
+## E-invoicing and VAT (Phase B)
+- **No official content ships.** No PINT-AE or ZATCA schema, schematron, code list,
+  tax number format, go-live date, VAT box layout or filing deadline is included;
+  the demo uses a synthetic schema and invented values. Admins upload and verify the
+  official ones. Schematron business rules are not evaluated.
+- **ZATCA hash and QR are unverified.** The invoice hash (C14N 1.0 without
+  UBLExtensions, Signature and QR) and QR tag 6 follow our reading and were not
+  checked against the official SDK. Cryptographic stamps and certificates are not
+  validated; only the signed digest value is compared.
+- **Nothing is submitted.** Saqient does not clear, report or file anything with any
+  platform or ASP; rejection files are imported as evidence.
+- **VAT treatment is as configured.** Box recomputation depends on the entity's tax
+  code mapping; unmapped codes are flagged, not guessed. Registers are not filtered by
+  period in the box check; cut-off is a separate date check.
+- **Tax calendar dates come only from pack rules**, in whole days (entity time zone
+  is not applied to times of day). Public holidays and deadline extensions are not
+  modelled.
+- **Engine messages are English** (as for Phase A).
+
 ## Review engine
 - Deterministic checks only: text checks (required text, phrase groups,
   prohibited terms, restricted patterns, metadata, manual) under engine
