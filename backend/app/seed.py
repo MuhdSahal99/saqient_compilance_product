@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from app import demo_content as dc
 from app.config import get_settings
 from app.db import get_sessionmaker
+from app.demo_finance import seed_finance
 from app.models import (
     Base,
     Checklist,
@@ -209,6 +210,7 @@ def seed() -> None:
                 due = date.today() + timedelta(days=14)
                 reviews.assign(db, finding, role_users[Role.ANALYST], due, reviewer)
                 db.commit()
+            seed_finance(db, factory, org, admin, reviewer, role_users[Role.ANALYST])
         print("Seeded synthetic demo data. Demo password:", DEMO_PASSWORD)  # demo-only value
 
 

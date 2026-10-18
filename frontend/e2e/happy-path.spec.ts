@@ -148,3 +148,23 @@ test("signed-out users are sent to the login page", async ({ page }) => {
   await page.goto("/reviews");
   await expect(page).toHaveURL(/\/login/);
 });
+
+test("seeded ledger review shows dataset exceptions and the unverified rule", async ({ page }) => {
+  await login(page, "reviewer@alpha.example");
+  await page.getByRole("navigation").getByRole("link", { name: "Datasets", exact: true }).click();
+  await page.getByRole("link", { name: "December 2025 ledger (synthetic)" }).click();
+  await expect(page.getByText("Ready to use as review input.")).toBeVisible();
+  await expect(page.getByRole("tab", { name: /Imported rows/ })).toContainText("13");
+
+  await page.getByRole("navigation").getByRole("link", { name: "Reviews", exact: true }).click();
+  await page.getByRole("link", { name: "December ledger checks (synthetic demo)" }).click();
+  await expect(page.getByText(/Unverified rule: demo\.large_entry/)).toBeVisible();
+  await openFinding(page, "Data exceptions found: Weekend postings are explained");
+  await expect(page.getByText("Exceptions found").first()).toBeVisible();
+  // Evidence is the flagged ledger rows, by row id, with stored values.
+  const evidence = page.getByRole("figure").filter({ hasText: "General ledger v1" });
+  await expect(evidence.getByRole("cell", { name: "2025-12-06" }).first()).toBeVisible();
+
+  await page.getByRole("navigation").getByRole("link", { name: "Rule packs", exact: true }).click();
+  await expect(page.getByText("1 unverified").first()).toBeVisible();
+});

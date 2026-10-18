@@ -1,6 +1,39 @@
 # Status
 
-Last updated: 2026-10-18 · Phase 1, UI redesign, AI suggestions and Vertex AI sign-in are merged into main. Phase A (finance foundation) in progress on `feat/phase-a-foundation`.
+Last updated: 2026-10-18 · Phase 1, UI redesign, AI suggestions and Vertex AI sign-in are merged into main. Phase A (finance foundation) is complete on `feat/phase-a-foundation` (PR #6), awaiting review.
+
+## Phase A — finance foundation (PR #6)
+
+**Done:** legal entities and tax groups (TRN encrypted, masked); finance
+datasets (TB, GL, sales/purchase registers, bank statements incl. MT940 and
+CAMT.053) hashed, versioned and stored as canonical Parquet after a confirmed
+column mapping; rule packs (draft → published versions, admin-only rule
+verification, unverified-rule warnings in reviews and reports); data checks
+under engine `deterministic-1.1.0` (reconcile, threshold, duplicate exact and
+fuzzy, field format, date rule, ratio) with row-id evidence and a result hash,
+while `deterministic-1.0.0` text checks are unchanged; hash-chained audit log;
+invitations, role changes, member removal, password reset and a daily
+task-due email digest (Celery beat); optional local Tesseract OCR and ClamAV
+scanning, both off by default; UI for all of the above in English and Arabic;
+synthetic finance demo seed (entity, ledger, trial balance, `SYNTHETIC` rule
+pack, ledger review).
+
+**Checks executed (2026-10-18, this environment):** ruff + format, mypy
+(52 files), `alembic check` (no drift), backend pytest **230 passed** on
+PostgreSQL 16 (includes the 100k-row GL import under 60 s, golden and
+reproducibility tests for every data check, and tenant-isolation tests for
+every new endpoint); pnpm lint (0 errors, 8 fast-refresh warnings),
+typecheck, Vitest **23 passed**, build; Playwright **4 passed** against
+uvicorn + `vite preview` with eager jobs instead of a Celery worker (CI runs
+the worker). OCR tests ran against a real `tesseract` 5 install; ClamAV was
+tested with an in-process fake clamd speaking INSTREAM.
+
+**Not executed:** a real ClamAV daemon; SMTP delivery to a real server; the
+`clamav` compose profile; multi-million-row imports.
+
+**Next:** Phase B per the roadmap, after review of PR #6. Open question for the
+owner: which official sources an admin will cite when verifying the first real
+rule pack (no real rules are seeded).
 
 ## Completed
 
