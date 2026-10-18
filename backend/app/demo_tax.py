@@ -47,6 +47,8 @@ def ct_rules(p: str = "syn.ct") -> list[dict[str, Any]]:
         row(f"{p}.sbr_last_period_end", "date", "2026-12-31", "SBR last period end"),
         row(f"{p}.qfzp_de_minimis_share", "decimal", "0.04", "QFZP de minimis share"),
         row(f"{p}.qfzp_de_minimis_amount", "decimal", "4000000", "QFZP de minimis", "currency"),
+        row(f"{p}.loss_transfer_min_ownership", "decimal", "0.80", "Loss transfer ownership"),
+        row(f"{p}.tax_group_min_ownership", "decimal", "0.90", "Tax group ownership"),
     ]
 
 

@@ -142,3 +142,4 @@ def run(kind: str, inputs: Inputs, rules: RuleSource, prefix: str) -> list[Outpu
 
 
 from app.calc import corporate_tax as _ct  # noqa: E402,F401  (registers formulas)
+from app.calc import losses as _losses  # noqa: E402,F401

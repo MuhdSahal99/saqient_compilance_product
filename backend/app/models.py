@@ -158,6 +158,14 @@ class LineSource(str, enum.Enum):
     COMPUTED = "computed"
 
 
+class LossEntryKind(str, enum.Enum):
+    INCURRED = "incurred"
+    USED = "used"
+    TRANSFERRED_IN = "transferred_in"
+    TRANSFERRED_OUT = "transferred_out"
+    FORFEITED = "forfeited"
+
+
 class TaskStatus(str, enum.Enum):
     OPEN = "open"
     IN_PROGRESS = "in_progress"
@@ -1493,6 +1501,76 @@ class WorkpaperSnapshot(Base):
     )
     signed_off_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = _created()
+
+
+class TaxLossEntry(Base):
+    """One movement in an entity's tax loss register (amounts are always positive)."""
+
+    __tablename__ = "tax_loss_entries"
+    __table_args__ = (
+        # A signed-off workpaper feeds the register at most once per movement kind.
+        UniqueConstraint("workpaper_id", "kind"),
+        Index("ix_tax_loss_entries_entity_period", "entity_id", "period_end"),
+    )
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    entity_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("legal_entities.id", ondelete="RESTRICT")
+    )
+    kind: Mapped[LossEntryKind] = mapped_column(_enum(LossEntryKind, "loss_entry_kind"))
+    period_start: Mapped[date] = mapped_column(Date)
+    period_end: Mapped[date] = mapped_column(Date)
+    amount: Mapped[Decimal] = mapped_column(Numeric(20, 4))
+    currency: Mapped[str] = mapped_column(String(3))
+    workpaper_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tax_workpapers.id", ondelete="RESTRICT"), index=True
+    )
+    counterparty_entity_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("legal_entities.id", ondelete="RESTRICT")
+    )
+    # Pairs the two sides of a transfer.
+    transfer_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), index=True)
+    explanation: Mapped[list[dict[str, Any]]] = mapped_column(JSONType, default=list)
+    rule_snapshots: Mapped[list[dict[str, Any]]] = mapped_column(JSONType, default=list)
+    evidence: Mapped[list[dict[str, Any]]] = mapped_column(JSONType, default=list)
+    note: Mapped[str] = mapped_column(Text, default="")
+    is_demo: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = _created()
+
+    entity: Mapped[LegalEntity] = relationship(foreign_keys=[entity_id], lazy="joined")
+    counterparty: Mapped[LegalEntity | None] = relationship(
+        foreign_keys=[counterparty_entity_id], lazy="joined"
+    )
+
+
+class TaxGroupMembership(Base):
+    """Dated membership of an entity in a tax group, with the parent's ownership share."""
+
+    __tablename__ = "tax_group_memberships"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    tax_group_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tax_groups.id", ondelete="CASCADE"), index=True
+    )
+    entity_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("legal_entities.id", ondelete="RESTRICT"), index=True
+    )
+    is_parent: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Share held by the parent (0..1); the parent itself records 1.
+    ownership_share: Mapped[Decimal] = mapped_column(Numeric(7, 6))
+    joined_on: Mapped[date] = mapped_column(Date)
+    left_on: Mapped[date | None] = mapped_column(Date)
+    evidence: Mapped[list[dict[str, Any]]] = mapped_column(JSONType, default=list)
+    note: Mapped[str] = mapped_column(Text, default="")
+    created_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = _created()
+
+    entity: Mapped[LegalEntity] = relationship(lazy="joined")
 
 
 class AuditEvent(Base):

@@ -18,6 +18,7 @@ from app.models import (
     FindingStatus,
     JobStatus,
     LineSource,
+    LossEntryKind,
     MonitorCadence,
     MonitorRunStatus,
     PeriodFrequency,
@@ -1262,3 +1263,125 @@ class WorkpaperOut(WorkpaperSummaryOut):
     warnings: list[str]
     lines: list[WorkpaperLineOut]
     snapshots: list[WorkpaperSnapshotOut]
+
+
+class LossEntryIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    kind: Literal["incurred", "used", "forfeited"] = Field(
+        description="Manual movements; transfers and workpaper postings have their own endpoints."
+    )
+    period_start: date
+    period_end: date
+    amount: Decimal = Field(gt=0, max_digits=20, decimal_places=4)
+    note: str = Field(min_length=1, max_length=4000)
+    evidence: list[EvidenceRefIn] = Field(default_factory=list, max_length=20)
+
+
+class LossEntryOut(BaseModel):
+    id: uuid.UUID
+    entity_id: uuid.UUID
+    kind: LossEntryKind
+    period_start: date
+    period_end: date
+    amount: Decimal
+    signed_amount: Decimal
+    currency: str
+    workpaper_id: uuid.UUID | None
+    counterparty_entity_id: uuid.UUID | None
+    counterparty_name: str | None
+    transfer_id: uuid.UUID | None
+    explanation: list[dict[str, Any]]
+    rule_snapshots: list[dict[str, Any]]
+    evidence: list[dict[str, Any]]
+    note: str
+    created_at: datetime
+
+
+class LossRegisterOut(BaseModel):
+    entity_id: uuid.UUID
+    currency: str
+    balance: Decimal
+    entries: list[LossEntryOut]
+
+
+class LossPostingOut(BaseModel):
+    created: list[LossEntryOut]
+    warnings: list[str]
+
+
+class LossTransferIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    from_entity_id: uuid.UUID
+    to_entity_id: uuid.UUID
+    amount: Decimal = Field(gt=0, max_digits=20, decimal_places=4)
+    period_start: date
+    period_end: date
+    common_ownership: Decimal = Field(ge=0, le=1, max_digits=7, decimal_places=6)
+    same_business_continuity: bool
+    both_resident: bool
+    rule_pack_version_id: uuid.UUID
+    rules_prefix: str = Field(min_length=1, max_length=80, pattern=PREFIX_PATTERN)
+    note: str = Field(min_length=1, max_length=4000)
+    evidence: list[EvidenceRefIn] = Field(default_factory=list, max_length=20)
+
+
+class CalcLineOut(BaseModel):
+    key: str
+    label: str
+    section: str
+    formula_id: str
+    amount: Decimal | None
+    value: str | None
+    explanation: list[dict[str, Any]]
+    rule_snapshots: list[dict[str, Any]]
+
+
+class MembershipIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    entity_id: uuid.UUID
+    is_parent: bool = False
+    ownership_share: Decimal = Field(ge=0, le=1, max_digits=7, decimal_places=6)
+    joined_on: date
+    left_on: date | None = None
+    note: str = Field(default="", max_length=4000)
+    evidence: list[EvidenceRefIn] = Field(default_factory=list, max_length=20)
+
+
+class MembershipEndIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    left_on: date
+    note: str = Field(min_length=1, max_length=4000)
+
+
+class GroupMembershipOut(BaseModel):
+    id: uuid.UUID
+    tax_group_id: uuid.UUID
+    entity_id: uuid.UUID
+    entity_name: str
+    is_parent: bool
+    ownership_share: Decimal
+    joined_on: date
+    left_on: date | None
+    evidence: list[dict[str, Any]]
+    note: str
+
+
+class GroupTestIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    rule_pack_version_id: uuid.UUID
+    rules_prefix: str = Field(min_length=1, max_length=80, pattern=PREFIX_PATTERN)
+    on: date
+
+
+class GroupTestOut(BaseModel):
+    on: date
+    calc_version: str
+    result_hash: str
+    lines: list[CalcLineOut]
+    warnings: list[str]
+
+
+class LossTransferOut(BaseModel):
+    entries: list[LossEntryOut]
+    lines: list[CalcLineOut]
+    warnings: list[str]

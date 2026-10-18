@@ -520,3 +520,64 @@ def reopen(db: Session, wp: TaxWorkpaper, reason: str, actor: User) -> None:
 
 def kinds() -> list[WorkpaperKind]:
     return [k for k in WorkpaperKind if k.value in calc.FORMULAS]
+
+
+# ---------------------------------------------------------------- standalone checks
+
+
+@dataclass
+class Evaluation:
+    outputs: list[calc.Output]
+    rules: dict[str, dict[str, Any]]
+    warnings: list[str]
+    result_hash: str
+
+    def overall(self) -> str | None:
+        return next((o.value for o in self.outputs if o.key == "conditions"), None)
+
+    def lines(self) -> list[dict[str, Any]]:
+        return [
+            {
+                "key": o.key,
+                "label": o.label,
+                "section": o.section,
+                "formula_id": o.formula_id,
+                "amount": o.amount,
+                "value": o.value,
+                "explanation": [s.as_dict() for s in o.steps],
+                "rule_snapshots": [self.rules[k] for k in o.rule_keys if k in self.rules],
+            }
+            for o in self.outputs
+        ]
+
+
+def evaluate(
+    db: Session,
+    org_id: uuid.UUID,
+    version_id: uuid.UUID,
+    prefix: str,
+    on: date,
+    kind: str,
+    lines: list[calc.InputLine],
+) -> Evaluation:
+    """Run one formula outside a workpaper (loss transfers, group tests)."""
+    _published(db, org_id, version_id)
+    rules = PackRules(db, org_id, version_id, on)
+    try:
+        outputs = calc.run(kind, calc.Inputs(lines=lines, period_end=on), rules, prefix)
+    except calc.CalcError as exc:
+        raise WorkpaperError(str(exc)) from exc
+    snaps = {k: r.snapshot() for k, r in rules.used.items()}
+    digest = hashlib.sha256(
+        _canonical(
+            {
+                "calc_version": calc.CALC_VERSION,
+                "kind": kind,
+                "inputs": [[i.key, i.category, i.amount, i.value] for i in lines],
+                "rules": snaps,
+                "outputs": [[o.key, o.formula_id, o.amount, o.value] for o in outputs],
+            }
+        ).encode()
+    ).hexdigest()
+    warnings = sorted({w for r in rules.used.values() if (w := r.warning())})
+    return Evaluation(outputs, snaps, warnings, digest)
