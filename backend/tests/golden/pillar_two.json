@@ -1,0 +1,91 @@
+{
+  "formula": "pillar_two",
+  "prefix": "syn.p2",
+  "rules": "synthetic: scope 600000000 in 2 of 4 years; minimum rate 0.14; SBIE payroll 0.06, assets 0.05; ETR 4 decimals half-even; safe harbour de minimis revenue 8000000 / profit 800000, simplified ETR 0.16; amounts 2 decimals half_up",
+  "cases": [
+    {
+      "name": "in scope, AE top-up after SBIE, SA above the minimum and in the de minimis harbour",
+      "inputs": [
+        {"key": "revenue_year_1", "amount": "700000000"},
+        {"key": "revenue_year_2", "amount": "650000000"},
+        {"key": "revenue_year_3", "amount": "500000000"},
+        {"key": "revenue_year_4", "amount": "500000000"},
+        {"key": "income_ae", "category": "globe_income", "amount": "10000000"},
+        {"key": "taxes_ae", "category": "covered_taxes", "amount": "900000"},
+        {"key": "payroll_ae", "category": "payroll", "amount": "5000000"},
+        {"key": "assets_ae", "category": "tangible_assets", "amount": "20000000"},
+        {"key": "income_sa", "category": "globe_income", "amount": "2000000"},
+        {"key": "taxes_sa", "category": "covered_taxes", "amount": "400000"},
+        {"key": "cbcr_revenue_sa", "category": "cbcr_revenue", "amount": "7000000"},
+        {"key": "cbcr_pbt_sa", "category": "cbcr_pbt", "amount": "700000"},
+        {"key": "ready_entity_list", "category": "readiness", "value": "true"},
+        {"key": "ready_cbcr_data", "category": "readiness", "value": "false"}
+      ],
+      "worked": [
+        "scope: years 1 and 2 >= 600000000, so 2 of 4: in scope",
+        "AE SBIE = 5000000 x 0.06 + 20000000 x 0.05 = 1300000",
+        "AE ETR = 900000 / 10000000 = 0.0900; top-up % = 0.14 - 0.09 = 0.05",
+        "AE excess = 10000000 - 1300000 = 8700000; top-up = 0.05 x 8700000 = 435000",
+        "SA ETR = 0.2000, no top-up; de minimis: 7000000 < 8000000 and 700000 < 800000"
+      ],
+      "expected": {
+        "scope": "in_scope",
+        "AE:sbie": "1300000.00",
+        "AE:etr": "0.0900",
+        "AE:top_up": "435000.00",
+        "SA:etr": "0.2000",
+        "SA:top_up": "0.00",
+        "SA:safe_harbour": "met",
+        "top_up_total": "435000.00",
+        "readiness:entity_list": "ready",
+        "readiness:cbcr_data": "not_ready",
+        "readiness:deferred_tax": "not_determinable",
+        "readiness": "1/4"
+      }
+    },
+    {
+      "name": "ETR rounding, failed safe harbours, a loss jurisdiction and scope not determinable",
+      "inputs": [
+        {"key": "revenue_year_1", "amount": "500000000"},
+        {"key": "income_qa", "category": "globe_income", "amount": "3000000"},
+        {"key": "taxes_qa", "category": "covered_taxes", "amount": "400000"},
+        {"key": "cbcr_revenue_qa", "category": "cbcr_revenue", "amount": "9000000"},
+        {"key": "cbcr_pbt_qa", "category": "cbcr_pbt", "amount": "1000000"},
+        {"key": "simplified_taxes_qa", "category": "simplified_taxes", "amount": "100000"},
+        {"key": "income_kw", "category": "globe_income", "amount": "-500"}
+      ],
+      "worked": [
+        "scope: 0 of 1 entered year over, 3 years not entered could still make 2: not determinable",
+        "QA ETR = 400000 / 3000000 = 0.13333... -> 0.1333; top-up % = 0.0067",
+        "QA SBIE = 0; top-up = 0.0067 x 3000000 = 20100",
+        "QA harbours: 9000000 >= 8000000; 100000 / 1000000 = 0.10 < 0.16; 1000000 > SBIE 0: none met",
+        "KW income <= 0: no top-up"
+      ],
+      "expected": {
+        "scope": "not_determinable",
+        "QA:etr": "0.1333",
+        "QA:top_up": "20100.00",
+        "QA:safe_harbour": "not_met",
+        "KW:etr": "n/a",
+        "KW:top_up": "0",
+        "top_up_total": "20100.00",
+        "readiness": "0/4"
+      }
+    },
+    {
+      "name": "below the threshold in every year",
+      "inputs": [
+        {"key": "revenue_year_1", "amount": "1"},
+        {"key": "revenue_year_2", "amount": "1"},
+        {"key": "revenue_year_3", "amount": "599999999.99"},
+        {"key": "revenue_year_4", "amount": "1"}
+      ],
+      "expected": {"scope": "not_in_scope", "top_up_total": "0"}
+    },
+    {
+      "name": "a jurisdiction key without a country code",
+      "inputs": [{"key": "income", "category": "globe_income", "amount": "1"}],
+      "error": "Input 'income' must end in _ and a two-letter country code."
+    }
+  ]
+}

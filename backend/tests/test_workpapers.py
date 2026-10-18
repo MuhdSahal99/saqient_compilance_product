@@ -331,3 +331,33 @@ def test_workpaper_roles_and_tenant_isolation(
         },
     )
     assert imp.status_code == 422
+
+
+def test_pillar_two_paper_through_the_api(tenant_a: Tenant, db: Session) -> None:
+    """Golden case 1 of tests/golden/pillar_two.json, entered through the API."""
+    admin = login(tenant_a.users[Role.ORG_ADMIN])
+    entity = make_entity(db, tenant_a)
+    rpv = ct_pack(admin)
+    wp = new_paper(
+        admin, entity.id, rpv, kind="pillar_two", title="Synthetic P2", rules_prefix="syn.p2"
+    ).json()
+    for key, cat, amt in [
+        ("revenue_year_1", "input", "700000000"),
+        ("revenue_year_2", "input", "650000000"),
+        ("income_ae", "globe_income", "10000000"),
+        ("taxes_ae", "covered_taxes", "900000"),
+        ("payroll_ae", "payroll", "5000000"),
+        ("assets_ae", "tangible_assets", "20000000"),
+    ]:
+        assert put_in(admin, wp["id"], key, category=cat, amount=amt).status_code == 200
+    put_in(admin, wp["id"], "ready_entity_list", category="readiness", value="true")
+    out = admin.post(f"/api/workpapers/{wp['id']}/compute")
+    assert out.status_code == 200, out.text
+    got = lines(out.json())
+    assert got["calc:scope"]["value"] == "in_scope"
+    assert Decimal(got["calc:AE:top_up"]["amount"]) == Decimal("435000")
+    assert got["calc:readiness"]["value"] == "1/4"
+    bad = put_in(admin, wp["id"], "income", category="globe_income", amount="1")
+    assert bad.status_code == 200
+    r = admin.post(f"/api/workpapers/{wp['id']}/compute")
+    assert r.status_code == 422 and "country code" in r.json()["detail"]

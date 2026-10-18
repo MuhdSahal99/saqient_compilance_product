@@ -57,6 +57,27 @@ def ct_rules(p: str = "syn.ct") -> list[dict[str, Any]]:
     ]
 
 
+READINESS_ITEMS = ["entity_list", "cbcr_data", "deferred_tax", "covered_taxes"]
+
+
+def p2_rules(p: str = "syn.p2") -> list[dict[str, Any]]:
+    return [
+        row(f"{p}.amount_decimals", "integer", 2, "Amount decimals"),
+        row(f"{p}.rounding_mode", "string", "half_up", "Rounding mode"),
+        row(f"{p}.p2_revenue_threshold", "decimal", "600000000", "Scope revenue", "currency"),
+        row(f"{p}.p2_lookback_years", "integer", 4, "Scope look-back years"),
+        row(f"{p}.p2_years_required", "integer", 2, "Years at or above the threshold"),
+        row(f"{p}.p2_minimum_rate", "decimal", "0.14", "Minimum rate"),
+        row(f"{p}.sbie_payroll_rate", "decimal", "0.06", "SBIE payroll rate"),
+        row(f"{p}.sbie_assets_rate", "decimal", "0.05", "SBIE tangible assets rate"),
+        row(f"{p}.etr_decimals", "integer", 4, "ETR decimals"),
+        row(f"{p}.sh_de_minimis_revenue", "decimal", "8000000", "Safe harbour revenue", "currency"),
+        row(f"{p}.sh_de_minimis_profit", "decimal", "800000", "Safe harbour profit", "currency"),
+        row(f"{p}.sh_simplified_etr_rate", "decimal", "0.16", "Simplified ETR test rate"),
+        row(f"{p}.p2_readiness_items", "json", READINESS_ITEMS, "Data readiness items"),
+    ]
+
+
 def rules() -> list[dict[str, Any]]:
     """All synthetic direct-tax rules."""
-    return ct_rules()
+    return [*ct_rules(), *p2_rules()]
