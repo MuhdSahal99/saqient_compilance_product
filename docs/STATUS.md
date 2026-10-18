@@ -31,7 +31,7 @@ tested with an in-process fake clamd speaking INSTREAM.
 **Not executed:** a real ClamAV daemon; SMTP delivery to a real server; the
 `clamav` compose profile; multi-million-row imports.
 
-**Next:** Phase B per the roadmap, after review of PR #6. Open question for the
+**Next:** owner review of PR #6; the next phase is not planned yet. Open question for the
 owner: which official sources an admin will cite when verifying the first real
 rule pack (no real rules are seeded).
 
