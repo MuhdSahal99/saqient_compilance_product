@@ -641,21 +641,32 @@ class ReportSnapshot(Base):
 
 
 class AuditEvent(Base):
-    """Application audit trail. Not tamper-proof."""
+    """Append-only, hash-chained audit trail (one chain per organisation).
+
+    See ``app/services/audit.py``. A database trigger rejects UPDATE.
+    """
 
     __tablename__ = "audit_events"
-    __table_args__ = (Index("ix_audit_org_created", "org_id", "created_at"),)
+    __table_args__ = (
+        Index("ix_audit_org_created", "org_id", "created_at"),
+        UniqueConstraint(
+            "org_id", "seq", name="uq_audit_events_org_seq", postgresql_nulls_not_distinct=True
+        ),
+    )
     id: Mapped[uuid.UUID] = _uuid_pk()
     org_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE")
     )
-    actor_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
-    )
+    # No ON DELETE action: the actor is part of the hashed content, so users with
+    # audit history are deactivated rather than deleted.
+    actor_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     action: Mapped[str] = mapped_column(String(80))
     object_type: Mapped[str] = mapped_column(String(60))
     object_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     meta: Mapped[dict[str, Any]] = mapped_column("metadata", JSONType, default=dict)
     created_at: Mapped[datetime] = _created()
+    seq: Mapped[int] = mapped_column(BigInteger)
+    prev_hash: Mapped[str] = mapped_column(String(64))
+    hash: Mapped[str] = mapped_column(String(64))
 
     actor: Mapped[User | None] = relationship(lazy="joined")

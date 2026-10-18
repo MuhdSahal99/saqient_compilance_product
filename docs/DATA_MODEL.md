@@ -78,6 +78,7 @@ remain allowed.
 ## Audit
 
 `audit_events`: org_id, actor_id, action, object_type, object_id, metadata
-(JSON), created_at. `services/audit.record` strips keys such as `text`,
-`content`, `password`, `token`, `csrf`, `body`. This is an application log, not
-a tamper-proof ledger.
+(JSON), created_at, seq, prev_hash, hash. Unique (org_id, seq) with NULLs not
+distinct. Append-only hash chain per organisation (ADR 0006); a trigger
+rejects UPDATE. `services/audit.record` strips keys such as `text`,
+`content`, `password`, `token`, `csrf`, `body`.

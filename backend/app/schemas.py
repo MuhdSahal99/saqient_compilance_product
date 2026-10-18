@@ -399,6 +399,20 @@ class AuditEventOut(BaseModel):
     object_id: uuid.UUID | None
     meta: dict[str, Any]
     created_at: datetime
+    seq: int
+    hash: str
+
+
+class AuditVerificationOut(BaseModel):
+    ok: bool = Field(description="True when every event in the chain matches its hash.")
+    checked: int = Field(description="Events checked, oldest first, up to the first break.")
+    head_seq: int | None = Field(description="Position of the last event checked.")
+    head_hash: str | None = Field(
+        description="Hash of the last event checked. Keep it outside the system to detect "
+        "later removal of the newest events."
+    )
+    first_broken_seq: int | None = None
+    reason: str | None = None
 
 
 # ---------------------------------------------------------------- AI suggestions

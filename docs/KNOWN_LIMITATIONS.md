@@ -38,7 +38,9 @@ Features listed here are either absent or deliberately labelled in the UI.
   output does strip diacritics and tatweel; the engine does not yet.)
 
 ## Security and operations
-- The audit log is an application table, **not tamper-proof**.
+- The audit log is hash-chained and verifiable (ADR 0006). Removing the newest
+  events or a whole organisation is not detectable from the database alone;
+  keep the `head_hash` from verification outside the system if you need that.
 - Login rate limiting falls back to in-memory counters if Redis is unavailable
   (per-process only).
 - S3 and GCS storage adapters are implemented but **not tested** against real
