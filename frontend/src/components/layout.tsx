@@ -5,9 +5,11 @@ import { useQuery } from "@tanstack/react-query";
 import {
   Activity,
   Building,
+  CalendarClock,
   Check,
   ChevronsUpDown,
   ClipboardCheck,
+  FileCode,
   FileSearch,
   FileText,
   FolderOpen,
@@ -50,9 +52,11 @@ type NavKey =
   | "checklists"
   | "entities"
   | "datasets"
+  | "einvoices"
   | "rulePacks"
   | "findings"
   | "tasks"
+  | "taxCalendar"
   | "reports"
   | "activity"
   | "settings";
@@ -74,6 +78,7 @@ const NAV_GROUPS: { key: string; items: { to: string; key: NavKey; icon: typeof 
     key: "finance",
     items: [
       { to: "/datasets", key: "datasets", icon: Table2 },
+      { to: "/einvoices", key: "einvoices", icon: FileCode },
       { to: "/entities", key: "entities", icon: Building },
       { to: "/rule-packs", key: "rulePacks", icon: Scale },
     ],
@@ -83,6 +88,7 @@ const NAV_GROUPS: { key: string; items: { to: string; key: NavKey; icon: typeof 
     items: [
       { to: "/findings", key: "findings", icon: FileSearch },
       { to: "/tasks", key: "tasks", icon: SquareCheckBig },
+      { to: "/tax-calendar", key: "taxCalendar", icon: CalendarClock },
       { to: "/reports", key: "reports", icon: FileText },
     ],
   },
