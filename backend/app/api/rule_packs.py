@@ -3,17 +3,19 @@
 from __future__ import annotations
 
 import uuid
+from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.deps import DB, Admin, Ctx, Decider, get_owned_or_404
-from app.models import Rule, RulePack, RulePackVersion, RuleVerification
+from app.models import Rule, RulePack, RulePackFile, RulePackVersion, RuleVerification
 from app.schemas import (
     RuleOut,
     RulePackCreateIn,
+    RulePackFileOut,
     RulePackOut,
     RulePackVersionDetailOut,
     RulePackVersionOut,
@@ -35,7 +37,7 @@ def _version_out(v: RulePackVersion) -> RulePackVersionOut:
     out.rule_count = len(v.rules)
     out.unverified_count = sum(
         1 for r in v.rules if r.verification_status is not RuleVerification.VERIFIED
-    )
+    ) + sum(1 for f in v.files if f.verification_status is not RuleVerification.VERIFIED)
     return out
 
 
@@ -48,6 +50,7 @@ def _detail(db: Session, v: RulePackVersion) -> RulePackVersionDetailOut:
         jurisdiction=v.rule_pack.jurisdiction,
         is_synthetic=v.rule_pack.is_synthetic,
         rules=[_rule_out(r) for r in v.rules],
+        files=[RulePackFileOut.model_validate(f) for f in v.files],
     )
 
 
@@ -175,3 +178,74 @@ def unverify_rule(rule_id: uuid.UUID, ctx: Admin, db: DB) -> RuleOut:
     db.commit()
     db.refresh(rule)
     return _rule_out(rule)
+
+
+_FILE_KEY = r"^[a-z0-9]+(?:[._][a-z0-9]+)*$"
+
+
+@router.post(
+    "/rule-pack-versions/{version_id}/files",
+    response_model=RulePackVersionDetailOut,
+    status_code=201,
+    summary="Attach a file (XSD bundle) to a draft version",
+    description="A ZIP of XSD files with an entry point. The bundle must compile, and schema "
+    "imports may only refer to files inside it. Replaces a file with the same key. Drafts "
+    "only; admins and reviewers.",
+)
+async def add_file(
+    version_id: uuid.UUID,
+    ctx: Decider,
+    db: DB,
+    file: Annotated[UploadFile, File()],
+    file_key: Annotated[str, Form(min_length=1, max_length=120, pattern=_FILE_KEY)],
+    title: Annotated[str, Form(min_length=1, max_length=300)],
+    entry_point: Annotated[str, Form(min_length=1, max_length=300)],
+    kind: Annotated[str, Form()] = "xsd_bundle",
+    source_url: Annotated[str | None, Form(max_length=500, pattern=r"^https://")] = None,
+    source_note: Annotated[str, Form(max_length=4000)] = "",
+) -> RulePackVersionDetailOut:
+    v = get_owned_or_404(db, RulePackVersion, version_id, ctx.org_id)
+    data = await file.read(svc.MAX_BUNDLE_BYTES + 1)
+    svc.add_file(
+        db,
+        v,
+        file_key=file_key,
+        kind=kind,
+        title=title,
+        filename=file.filename or "bundle.zip",
+        entry_point=entry_point,
+        data=data,
+        source_url=source_url,
+        source_note=source_note,
+        actor=ctx.user,
+    )
+    db.commit()
+    return _detail(db, v)
+
+
+@router.post(
+    "/rule-pack-files/{file_id}/verify",
+    response_model=RulePackFileOut,
+    summary="Mark a rule pack file verified",
+    description="Organisation admins only. Requires an official source URL.",
+)
+def verify_file(file_id: uuid.UUID, ctx: Admin, db: DB) -> RulePackFileOut:
+    f = get_owned_or_404(db, RulePackFile, file_id, ctx.org_id)
+    svc.set_file_verification(db, f, True, ctx.user)
+    db.commit()
+    db.refresh(f)
+    return RulePackFileOut.model_validate(f)
+
+
+@router.post(
+    "/rule-pack-files/{file_id}/unverify",
+    response_model=RulePackFileOut,
+    summary="Return a rule pack file to draft",
+    description="Organisation admins only.",
+)
+def unverify_file(file_id: uuid.UUID, ctx: Admin, db: DB) -> RulePackFileOut:
+    f = get_owned_or_404(db, RulePackFile, file_id, ctx.org_id)
+    svc.set_file_verification(db, f, False, ctx.user)
+    db.commit()
+    db.refresh(f)
+    return RulePackFileOut.model_validate(f)

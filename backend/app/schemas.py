@@ -639,7 +639,11 @@ class RuleIn(BaseModel):
     rule_key: str = Field(min_length=1, max_length=120, pattern=_RULE_KEY)
     title: str = Field(min_length=1, max_length=300)
     value_type: RuleValueType
-    value: str = Field(min_length=1, max_length=200, description="Parsed by value_type.")
+    value: str = Field(
+        min_length=1,
+        max_length=65536,
+        description="Parsed by value_type. Scalars up to 200 characters; json up to 64 KB.",
+    )
     unit: str = Field(default="", max_length=40)
     effective_from: date
     effective_to: date | None = None
@@ -648,6 +652,12 @@ class RuleIn(BaseModel):
     )
     source_note: str = Field(default="", max_length=4000)
     todo: str = Field(default="", max_length=4000, description="Open question; keeps it draft.")
+
+    @model_validator(mode="after")
+    def _scalar_length(self) -> RuleIn:
+        if self.value_type is not RuleValueType.JSON and len(self.value) > 200:
+            raise ValueError("scalar rule values are limited to 200 characters")
+        return self
 
 
 class RulesReplaceIn(BaseModel):
@@ -685,11 +695,29 @@ class RulePackVersionOut(BaseModel):
     unverified_count: int = 0
 
 
+class RulePackFileOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    file_key: str
+    kind: str
+    title: str
+    filename: str
+    entry_point: str
+    size_bytes: int
+    sha256: str
+    source_url: str | None
+    source_note: str
+    verification_status: RuleVerification
+    verified_at: datetime | None
+    created_at: datetime
+
+
 class RulePackVersionDetailOut(RulePackVersionOut):
     pack_name: str
     jurisdiction: str
     is_synthetic: bool
     rules: list[RuleOut]
+    files: list[RulePackFileOut] = []
 
 
 class RulePackOut(BaseModel):

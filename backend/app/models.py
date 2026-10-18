@@ -114,6 +114,9 @@ class RuleValueType(str, enum.Enum):
     STRING = "string"
     BOOLEAN = "boolean"
     DATE = "date"
+    # Structured parameters (lists, tables). Shape checked per rule-key family
+    # (services/rule_schemas.py); size capped.
+    JSON = "json"
 
 
 class DatasetKind(str, enum.Enum):
@@ -424,6 +427,9 @@ class RulePackVersion(Base):
     rules: Mapped[list[Rule]] = relationship(
         back_populates="version", order_by="[Rule.rule_key, Rule.effective_from]"
     )
+    files: Mapped[list[RulePackFile]] = relationship(
+        back_populates="version", order_by="RulePackFile.file_key"
+    )
 
 
 class Rule(Base):
@@ -439,7 +445,7 @@ class Rule(Base):
     rule_key: Mapped[str] = mapped_column(String(120))
     title: Mapped[str] = mapped_column(String(300))
     value_type: Mapped[RuleValueType] = mapped_column(_enum(RuleValueType, "rule_value_type"))
-    value: Mapped[str] = mapped_column(String(200))
+    value: Mapped[str] = mapped_column(Text)
     unit: Mapped[str] = mapped_column(String(40), default="")
     effective_from: Mapped[date] = mapped_column(Date)
     effective_to: Mapped[date | None] = mapped_column(Date)
@@ -457,6 +463,45 @@ class Rule(Base):
 
     version: Mapped[RulePackVersion] = relationship(back_populates="rules")
     verified_by: Mapped[User | None] = relationship(lazy="joined")
+
+
+class RulePackFile(Base):
+    """A file a rule pack version relies on (e.g. an XSD bundle), hashed and immutable.
+
+    Like a rule, a file is draft until an org admin verifies it against its source.
+    Files are copied by reference (same storage key) into new draft versions.
+    """
+
+    __tablename__ = "rule_pack_files"
+    __table_args__ = (UniqueConstraint("rule_pack_version_id", "file_key"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    rule_pack_version_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("rule_pack_versions.id", ondelete="CASCADE"), index=True
+    )
+    file_key: Mapped[str] = mapped_column(String(120))
+    kind: Mapped[str] = mapped_column(String(40))  # "xsd_bundle"
+    title: Mapped[str] = mapped_column(String(300))
+    filename: Mapped[str] = mapped_column(String(255))
+    entry_point: Mapped[str] = mapped_column(String(300), default="")
+    size_bytes: Mapped[int] = mapped_column(BigInteger)
+    sha256: Mapped[str] = mapped_column(String(64))
+    storage_key: Mapped[str] = mapped_column(String(200))
+    source_url: Mapped[str | None] = mapped_column(String(500))
+    source_note: Mapped[str] = mapped_column(Text, default="")
+    verification_status: Mapped[RuleVerification] = mapped_column(
+        _enum(RuleVerification, "rule_file_verification"), default=RuleVerification.DRAFT
+    )
+    verified_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    uploaded_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = _created()
+
+    version: Mapped[RulePackVersion] = relationship(back_populates="files")
 
 
 # ---------------------------------------------------------------- datasets
