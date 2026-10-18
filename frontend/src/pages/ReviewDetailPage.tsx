@@ -9,6 +9,7 @@ import {
   AlertTriangle,
   BadgeCheck,
   BookOpen,
+  CalendarDays,
   Check,
   CheckCircle2,
   CircleDot,
@@ -24,12 +25,15 @@ import {
   Play,
   Quote,
   RotateCcw,
+  Scale,
   SearchCheck,
   Sparkles,
+  Table2,
   Unlock,
 } from "lucide-react";
 import { toast } from "sonner";
 import { api, qs } from "@/lib/api";
+import { isDatasetEvidence } from "@/lib/types";
 import type { CheckResult, Evidence, Finding, FindingStatus, Job, Page, Report, Review, Severity, SourceBlock } from "@/lib/types";
 import { useAuth } from "@/lib/auth";
 import { cn, formatDate } from "@/lib/utils";
@@ -46,6 +50,7 @@ import {
   errorMessage,
   FindingStatusBadge,
   LoadingState,
+  OcrBadge,
   OutcomeBadge,
   PageHeader,
   ProgressBar,
@@ -53,7 +58,7 @@ import {
   SeverityBadge,
   SyntheticBadge,
 } from "@/components/common";
-import { evidenceLocation } from "@/components/evidence";
+import { anyEvidenceLocation, evidenceLocation } from "@/lib/evidence";
 import { FindingPanel } from "@/components/finding-panel";
 import { ReportLinks } from "@/components/report-links";
 import { AISuggestionsPanel, useAISuggestions } from "@/components/ai-suggestions";
@@ -140,6 +145,7 @@ function DocumentPanel({
                   )}
                 >
                   {b.page_number === null && <span className="me-2 text-[10px] font-medium text-slate-400">{evidenceLocation(b, t)}</span>}
+                  {b.is_ocr && <OcrBadge confidence={b.ocr_confidence} />}
                   <span className="whitespace-pre-wrap" dir="auto">
                     {b.text}
                   </span>
@@ -206,7 +212,7 @@ function ManualFindingDialog({ review, open, onOpenChange }: { review: Review; o
   const blocks = useQuery({
     queryKey: ["blocks", review.document_version_id, ""],
     queryFn: () => api<Page<SourceBlock>>(`/document-versions/${review.document_version_id}/blocks${qs({ page_size: 500 })}`),
-    enabled: open,
+    enabled: open && !!review.document_version_id,
   });
   const form = useForm<z.infer<typeof manualSchema>>({
     resolver: zodResolver(manualSchema),
@@ -246,6 +252,7 @@ function ManualFindingDialog({ review, open, onOpenChange }: { review: Review; o
               ))}
             </Select>
           </div>
+          {review.document_version_id && (
           <div className="space-y-1.5">
             <Label htmlFor="mf-block">{t("reviewDetail.evidenceBlock")}</Label>
             <Select id="mf-block" {...form.register("block_id")}>
@@ -257,6 +264,7 @@ function ManualFindingDialog({ review, open, onOpenChange }: { review: Review; o
               ))}
             </Select>
           </div>
+          )}
           <div className="space-y-1.5">
             <Label htmlFor="mf-desc">{t("documents.description")}</Label>
             <Textarea id="mf-desc" rows={3} {...form.register("description")} />
@@ -316,7 +324,8 @@ export function ReviewDetailPage() {
     enabled: !!r && !running && tab === "results",
   });
   const aiSuggestions = useAISuggestions(reviewId, !!r);
-  const showAI = !!(aiSuggestions.data?.available || aiSuggestions.data?.run);
+  // AI suggestions read document text, so a dataset-only review never offers them.
+  const showAI = !!(aiSuggestions.data?.run || (aiSuggestions.data?.available && r?.document_version_id));
   const aiPending = (aiSuggestions.data?.suggestions ?? []).filter(
     (s) => s.status === "pending" && (s.assessment === "not_addressed" || s.assessment === "unclear"),
   ).length;
@@ -369,14 +378,18 @@ export function ReviewDetailPage() {
   const wide = useMediaQuery("(min-width: 1280px)");
   const selected = items.find((f) => f.id === selectedId) ?? (wide && !selectedId ? (items[0] ?? null) : null);
   const highlight = useMemo(
-    () => ({ blockIds: new Set((selected?.evidence ?? []).map((e) => e.block_id)), focus: focusBlock }),
+    () => ({
+      blockIds: new Set((selected?.evidence ?? []).flatMap((e) => (isDatasetEvidence(e) ? [] : [e.block_id]))),
+      focus: focusBlock,
+    }),
     [selected, focusBlock],
   );
   const undecided = (r?.finding_counts.proposed ?? 0) + (r?.finding_counts.in_review ?? 0);
 
   const select = useCallback(
     (f: Finding, replace = false) => {
-      setFocusBlock(f.evidence[0]?.block_id);
+      const first = f.evidence[0];
+      setFocusBlock(first && !isDatasetEvidence(first) ? first.block_id : undefined);
       setParams(
         (p) => {
           p.set("finding", f.id);
@@ -439,13 +452,37 @@ export function ReviewDetailPage() {
           <span className="flex flex-wrap items-center gap-2">
             <ReviewStatusBadge status={r.status} />
             {(r.is_demo || r.checklist_kind === "synthetic_demo") && <SyntheticBadge />}
-            <Link
-              to={`/documents/${r.document_id}`}
-              className="inline-flex items-center gap-1.5 rounded-md bg-white px-2 py-0.5 text-xs text-slate-600 ring-1 ring-slate-200 transition-colors hover:text-navy-900 hover:ring-slate-300"
-            >
-              <FileText className="size-3.5 text-slate-400" aria-hidden />
-              {r.document_title} v{r.document_version_number}
-            </Link>
+            {r.document_id && (
+              <Link
+                to={`/documents/${r.document_id}`}
+                className="inline-flex items-center gap-1.5 rounded-md bg-white px-2 py-0.5 text-xs text-slate-600 ring-1 ring-slate-200 transition-colors hover:text-navy-900 hover:ring-slate-300"
+              >
+                <FileText className="size-3.5 text-slate-400" aria-hidden />
+                {r.document_title} v{r.document_version_number}
+              </Link>
+            )}
+            {r.datasets.map((d) => (
+              <Link
+                key={d.dataset_version_id}
+                to={`/datasets/${d.dataset_id}`}
+                className="inline-flex items-center gap-1.5 rounded-md bg-white px-2 py-0.5 text-xs text-slate-600 ring-1 ring-slate-200 transition-colors hover:text-navy-900 hover:ring-slate-300"
+              >
+                <Table2 className="size-3.5 text-slate-400" aria-hidden />
+                {d.dataset_name} v{d.version_number}
+              </Link>
+            ))}
+            {r.rule_pack_name && (
+              <span className="inline-flex items-center gap-1.5 rounded-md bg-white px-2 py-0.5 text-xs text-slate-600 ring-1 ring-slate-200">
+                <Scale className="size-3.5 text-slate-400" aria-hidden />
+                {r.rule_pack_name} v{r.rule_pack_version_number}
+              </span>
+            )}
+            {r.as_of_date && (
+              <span className="inline-flex items-center gap-1.5 rounded-md bg-white px-2 py-0.5 text-xs text-slate-600 ring-1 ring-slate-200">
+                <CalendarDays className="size-3.5 text-slate-400" aria-hidden />
+                {t("reviews.asOf", { date: formatDate(r.as_of_date, i18n.language) })}
+              </span>
+            )}
             <span className="inline-flex items-center gap-1.5 rounded-md bg-white px-2 py-0.5 text-xs text-slate-600 ring-1 ring-slate-200">
               <ListChecks className="size-3.5 text-slate-400" aria-hidden />
               {r.checklist_name} v{r.checklist_version_number}
@@ -710,11 +747,13 @@ export function ReviewDetailPage() {
                   <Card className="p-5 sm:p-6" key={selected.id}>
                     <FindingPanel finding={selected} onLocate={(e: Evidence) => setFocusBlock(e.block_id)} />
                   </Card>
-                  <DocumentPanel
-                    versionId={r.document_version_id}
-                    highlight={highlight}
-                    className="max-h-[36rem] 2xl:sticky 2xl:top-20 2xl:max-h-[calc(100vh-6rem)]"
-                  />
+                  {r.document_version_id && (
+                    <DocumentPanel
+                      versionId={r.document_version_id}
+                      highlight={highlight}
+                      className="max-h-[36rem] 2xl:sticky 2xl:top-20 2xl:max-h-[calc(100vh-6rem)]"
+                    />
+                  )}
                 </div>
               ) : (
                 items.length > 0 && (
@@ -758,7 +797,7 @@ export function ReviewDetailPage() {
                       </div>
                     </TD>
                     <TD className="align-top text-xs leading-relaxed text-slate-600">{c.message}</TD>
-                    <TD className="align-top text-xs text-slate-500">{c.evidence.map((e) => evidenceLocation(e, t)).join(", ") || "—"}</TD>
+                    <TD className="align-top text-xs text-slate-500">{c.evidence.map((e) => anyEvidenceLocation(e, t)).join("; ") || "—"}</TD>
                   </TR>
                 ))}
               </TBody>

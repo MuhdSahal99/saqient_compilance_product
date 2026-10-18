@@ -37,6 +37,7 @@ import {
   ErrorState,
   errorMessage,
   LoadingState,
+  OcrBadge,
   PageHeader,
   ProcessingBadge,
   ProgressBar,
@@ -45,7 +46,7 @@ import {
   useUnsavedChangesWarning,
 } from "@/components/common";
 import { DOCUMENT_TYPES, FileTypeTile, UploadDialog } from "@/components/upload-dialog";
-import { evidenceLocation } from "@/components/evidence";
+import { evidenceLocation } from "@/lib/evidence";
 
 const metaSchema = z.object({
   title: z.string().trim().min(1).max(300),
@@ -179,6 +180,7 @@ function BlocksViewer({ versionId, isPdf }: { versionId: string; isPdf: boolean 
                         </p>
                       )}
                       <p className="whitespace-pre-wrap text-[14.5px] leading-7 text-slate-800" dir="auto">
+                        {b.is_ocr && <OcrBadge confidence={b.ocr_confidence} />}
                         {b.text}
                       </p>
                     </div>
@@ -205,7 +207,7 @@ function MetaChip({ icon: Icon, children }: { icon: LucideIcon; children: React.
 export function DocumentDetailPage() {
   const { documentId = "" } = useParams();
   const { t, i18n } = useTranslation();
-  const { can } = useAuth();
+  const { can, me } = useAuth();
   const qc = useQueryClient();
   const navigate = useNavigate();
   const [versionOpen, setVersionOpen] = useState(false);
@@ -357,7 +359,7 @@ export function DocumentDetailPage() {
           </div>
           <p className="flex items-center gap-2 border-t border-slate-100 bg-slate-50/70 px-5 py-2.5 text-xs text-slate-600">
             <ShieldAlert className="size-3.5 shrink-0 text-slate-400" aria-hidden />
-            {t("documents.noMalwareScan")}
+            {me?.malware_scan_enabled ? t("documents.malwareScanned") : t("documents.noMalwareScan")}
           </p>
         </Card>
       )}

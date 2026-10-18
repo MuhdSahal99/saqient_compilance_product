@@ -1,11 +1,7 @@
 import { useTranslation } from "react-i18next";
-import type { Evidence } from "@/lib/types";
-
-export function evidenceLocation(e: Pick<Evidence, "page_number" | "paragraph_number" | "ref">, t: (k: string, o?: Record<string, unknown>) => string): string {
-  if (e.page_number) return t("evidence.page", { page: e.page_number });
-  if (e.paragraph_number) return t("evidence.paragraph", { n: e.paragraph_number });
-  return e.ref;
-}
+import { Table2 } from "lucide-react";
+import { isDatasetEvidence, type AnyEvidence, type DatasetRowsEvidence, type Evidence } from "@/lib/types";
+import { evidenceLocation } from "@/lib/evidence";
 
 export function EvidenceQuote({ evidence, onLocate }: { evidence: Evidence; onLocate?: (e: Evidence) => void }) {
   const { t } = useTranslation();
@@ -38,4 +34,68 @@ export function EvidenceQuote({ evidence, onLocate }: { evidence: Evidence; onLo
       </blockquote>
     </figure>
   );
+}
+
+/** Flagged dataset rows, shown with the exact values stored in the dataset version. */
+export function DatasetRowsTable({ evidence }: { evidence: DatasetRowsEvidence }) {
+  const { t } = useTranslation();
+  const detail = Object.entries(evidence.detail ?? {});
+  return (
+    <figure className="overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-xs">
+      <figcaption className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-3.5 py-2.5 text-xs text-slate-500">
+        <span className="inline-flex items-center gap-1.5 font-medium text-slate-700">
+          <Table2 className="size-3.5 text-slate-400" aria-hidden />
+          {t(`datasetKind.${evidence.dataset_kind}`)} v{evidence.version_number}
+          <span className="font-normal text-slate-500">· {evidence.label}</span>
+        </span>
+        <span className="tabular-nums">
+          {evidence.row_count > evidence.rows.length
+            ? t("evidence.rowsShown", { shown: evidence.rows.length, total: evidence.row_count })
+            : t("evidence.rowCount", { count: evidence.row_count })}
+        </span>
+      </figcaption>
+      {detail.length > 0 && (
+        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 border-b border-slate-100 px-3.5 py-2 text-xs">
+          {detail.map(([k, v]) => (
+            <div key={k} className="contents">
+              <dt className="text-slate-500">{k}</dt>
+              <dd className="font-mono tabular-nums text-slate-800" dir="ltr">
+                {v ?? "—"}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      )}
+      {evidence.rows.length > 0 && (
+        <div className="max-h-72 overflow-auto">
+          <table className="w-full text-xs">
+            <thead className="sticky top-0 bg-slate-50 text-slate-500">
+              <tr>
+                {evidence.columns.map((c) => (
+                  <th key={c} scope="col" className="whitespace-nowrap px-3 py-1.5 text-start font-medium">
+                    {c === "row_id" ? t("evidence.row") : c}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {evidence.rows.map((r, i) => (
+                <tr key={i}>
+                  {r.map((v, j) => (
+                    <td key={j} className="whitespace-nowrap px-3 py-1.5 font-mono tabular-nums text-slate-700" dir="auto">
+                      {v ?? "—"}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </figure>
+  );
+}
+
+export function EvidenceItem({ evidence, onLocate }: { evidence: AnyEvidence; onLocate?: (e: Evidence) => void }) {
+  return isDatasetEvidence(evidence) ? <DatasetRowsTable evidence={evidence} /> : <EvidenceQuote evidence={evidence} onLocate={onLocate} />;
 }

@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { useQuery } from "@tanstack/react-query";
 import {
   Activity,
+  Building,
   Check,
   ChevronsUpDown,
   ClipboardCheck,
@@ -16,9 +17,11 @@ import {
   Menu,
   PanelLeftClose,
   PanelLeftOpen,
+  Scale,
   Search,
   Settings,
   SquareCheckBig,
+  Table2,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -40,7 +43,19 @@ import {
 import { SyntheticBadge } from "./common";
 import { CommandPalette, useCommandPaletteShortcut } from "./command-palette";
 
-type NavKey = "overview" | "reviews" | "documents" | "checklists" | "findings" | "tasks" | "reports" | "activity" | "settings";
+type NavKey =
+  | "overview"
+  | "reviews"
+  | "documents"
+  | "checklists"
+  | "entities"
+  | "datasets"
+  | "rulePacks"
+  | "findings"
+  | "tasks"
+  | "reports"
+  | "activity"
+  | "settings";
 
 const NAV_GROUPS: { key: string; items: { to: string; key: NavKey; icon: typeof LayoutDashboard; end?: boolean }[] }[] = [
   {
@@ -53,6 +68,14 @@ const NAV_GROUPS: { key: string; items: { to: string; key: NavKey; icon: typeof 
       { to: "/reviews", key: "reviews", icon: ClipboardCheck },
       { to: "/documents", key: "documents", icon: FolderOpen },
       { to: "/checklists", key: "checklists", icon: ListChecks },
+    ],
+  },
+  {
+    key: "finance",
+    items: [
+      { to: "/datasets", key: "datasets", icon: Table2 },
+      { to: "/entities", key: "entities", icon: Building },
+      { to: "/rule-packs", key: "rulePacks", icon: Scale },
     ],
   },
   {

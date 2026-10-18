@@ -1,14 +1,14 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Link, useBlocker } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { AlertTriangle, ChevronLeft, ChevronRight, FlaskConical, Inbox, Loader2, RotateCw, type LucideIcon } from "lucide-react";
+import { AlertTriangle, ChevronLeft, ChevronRight, FlaskConical, Inbox, Loader2, RotateCw, ScanText, ShieldAlert, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from "@/components/ui/dialog";
 import { ApiError } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import type { CheckOutcome, FindingStatus, JobStatus, ReviewStatus, Severity, VersionStatus } from "@/lib/types";
+import type { CheckOutcome, DatasetStatus, FindingStatus, JobStatus, ReviewStatus, Severity, VersionStatus } from "@/lib/types";
 
 export interface Crumb {
   label: string;
@@ -136,6 +136,42 @@ export function SyntheticBadge({ className }: { className?: string }) {
     <Badge tone="amber" className={className} title={t("common.syntheticNotice")}>
       <FlaskConical className="size-3" aria-hidden />
       {t("common.synthetic")}
+    </Badge>
+  );
+}
+
+/** Text read by OCR from a scanned page: it may contain recognition errors. */
+export function OcrBadge({ confidence, className }: { confidence?: number | null; className?: string }) {
+  const { t } = useTranslation();
+  return (
+    <Badge
+      tone="neutral"
+      className={cn("me-2 align-middle", className)}
+      title={confidence != null ? t("ocr.confidence", { pct: Math.round(confidence) }) : t("ocr.hint")}
+    >
+      <ScanText className="size-3" aria-hidden />
+      {t("ocr.badge")}
+    </Badge>
+  );
+}
+
+/** A rule (or a pack containing rules) that no person has verified against its official source. */
+export function UnverifiedBadge({ count, className }: { count?: number; className?: string }) {
+  const { t } = useTranslation();
+  return (
+    <Badge tone="orange" className={className} title={t("rulePacks.unverifiedHint")}>
+      <ShieldAlert className="size-3" aria-hidden />
+      {count !== undefined ? t("rulePacks.unverifiedCount", { count }) : t("rulePacks.unverified")}
+    </Badge>
+  );
+}
+
+export function DatasetStatusBadge({ status }: { status: DatasetStatus }) {
+  const { t } = useTranslation();
+  const tone = status === "ready" ? "green" : status === "failed" ? "red" : status === "needs_mapping" ? "amber" : "teal";
+  return (
+    <Badge tone={tone} dot>
+      {t(`datasetStatus.${status}`)}
     </Badge>
   );
 }
@@ -290,9 +326,9 @@ export function OutcomeBadge({ outcome }: { outcome: CheckOutcome }) {
   const tone =
     outcome === "processing_error"
       ? "red"
-      : outcome === "needs_human_review"
+      : outcome === "needs_human_review" || outcome === "exceptions_found"
         ? "amber"
-        : outcome === "match_found"
+        : outcome === "match_found" || outcome === "no_exceptions"
           ? "teal"
           : "neutral";
   return (

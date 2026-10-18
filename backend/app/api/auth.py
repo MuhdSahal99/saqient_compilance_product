@@ -50,6 +50,8 @@ def _me(db: DB, user: User, sess: UserSession, membership: Membership) -> MeOut:
         csrf_token=sess.csrf_token,
         demo_mode=settings.demo_mode,
         ai_enabled=settings.ai_enabled,
+        malware_scan_enabled=settings.malware_scan != "disabled",
+        ocr_enabled=settings.ocr_provider != "disabled",
     )
 
 

@@ -132,6 +132,8 @@ class MeOut(BaseModel):
     csrf_token: str
     demo_mode: bool
     ai_enabled: bool
+    malware_scan_enabled: bool = False
+    ocr_enabled: bool = False
 
 
 class MemberOut(BaseModel):
