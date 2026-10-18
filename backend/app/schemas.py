@@ -4,7 +4,7 @@ import uuid
 from datetime import date, datetime
 from typing import Any, Generic, Literal, TypeVar
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 
 from app.models import (
     AIAssessment,
@@ -257,8 +257,28 @@ class RequirementsReplaceIn(BaseModel):
 
 class ReviewCreateIn(BaseModel):
     title: str = Field(min_length=1, max_length=300)
-    document_version_id: uuid.UUID
     checklist_version_id: uuid.UUID
+    document_version_id: uuid.UUID | None = None
+    dataset_version_ids: list[uuid.UUID] = Field(default_factory=list, max_length=5)
+    rule_pack_version_id: uuid.UUID | None = None
+    as_of_date: date | None = None
+
+    @model_validator(mode="after")
+    def _has_input(self) -> ReviewCreateIn:
+        if self.document_version_id is None and not self.dataset_version_ids:
+            raise ValueError("choose a document, at least one dataset, or both")
+        if len(set(self.dataset_version_ids)) != len(self.dataset_version_ids):
+            raise ValueError("dataset versions must be distinct")
+        return self
+
+
+class ReviewDatasetOut(BaseModel):
+    kind: DatasetKind
+    dataset_id: uuid.UUID
+    dataset_name: str
+    dataset_version_id: uuid.UUID
+    version_number: int
+    row_count: int | None
 
 
 class ReviewRunOut(ORM):
@@ -266,6 +286,7 @@ class ReviewRunOut(ORM):
     engine_version: str
     engine_mode: str
     warnings: list[str]
+    inputs_snapshot: dict[str, Any] = {}
     created_at: datetime
     started_at: datetime | None
     finished_at: datetime | None
@@ -280,10 +301,15 @@ class ReviewOut(BaseModel):
     created_at: datetime
     signed_off_at: datetime | None
     signed_off_by_name: str | None
-    document_id: uuid.UUID
-    document_title: str
-    document_version_id: uuid.UUID
-    document_version_number: int
+    document_id: uuid.UUID | None
+    document_title: str | None
+    document_version_id: uuid.UUID | None
+    document_version_number: int | None
+    datasets: list[ReviewDatasetOut] = []
+    rule_pack_version_id: uuid.UUID | None = None
+    rule_pack_name: str | None = None
+    rule_pack_version_number: int | None = None
+    as_of_date: date | None = None
     checklist_id: uuid.UUID
     checklist_name: str
     checklist_version_id: uuid.UUID
@@ -303,6 +329,8 @@ class CheckResultOut(ORM):
     needs_attention: bool
     message: str
     evidence: list[dict[str, Any]]
+    meta: dict[str, Any] = {}
+    result_hash: str | None = None
 
 
 class ReopenIn(BaseModel):

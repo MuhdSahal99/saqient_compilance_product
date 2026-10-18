@@ -22,7 +22,19 @@ def csv_safe(value: Any) -> str:
     return text
 
 
+def _row_ids(ids: list[Any], total: Any) -> str:
+    shown = ", ".join(str(i) for i in ids[:10])
+    more = f" (+{int(total) - min(len(ids), 10)} more)" if total and int(total) > 10 else ""
+    return f"row {shown}{more}" if len(ids) == 1 else f"rows {shown}{more}"
+
+
 def _evidence_label(e: dict[str, Any]) -> str:
+    if e.get("type") == "dataset_rows":
+        kind = str(e.get("dataset_kind") or "").replace("_", " ")
+        return (
+            f"{kind.capitalize()} v{e.get('version_number')} · {e.get('label')} · "
+            f"{_row_ids(e.get('row_ids') or [], e.get('row_count'))}"
+        )
     if e.get("page_number"):
         return f"Page {e['page_number']} ({e.get('ref')})"
     if e.get("paragraph_number"):
@@ -30,7 +42,39 @@ def _evidence_label(e: dict[str, Any]) -> str:
     return str(e.get("ref") or "")
 
 
+def _evidence_text(e: dict[str, Any]) -> str:
+    if e.get("type") == "dataset_rows":
+        cols = e.get("columns") or []
+        return " | ".join(
+            ", ".join(f"{c}={v}" for c, v in zip(cols, row, strict=False))
+            for row in (e.get("rows") or [])[:5]
+        )
+    return str(e.get("quote") or "")
+
+
+def _scope_datasets(scope: dict[str, Any]) -> list[str]:
+    return [
+        f"{str(d['kind']).replace('_', ' ').capitalize()}: {d['dataset_name']} — version "
+        f"{d['version_number']} ({d['row_count']} rows, period {d.get('period_start') or '?'} "
+        f"to {d.get('period_end') or '?'}) SHA-256 {d['parquet_sha256']}"
+        for d in scope.get("datasets") or []
+    ]
+
+
+def _scope_rule_pack(scope: dict[str, Any]) -> str | None:
+    rp = scope.get("rule_pack")
+    if not rp:
+        return None
+    synthetic = " — synthetic, not real regulation" if rp.get("is_synthetic") else ""
+    return (
+        f"{rp['name']} ({rp['jurisdiction']}) — version {rp['version']}{synthetic}; "
+        f"values as of {scope.get('as_of_date')}"
+    )
+
+
 _env.filters["evidence_label"] = _evidence_label
+_env.globals["scope_datasets"] = _scope_datasets
+_env.globals["scope_rule_pack"] = _scope_rule_pack
 _env.filters["human"] = lambda s: (s or "").replace("_", " ")
 
 
@@ -70,7 +114,9 @@ blockquote{margin:.25rem 0;padding:.25rem .75rem;border-inline-start:3px solid #
 
 <h2>Scope</h2>
 <table>
-<tr><th>Document</th><td>{{ r.scope.document_title }} — version {{ r.scope.document_version }} ({{ r.scope.file_format|upper }}, {{ r.scope.original_filename }})<br><span class="muted">SHA-256 {{ r.scope.sha256 }}</span></td></tr>
+{% if r.scope.document_title %}<tr><th>Document</th><td>{{ r.scope.document_title }} — version {{ r.scope.document_version }} ({{ r.scope.file_format|upper }}, {{ r.scope.original_filename }})<br><span class="muted">SHA-256 {{ r.scope.sha256 }}</span></td></tr>{% endif %}
+{% for d in scope_datasets(r.scope) %}<tr><th>Dataset</th><td>{{ d }}</td></tr>{% endfor %}
+{% if scope_rule_pack(r.scope) %}<tr><th>Rule pack</th><td>{{ scope_rule_pack(r.scope) }}</td></tr>{% endif %}
 <tr><th>Checklist</th><td>{{ r.scope.checklist_name }} — version {{ r.scope.checklist_version }} ({{ r.scope.checklist_kind|human }}, {{ r.scope.requirement_count }} requirements)
 {% if r.scope.checklist_disclaimer %}<br><em>{{ r.scope.checklist_disclaimer }}</em>{% endif %}</td></tr>
 <tr><th>Engine</th><td>{{ r.engine.mode }} · {{ r.engine.version }} · run {{ r.engine.run_started_at }} → {{ r.engine.run_finished_at }}</td></tr>
@@ -90,7 +136,9 @@ blockquote{margin:.25rem 0;padding:.25rem .75rem;border-inline-start:3px solid #
 <tr><th>Source reference</th><td colspan="3">{{ f.source_reference or '—' }}</td></tr>
 <tr><th>Rationale</th><td colspan="3">{{ f.decision_rationale or '—' }} <span class="muted">{{ f.decided_by or '' }} {{ f.decided_at or '' }}</span></td></tr>
 <tr><th>Remediation</th><td colspan="3">Owner: {{ f.owner or 'unassigned' }} · Due: {{ f.due_date or '—' }}<br>{{ f.remediation_notes }}</td></tr>
-<tr><th>Evidence</th><td colspan="3">{% for e in f.evidence %}<div>{{ e|evidence_label }}<blockquote>{{ e.quote }}</blockquote></div>{% else %}<span class="muted">No matching text in the document (absence noted by the check).</span>{% endfor %}</td></tr>
+<tr><th>Evidence</th><td colspan="3">{% for e in f.evidence %}<div>{{ e|evidence_label }}{% if e.type == 'dataset_rows' %}
+<table><tr>{% for c in e.columns %}<th>{{ c }}</th>{% endfor %}</tr>{% for row in e.rows %}<tr>{% for v in row %}<td>{{ v if v is not none else '' }}</td>{% endfor %}</tr>{% endfor %}</table>
+{% else %}<blockquote>{{ e.quote }}</blockquote>{% endif %}</div>{% else %}<span class="muted">No matching text in the document (absence noted by the check).</span>{% endfor %}</td></tr>
 </table>
 <p class="muted">{{ f.description }}</p>
 {% else %}<p class="muted">No findings were recorded.</p>{% endfor %}
@@ -154,7 +202,7 @@ def render_csv(content: dict[str, Any]) -> str:
                     f["owner"],
                     f["due_date"],
                     "; ".join(_evidence_label(e) for e in f["evidence"]),
-                    " | ".join(str(e.get("quote") or "") for e in f["evidence"]),
+                    " | ".join(_evidence_text(e) for e in f["evidence"]),
                     f["source_reference"],
                     finding_origin(f),
                 ]
@@ -195,15 +243,23 @@ def render_pdf(content: dict[str, Any]) -> bytes:
     ):
         story.append(p("Contains synthetic demonstration content — not legal guidance.", body))
     story += [Spacer(1, 4 * mm), p("Scope", h2)]
-    scope_rows = [
-        [
-            p("Document"),
-            p(
-                f"{s['document_title']} — version {s['document_version']} "
-                f"({s['file_format'].upper()}, {s['original_filename']}) "
-                f"SHA-256 {s['sha256']}"
-            ),
-        ],
+    scope_rows = []
+    if s.get("document_title"):
+        scope_rows.append(
+            [
+                p("Document"),
+                p(
+                    f"{s['document_title']} — version {s['document_version']} "
+                    f"({s['file_format'].upper()}, {s['original_filename']}) "
+                    f"SHA-256 {s['sha256']}"
+                ),
+            ]
+        )
+    scope_rows += [[p("Dataset"), p(d)] for d in _scope_datasets(s)]
+    rule_pack = _scope_rule_pack(s)
+    if rule_pack:
+        scope_rows.append([p("Rule pack"), p(rule_pack)])
+    scope_rows += [
         [
             p("Checklist"),
             p(
@@ -247,7 +303,7 @@ def render_pdf(content: dict[str, Any]) -> bytes:
                 p(f"{f['owner'] or 'unassigned'} / {f['due_date'] or '—'}"),
             ],
         ]
-        ev = "; ".join(f"{_evidence_label(e)}: “{e.get('quote')}”" for e in f["evidence"])
+        ev = "; ".join(f"{_evidence_label(e)}: “{_evidence_text(e)}”" for e in f["evidence"])
         rows.append(
             [
                 p("Evidence"),

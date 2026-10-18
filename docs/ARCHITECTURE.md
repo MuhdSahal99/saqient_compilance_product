@@ -59,6 +59,13 @@ results with evidence block ids. Results and findings are written in a single
 transaction, with unique constraints `(run_id, requirement_id)` and
 `(review_id, requirement_id)` so retries cannot duplicate findings.
 
+Engine `deterministic-1.1.0` adds data checks (reconcile, threshold,
+duplicate, field format, date rule, ratio) over the canonical Parquet of the
+review's dataset versions, with thresholds from rule pack keys. Text checks
+keep the frozen 1.0.0 behaviour. Each result carries a SHA-256 result hash,
+and each run records its inputs (dataset Parquet hashes, rule pack version,
+as-of date). See ADR 0008.
+
 ## Reports
 
 Sign-off freezes a JSON snapshot (`report_snapshots`, version n). HTML, PDF

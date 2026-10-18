@@ -146,6 +146,9 @@ class CheckOutcome(str, enum.Enum):
     NEEDS_HUMAN_REVIEW = "needs_human_review"
     PROCESSING_ERROR = "processing_error"
     NOT_APPLICABLE = "not_applicable"
+    # Data checks (engine deterministic-1.1.0).
+    EXCEPTIONS_FOUND = "exceptions_found"
+    NO_EXCEPTIONS = "no_exceptions"
 
 
 class JobKind(str, enum.Enum):
@@ -639,12 +642,18 @@ class Review(Base):
     id: Mapped[uuid.UUID] = _uuid_pk()
     org_id: Mapped[uuid.UUID] = _org_fk()
     title: Mapped[str] = mapped_column(String(300))
-    document_version_id: Mapped[uuid.UUID] = mapped_column(
+    # A review needs a document, datasets (review_datasets), or both; the service checks.
+    document_version_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("document_versions.id", ondelete="RESTRICT")
     )
     checklist_version_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("checklist_versions.id", ondelete="RESTRICT")
     )
+    rule_pack_version_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("rule_pack_versions.id", ondelete="RESTRICT")
+    )
+    # Date rule values are resolved for; defaults to the datasets' period end.
+    as_of_date: Mapped[date | None] = mapped_column(Date)
     status: Mapped[ReviewStatus] = mapped_column(
         _enum(ReviewStatus, "review_status"), default=ReviewStatus.DRAFT
     )
@@ -658,11 +667,33 @@ class Review(Base):
     )
     signed_off_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
-    document_version: Mapped[DocumentVersion] = relationship(lazy="joined")
+    document_version: Mapped[DocumentVersion | None] = relationship(lazy="joined")
     checklist_version: Mapped[ChecklistVersion] = relationship(lazy="joined")
     runs: Mapped[list[ReviewRun]] = relationship(
         back_populates="review", order_by="ReviewRun.created_at"
     )
+    datasets: Mapped[list[ReviewDataset]] = relationship(
+        back_populates="review", order_by="ReviewDataset.kind", cascade="all, delete-orphan"
+    )
+
+
+class ReviewDataset(Base):
+    """One dataset version per kind used as a review input."""
+
+    __tablename__ = "review_datasets"
+    __table_args__ = (UniqueConstraint("review_id", "kind"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    review_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("reviews.id", ondelete="CASCADE"), index=True
+    )
+    kind: Mapped[DatasetKind] = mapped_column(_enum(DatasetKind, "review_dataset_kind"))
+    dataset_version_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("dataset_versions.id", ondelete="RESTRICT")
+    )
+
+    review: Mapped[Review] = relationship(back_populates="datasets")
+    dataset_version: Mapped[DatasetVersion] = relationship(lazy="joined")
 
 
 class ReviewRun(Base):
@@ -673,11 +704,13 @@ class ReviewRun(Base):
         UUID(as_uuid=True), ForeignKey("reviews.id", ondelete="CASCADE"), index=True
     )
     job_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("jobs.id"))
-    document_version_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    document_version_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     checklist_version_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
     engine_version: Mapped[str] = mapped_column(String(40))
     engine_mode: Mapped[str] = mapped_column(String(40), default="deterministic")
     config_snapshot: Mapped[list[dict[str, Any]]] = mapped_column(JSONType, default=list)
+    # Dataset versions (with parquet hashes), rule pack version and as-of date used.
+    inputs_snapshot: Mapped[dict[str, Any]] = mapped_column(JSONType, default=dict)
     warnings: Mapped[list[str]] = mapped_column(JSONType, default=list)
     created_at: Mapped[datetime] = _created()
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -703,6 +736,10 @@ class CheckResult(Base):
     needs_attention: Mapped[bool] = mapped_column(Boolean)
     message: Mapped[str] = mapped_column(Text, default="")
     evidence: Mapped[list[dict[str, Any]]] = mapped_column(JSONType, default=list)
+    meta: Mapped[dict[str, Any]] = mapped_column(JSONType, default=dict)
+    # SHA-256 of the canonical result (outcome, message, evidence, meta): equal inputs,
+    # equal hash. Null for results written before engine 1.1.0.
+    result_hash: Mapped[str | None] = mapped_column(String(64))
 
     run: Mapped[ReviewRun] = relationship(back_populates="results")
     requirement: Mapped[Requirement] = relationship(lazy="joined")

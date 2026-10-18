@@ -17,7 +17,9 @@ from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, field_validator
 from app.engine.patterns import PatternError, compile_pattern
 from app.models import CheckOutcome
 
-ENGINE_VERSION = "deterministic-1.0.0"
+# Text checks are frozen at 1.0.0 (pinned by tests/fixtures/engine/golden_*.json).
+# app/engine/versions.py maps engine versions to the check types they accept.
+TEXT_ENGINE_VERSION = "deterministic-1.0.0"
 MAX_TERMS = 25
 MAX_TERM_LENGTH = 200
 MAX_EVIDENCE = 5

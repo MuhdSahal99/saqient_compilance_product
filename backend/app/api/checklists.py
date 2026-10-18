@@ -9,7 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.deps import DB, Ctx, Decider, get_owned_or_404
-from app.engine import parse_config
+from app.engine.versions import parse_check
 from app.models import (
     Checklist,
     ChecklistKind,
@@ -73,7 +73,7 @@ def _validate_requirements(db: Session, org_id: uuid.UUID, reqs: list[Requiremen
         )
     for r in reqs:
         try:
-            parse_config(r.check_config)
+            parse_check(r.check_config)
         except PydanticValidationError as exc:
             first = exc.errors()[0]
             raise HTTPException(
@@ -189,7 +189,7 @@ def publish(version_id: uuid.UUID, ctx: Decider, db: DB) -> ChecklistVersionDeta
         )
     for r in v.requirements:
         try:
-            parse_config(r.check_config)
+            parse_check(r.check_config)
         except PydanticValidationError as exc:
             raise HTTPException(
                 status.HTTP_422_UNPROCESSABLE_ENTITY, f"{r.code}: invalid check configuration."
