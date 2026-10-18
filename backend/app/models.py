@@ -103,6 +103,19 @@ class SourceVerification(str, enum.Enum):
     VERIFIED = "verified"
 
 
+class RuleVerification(str, enum.Enum):
+    DRAFT = "draft"
+    VERIFIED = "verified"
+
+
+class RuleValueType(str, enum.Enum):
+    DECIMAL = "decimal"
+    INTEGER = "integer"
+    STRING = "string"
+    BOOLEAN = "boolean"
+    DATE = "date"
+
+
 class Severity(str, enum.Enum):
     LOW = "low"
     MEDIUM = "medium"
@@ -261,6 +274,84 @@ class LegalEntity(Base):
     )
 
     tax_group: Mapped[TaxGroup | None] = relationship(lazy="joined")
+
+
+# ---------------------------------------------------------------- rule packs
+
+
+class RulePack(Base):
+    """Versioned tax/regulatory parameters, held as data rather than code."""
+
+    __tablename__ = "rule_packs"
+    __table_args__ = (UniqueConstraint("org_id", "name"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    name: Mapped[str] = mapped_column(String(200))
+    jurisdiction: Mapped[str] = mapped_column(String(20))
+    description: Mapped[str] = mapped_column(Text, default="")
+    is_synthetic: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = _created()
+
+    versions: Mapped[list[RulePackVersion]] = relationship(
+        back_populates="rule_pack", order_by="RulePackVersion.version_number"
+    )
+
+
+class RulePackVersion(Base):
+    __tablename__ = "rule_pack_versions"
+    __table_args__ = (UniqueConstraint("rule_pack_id", "version_number"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    rule_pack_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("rule_packs.id", ondelete="CASCADE"), index=True
+    )
+    version_number: Mapped[int] = mapped_column(Integer)
+    state: Mapped[ChecklistState] = mapped_column(
+        _enum(ChecklistState, "rule_pack_state"), default=ChecklistState.DRAFT
+    )
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    published_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = _created()
+
+    rule_pack: Mapped[RulePack] = relationship(back_populates="versions", lazy="joined")
+    rules: Mapped[list[Rule]] = relationship(
+        back_populates="version", order_by="[Rule.rule_key, Rule.effective_from]"
+    )
+
+
+class Rule(Base):
+    """One parameter, valid for a date range. Values are strings parsed by type (no floats)."""
+
+    __tablename__ = "rules"
+    __table_args__ = (UniqueConstraint("rule_pack_version_id", "rule_key", "effective_from"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    rule_pack_version_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("rule_pack_versions.id", ondelete="CASCADE"), index=True
+    )
+    rule_key: Mapped[str] = mapped_column(String(120))
+    title: Mapped[str] = mapped_column(String(300))
+    value_type: Mapped[RuleValueType] = mapped_column(_enum(RuleValueType, "rule_value_type"))
+    value: Mapped[str] = mapped_column(String(200))
+    unit: Mapped[str] = mapped_column(String(40), default="")
+    effective_from: Mapped[date] = mapped_column(Date)
+    effective_to: Mapped[date | None] = mapped_column(Date)
+    source_url: Mapped[str | None] = mapped_column(String(500))
+    source_note: Mapped[str] = mapped_column(Text, default="")
+    # Open questions about the rule; a rule with a TODO stays draft.
+    todo: Mapped[str] = mapped_column(Text, default="")
+    verification_status: Mapped[RuleVerification] = mapped_column(
+        _enum(RuleVerification, "rule_verification"), default=RuleVerification.DRAFT
+    )
+    verified_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    version: Mapped[RulePackVersion] = relationship(back_populates="rules")
+    verified_by: Mapped[User | None] = relationship(lazy="joined")
 
 
 # ---------------------------------------------------------------- documents

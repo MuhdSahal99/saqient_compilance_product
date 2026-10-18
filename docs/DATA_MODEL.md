@@ -34,6 +34,14 @@ organizations ─┬─ memberships ── users ── user_sessions
 | `tax_groups` | name, country, trn_encrypted, trn_last4 | Unique (org, name). |
 | `legal_entities` | name, country (ISO 3166-1), trn_encrypted, trn_last4, fiscal_year_end_month/day, functional_currency (ISO 4217), timezone (IANA), tax_group_id, is_free_zone, is_active | Unique (org, name). TRN is AES-256-GCM encrypted (`app/crypto.py`), bound to org and field; API returns it masked. Archive with `is_active=false`. |
 
+## Rule packs
+
+| Table | Key columns | Notes |
+|---|---|---|
+| `rule_packs` | name, jurisdiction (ISO 3166-1 or `SYNTHETIC`), description, is_synthetic | Unique (org, name). |
+| `rule_pack_versions` | rule_pack_id, version_number, state (draft/published/archived), published_at, published_by_id | Published versions are immutable; publishing archives the previous one. |
+| `rules` | rule_pack_version_id, rule_key, title, value_type (decimal/integer/string/boolean/date), value (string, parsed by type, never float), unit, effective_from, effective_to, source_url, source_note, todo, verification_status (draft/verified), verified_by_id, verified_at | Unique (version, key, effective_from); periods per key may not overlap. Only org admins verify, and only with a source URL, no open TODO and a non-synthetic pack. Checks resolve a rule by key + date and record a snapshot; a draft rule adds an "unverified rule" warning. |
+
 ## Documents
 
 | Table | Key columns | Notes |

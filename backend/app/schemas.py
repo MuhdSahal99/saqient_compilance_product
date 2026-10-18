@@ -16,6 +16,8 @@ from app.models import (
     JobStatus,
     ReviewStatus,
     Role,
+    RuleValueType,
+    RuleVerification,
     Severity,
     SourceVerification,
     VersionStatus,
@@ -531,3 +533,86 @@ class LegalEntityOut(BaseModel):
     is_active: bool
     created_at: datetime
     updated_at: datetime
+
+
+# ---------------------------------------------------------------- rule packs
+
+_RULE_KEY = r"^[a-z0-9]+(?:[._][a-z0-9]+)*$"
+
+
+class RulePackCreateIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=1, max_length=200)
+    jurisdiction: str = Field(
+        pattern=r"^[A-Z]{2}(-[A-Z0-9]{1,10})?$|^SYNTHETIC$",
+        description="ISO 3166-1 alpha-2 (optionally with a subdivision), or SYNTHETIC.",
+    )
+    description: str = Field(default="", max_length=4000)
+
+
+class RuleIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    rule_key: str = Field(min_length=1, max_length=120, pattern=_RULE_KEY)
+    title: str = Field(min_length=1, max_length=300)
+    value_type: RuleValueType
+    value: str = Field(min_length=1, max_length=200, description="Parsed by value_type.")
+    unit: str = Field(default="", max_length=40)
+    effective_from: date
+    effective_to: date | None = None
+    source_url: str | None = Field(
+        default=None, max_length=500, pattern=r"^https://", description="Official source URL."
+    )
+    source_note: str = Field(default="", max_length=4000)
+    todo: str = Field(default="", max_length=4000, description="Open question; keeps it draft.")
+
+
+class RulesReplaceIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    rules: list[RuleIn] = Field(max_length=500)
+
+
+class RuleOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    rule_key: str
+    title: str
+    value_type: RuleValueType
+    value: str
+    unit: str
+    effective_from: date
+    effective_to: date | None
+    source_url: str | None
+    source_note: str
+    todo: str
+    verification_status: RuleVerification
+    verified_by_name: str | None = None
+    verified_at: datetime | None
+
+
+class RulePackVersionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    rule_pack_id: uuid.UUID
+    version_number: int
+    state: ChecklistState
+    published_at: datetime | None
+    created_at: datetime
+    rule_count: int = 0
+    unverified_count: int = 0
+
+
+class RulePackVersionDetailOut(RulePackVersionOut):
+    pack_name: str
+    jurisdiction: str
+    is_synthetic: bool
+    rules: list[RuleOut]
+
+
+class RulePackOut(BaseModel):
+    id: uuid.UUID
+    name: str
+    jurisdiction: str
+    description: str
+    is_synthetic: bool
+    created_at: datetime
+    versions: list[RulePackVersionOut]
