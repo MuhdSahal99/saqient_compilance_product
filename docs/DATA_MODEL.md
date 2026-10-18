@@ -103,6 +103,21 @@ Evidence JSON items: `block_id, ref, page_number, paragraph_number, quote,
 context, highlight_start, highlight_end`. Quotes are copied from
 `source_blocks.text`.
 
+## Direct tax (Phase C)
+
+| Table | Key columns | Notes |
+|---|---|---|
+| `tax_workpapers` | entity_id, kind (corporate_tax, sbr_test, qfzp_test, pillar_two, zakat), period, currency, rule_pack_version_id, rules_prefix, status (draft, signed_off), calc_version, result_hash, warnings | One paper per entity, period and kind of work. |
+| `workpaper_lines` | workpaper_id, source (manual, computed), section, line_key (unique per paper), category, amount NUMERIC(20,4) or value, formula_id, explanation, rule_snapshots, evidence | Computed keys are `calc:<key>`. |
+| `workpaper_snapshots` | workpaper_id, version, content, signed_off_by_id | Immutable (trigger); exports render from it. |
+| `tax_loss_entries` | entity_id, kind (incurred, used, transferred_in/out, forfeited), period, amount (positive), workpaper_id, counterparty_entity_id, transfer_id, explanation, rule_snapshots, evidence | Unique (workpaper_id, kind): a paper posts once. |
+| `tax_group_memberships` | tax_group_id, entity_id, is_parent, ownership_share NUMERIC(7,6), joined_on, left_on | No overlapping memberships per entity; one parent at a time. |
+| `related_parties` | entity_id, name, relation, jurisdiction | Unique (entity, name). |
+| `related_party_transactions` | entity_id, related_party_id, period, transaction_type, direction, amount, currency, method, range_low/high, tested_value, benchmark_document_ids, evidence | Amounts in the entity's currency. |
+
+Dataset kind `wht_payments` (payment id, date, payee, payee country, payment type,
+gross, withheld, treaty rate, certificate) feeds the 1.3.0 `wht_rates` check.
+
 ## Finding status transitions
 
 ```

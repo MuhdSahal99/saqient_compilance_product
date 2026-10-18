@@ -75,6 +75,13 @@ raise several findings (`finding_key`). E-invoice XML is parsed with defusedxml 
 locked-down lxml parser. Sampling monitors and the tax calendar run on Celery beat.
 See ADRs 0009 and 0010.
 
+Phase C adds `app/calc/`, which holds pure, versioned Decimal formulas (`calc-1.0.0`)
+for the CT bridge, SBR and QFZP tests, loss transfers, tax group tests, transfer
+pricing thresholds, Pillar Two and zakat. Workpapers store inputs with evidence and
+computed lines with steps, rule snapshots and a result hash. Sign-off freezes a
+snapshot that HTML, PDF and CSV exports render from. Engine `deterministic-1.3.0`
+adds the withholding tax check over `wht_payments` datasets. See ADR 0011.
+
 ## Reports
 
 Sign-off freezes a JSON snapshot (`report_snapshots`, version n). HTML, PDF
