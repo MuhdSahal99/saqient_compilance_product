@@ -13,7 +13,7 @@ from app.api.uploads import scan_refusal
 from app.config import get_settings
 from app.deps import DB, Ctx, Writer, get_owned_or_404
 from app.malware import MalwareFound, ScannerUnavailable
-from app.models import EInvoiceBatch, EInvoiceFile, LegalEntity
+from app.models import EInvoiceBatch, EInvoiceFile, LegalEntity, Review, ReviewEInvoice
 from app.schemas import EInvoiceBatchDetailOut, EInvoiceBatchOut, EInvoiceFileOut
 from app.services import einvoices as svc
 
@@ -98,6 +98,22 @@ def get_batch(batch_id: uuid.UUID, ctx: Ctx, db: DB) -> EInvoiceBatchDetailOut:
 @router.get("/einvoice-files/{file_id}", response_model=EInvoiceFileOut, summary="Get a file")
 def get_file(file_id: uuid.UUID, ctx: Ctx, db: DB) -> EInvoiceFileOut:
     return EInvoiceFileOut.model_validate(get_owned_or_404(db, EInvoiceFile, file_id, ctx.org_id))
+
+
+@router.get(
+    "/reviews/{review_id}/einvoices",
+    response_model=list[EInvoiceFileOut],
+    summary="E-invoices a review validates",
+)
+def review_files(review_id: uuid.UUID, ctx: Ctx, db: DB) -> list[EInvoiceFileOut]:
+    review = get_owned_or_404(db, Review, review_id, ctx.org_id)
+    rows = db.scalars(
+        select(EInvoiceFile)
+        .join(ReviewEInvoice, ReviewEInvoice.file_id == EInvoiceFile.id)
+        .where(ReviewEInvoice.review_id == review.id, ReviewEInvoice.org_id == ctx.org_id)
+        .order_by(EInvoiceFile.filename)
+    )
+    return [EInvoiceFileOut.model_validate(f) for f in rows]
 
 
 @router.get(

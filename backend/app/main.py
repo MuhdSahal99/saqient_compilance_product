@@ -19,6 +19,7 @@ from app.api import (
     einvoices,
     entities,
     members,
+    monitors,
     reviews,
     rule_packs,
     tax_setup,
@@ -117,6 +118,7 @@ def create_app() -> FastAPI:
         members,
         tax_setup,
         einvoices,
+        monitors,
     ):
         app.include_router(module.router, prefix="/api")
 

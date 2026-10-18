@@ -140,6 +140,18 @@ class TaxType(str, enum.Enum):
     WHT = "wht"
 
 
+class MonitorCadence(str, enum.Enum):
+    DAILY = "daily"
+    WEEKLY = "weekly"
+    MONTHLY = "monthly"
+
+
+class MonitorRunStatus(str, enum.Enum):
+    REVIEW_CREATED = "review_created"
+    NO_FILES = "no_files"
+    FAILED = "failed"
+
+
 class PeriodFrequency(str, enum.Enum):
     MONTHLY = "monthly"
     QUARTERLY = "quarterly"
@@ -756,6 +768,66 @@ class ReviewEInvoice(Base):
     )
 
     file: Mapped[EInvoiceFile] = relationship(lazy="joined")
+
+
+class EInvoiceMonitor(Base):
+    """A schedule that validates a reproducible sample of an entity's new e-invoices."""
+
+    __tablename__ = "einvoice_monitors"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    entity_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("legal_entities.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(200))
+    checklist_version_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("checklist_versions.id", ondelete="RESTRICT")
+    )
+    rule_pack_version_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("rule_pack_versions.id", ondelete="RESTRICT")
+    )
+    sample_size: Mapped[int] = mapped_column(Integer)
+    cadence: Mapped[MonitorCadence] = mapped_column(_enum(MonitorCadence, "monitor_cadence"))
+    # Random per monitor; recorded with each run so the sample can be re-drawn.
+    seed: Mapped[str] = mapped_column(String(64))
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    next_run_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Files uploaded up to this time have been offered to a sample.
+    covered_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = _created()
+
+    entity: Mapped[LegalEntity] = relationship(lazy="joined")
+    checklist_version: Mapped[ChecklistVersion] = relationship(lazy="joined")
+
+
+class EInvoiceMonitorRun(Base):
+    """One monitor run: the window, the population, the sample drawn and its review."""
+
+    __tablename__ = "einvoice_monitor_runs"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    monitor_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("einvoice_monitors.id", ondelete="CASCADE"), index=True
+    )
+    review_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("reviews.id", ondelete="SET NULL")
+    )
+    window_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    window_end: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    population: Mapped[int] = mapped_column(Integer, default=0)
+    sampled: Mapped[int] = mapped_column(Integer, default=0)
+    seed: Mapped[str] = mapped_column(String(64))
+    sample_method: Mapped[str] = mapped_column(String(300))
+    status: Mapped[MonitorRunStatus] = mapped_column(_enum(MonitorRunStatus, "monitor_run_status"))
+    message: Mapped[str] = mapped_column(String(500), default="")
+    triggered_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = _created()
 
 
 # ---------------------------------------------------------------- documents

@@ -17,6 +17,8 @@ from app.models import (
     DatasetStatus,
     FindingStatus,
     JobStatus,
+    MonitorCadence,
+    MonitorRunStatus,
     PeriodFrequency,
     ReviewStatus,
     Role,
@@ -976,3 +978,58 @@ class DatasetRowsOut(BaseModel):
     columns: list[str]
     rows: list[dict[str, Any]] = Field(description="Amounts and dates as strings.")
     total: int
+
+
+# ---------------------------------------------------------------- e-invoice monitors
+
+
+class EInvoiceMonitorIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    entity_id: uuid.UUID
+    name: str = Field(min_length=1, max_length=200)
+    checklist_version_id: uuid.UUID
+    rule_pack_version_id: uuid.UUID | None = None
+    sample_size: int = Field(ge=1, le=500, description="Invoices validated per run.")
+    cadence: MonitorCadence
+    first_run_at: datetime | None = Field(
+        default=None, description="Defaults to one cadence step from now."
+    )
+
+
+class EInvoiceMonitorPatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    sample_size: int | None = Field(default=None, ge=1, le=500)
+    is_active: bool | None = None
+
+
+class EInvoiceMonitorOut(ORM):
+    id: uuid.UUID
+    entity_id: uuid.UUID
+    entity_name: str = ""
+    name: str
+    checklist_version_id: uuid.UUID
+    rule_pack_version_id: uuid.UUID | None
+    sample_size: int
+    cadence: MonitorCadence
+    seed: str
+    is_active: bool
+    next_run_at: datetime
+    last_run_at: datetime | None
+    covered_until: datetime | None
+    created_at: datetime
+
+
+class EInvoiceMonitorRunOut(ORM):
+    id: uuid.UUID
+    monitor_id: uuid.UUID
+    review_id: uuid.UUID | None
+    window_start: datetime | None
+    window_end: datetime
+    population: int
+    sampled: int
+    seed: str
+    sample_method: str
+    status: MonitorRunStatus
+    message: str
+    created_at: datetime
