@@ -256,7 +256,6 @@ def test_sbr_and_qfzp_papers_and_validation(tenant_a: Tenant, db: Session) -> No
     # Validation.
     assert new_paper(admin, entity.id, rpv, period_end="2024-01-01").status_code == 422
     assert new_paper(admin, entity.id, rpv, period_end="2028-01-01").status_code == 422
-    assert new_paper(admin, entity.id, rpv, kind="zakat").status_code == 422
     assert new_paper(admin, entity.id, rpv, rules_prefix="Bad Prefix").status_code == 422
     ct = new_paper(admin, entity.id, rpv).json()
     assert put_in(admin, ct["id"], "x", category="made_up", amount="1").status_code == 422

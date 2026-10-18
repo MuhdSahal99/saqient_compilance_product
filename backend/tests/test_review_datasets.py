@@ -147,7 +147,7 @@ def test_review_on_a_general_ledger(tenant_a: Tenant, db: Session) -> None:
     assert review["datasets"][0]["row_count"] == 4
     assert review["rule_pack_name"] == "Synthetic GL rules"
     run = review["latest_run"]
-    assert run["engine_version"] == "deterministic-1.2.0"
+    assert run["engine_version"] == "deterministic-1.3.0"
     snap = run["inputs_snapshot"]
     assert snap["as_of_date"] == "2025-12-31" and snap["as_of_source"] == "dataset_period_end"
     assert snap["datasets"][0]["dataset_version_id"] == dv

@@ -145,3 +145,4 @@ from app.calc import corporate_tax as _ct  # noqa: E402,F401  (registers formula
 from app.calc import losses as _losses  # noqa: E402,F401
 from app.calc import pillar_two as _p2  # noqa: E402,F401
 from app.calc import transfer_pricing as _tp  # noqa: E402,F401
+from app.calc import zakat as _zakat  # noqa: E402,F401

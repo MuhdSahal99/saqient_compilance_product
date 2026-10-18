@@ -175,6 +175,13 @@ FAMILIES: dict[str, TypeAdapter[Any]] = {
     "box_layout": TypeAdapter(BoxLayout),
     "obligations": TypeAdapter(list[Obligation]),
     "codes": TypeAdapter(list[Annotated[str, Field(max_length=80)]]),
+    # Withholding rate per payment type code (a share between 0 and 1).
+    "wht_rates": TypeAdapter(
+        dict[
+            Annotated[str, Field(pattern=r"^[a-z0-9_]{1,60}$")],
+            Annotated[Decimal, Field(ge=0, le=1)],
+        ]
+    ),
     "rate_bands": TypeAdapter(
         Annotated[list[RateBand], Field(min_length=1, max_length=20), AfterValidator(_bands)]
     ),

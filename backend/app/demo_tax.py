@@ -78,6 +78,27 @@ def p2_rules(p: str = "syn.p2") -> list[dict[str, Any]]:
     ]
 
 
+WHT_RATES = {"royalty": "0.12", "technical_services": "0.04", "rent": "0.04", "dividend": "0.04"}
+
+
+def zakat_rules(p: str = "syn.zakat") -> list[dict[str, Any]]:
+    return [
+        row(f"{p}.amount_decimals", "integer", 2, "Amount decimals"),
+        row(f"{p}.rounding_mode", "string", "half_up", "Rounding mode"),
+        row(f"{p}.zakat_rate", "decimal", "0.03", "Zakat rate"),
+        row(f"{p}.zakat_year_days", "integer", 365, "Days in a zakat year"),
+        row(f"{p}.zakat_min_base_is_net_profit", "boolean", "true", "Minimum base"),
+    ]
+
+
+def wht_rules(p: str = "syn.wht") -> list[dict[str, Any]]:
+    return [
+        row(f"{p}.wht_rates", "json", WHT_RATES, "Withholding rates by payment type"),
+        row(f"{p}.resident_country", "string", "SA", "Resident country"),
+        row(f"{p}.tolerance", "decimal", "1.00", "Shortfall tolerance", "currency"),
+    ]
+
+
 def rules() -> list[dict[str, Any]]:
     """All synthetic direct-tax rules."""
-    return [*ct_rules(), *p2_rules()]
+    return [*ct_rules(), *p2_rules(), *zakat_rules(), *wht_rules()]

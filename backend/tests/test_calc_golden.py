@@ -46,8 +46,9 @@ def inputs(case: dict[str, Any]) -> calc.Inputs:
         )
         for i in case["inputs"]
     ]
+    ps = date.fromisoformat(case["period_start"]) if "period_start" in case else None
     pe = date.fromisoformat(case["period_end"]) if "period_end" in case else None
-    return calc.Inputs(lines=lines, period_end=pe)
+    return calc.Inputs(lines=lines, period_start=ps, period_end=pe)
 
 
 def _cases() -> list[Any]:

@@ -1,0 +1,61 @@
+{
+  "formula": "zakat",
+  "prefix": "syn.zakat",
+  "rules": "synthetic: rate 0.03, 365-day year, base not below adjusted net profit, 2 decimals half_up",
+  "cases": [
+    {
+      "name": "full year, net profit floor applies",
+      "period_start": "2025-01-01",
+      "period_end": "2025-12-31",
+      "inputs": [
+        {"key": "adjusted_net_profit", "amount": "5000000"},
+        {"key": "equity", "category": "zakat_addition", "amount": "10000000"},
+        {"key": "provisions", "category": "zakat_addition", "amount": "1000000"},
+        {"key": "long_term_loans", "category": "zakat_addition", "amount": "4000000"},
+        {"key": "fixed_assets", "category": "zakat_deduction", "amount": "9000000"},
+        {"key": "investments", "category": "zakat_deduction", "amount": "2000000"}
+      ],
+      "worked": [
+        "additions 15000000; deductions 11000000; base 4000000",
+        "net profit 5000000 > base, so base used 5000000",
+        "zakat = 5000000 x 0.03 x 365/365 = 150000"
+      ],
+      "expected": {
+        "additions": "15000000",
+        "deductions": "11000000",
+        "base": "4000000",
+        "base_used": "5000000",
+        "zakat": "150000.00"
+      }
+    },
+    {
+      "name": "short period factor and rounding",
+      "period_start": "2025-01-01",
+      "period_end": "2025-06-30",
+      "inputs": [
+        {"key": "adjusted_net_profit", "amount": "1000000"},
+        {"key": "equity", "category": "zakat_addition", "amount": "8000000"}
+      ],
+      "worked": ["181 days; 8000000 x 0.03 x 181 / 365 = 119013.6986... -> 119013.70"],
+      "expected": {"base_used": "8000000", "zakat": "119013.70"}
+    },
+    {
+      "name": "negative base and loss: nothing due",
+      "period_start": "2025-01-01",
+      "period_end": "2025-12-31",
+      "inputs": [
+        {"key": "adjusted_net_profit", "amount": "-500000"},
+        {"key": "equity", "category": "zakat_addition", "amount": "1000000"},
+        {"key": "fixed_assets", "category": "zakat_deduction", "amount": "3000000"}
+      ],
+      "expected": {"base": "-2000000", "base_used": "0", "zakat": "0.00"}
+    },
+    {
+      "name": "net profit is required",
+      "period_start": "2025-01-01",
+      "period_end": "2025-12-31",
+      "inputs": [],
+      "error": "Enter the input 'adjusted_net_profit'."
+    }
+  ]
+}
