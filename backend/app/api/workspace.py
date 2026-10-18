@@ -221,7 +221,12 @@ def members(ctx: Ctx, db: DB) -> list[MemberOut]:
     return sorted(
         [
             MemberOut(
-                user_id=m.user_id, full_name=m.user.full_name, email=m.user.email, role=m.role
+                user_id=m.user_id,
+                full_name=m.user.full_name,
+                email=m.user.email,
+                role=m.role,
+                membership_id=m.id,
+                joined_at=m.created_at,
             )
             for m in rows
         ],

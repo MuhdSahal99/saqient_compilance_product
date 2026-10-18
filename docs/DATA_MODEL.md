@@ -26,6 +26,9 @@ organizations ─┬─ memberships ── users ── user_sessions
 | `users` | email (unique), full_name, password_hash (Argon2id), is_active, is_demo, preferred_locale | `is_demo` users are rejected unless `DEMO_MODE=true`. |
 | `memberships` | org_id, user_id, role | Unique (org_id, user_id). Role ∈ org_admin, reviewer, analyst, viewer. Re-read on every request. |
 | `user_sessions` | token_hash (SHA-256 of the cookie token), csrf_token, user_id, org_id (active org), last_seen_at, expires_at, revoked_at | Raw session tokens are never stored. Idle and absolute expiry. |
+| `invitations` | org_id, email, role, token_hash, invited_by_id, expires_at, accepted_at, accepted_by_id, revoked_at, last_sent_at | Token stored as SHA-256 only; 7-day expiry; claimed by one conditional UPDATE, so single use. One open invitation per email per org (partial unique index). |
+| `password_reset_tokens` | user_id, token_hash, expires_at, used_at | Account-level, not tenant data. 60-minute expiry, single use, only the newest works. Using one revokes every session of the user. |
+| `notification_log` | org_id, kind (invitation, task_due_reminder), recipient_user_id, recipient_email, subject, object_type, object_id, dedupe_key (unique), status (sent, failed, disabled), error | Bodies are not stored (they hold links). Reminders use one dedupe key per owner, org and day. |
 
 ## Legal entities
 

@@ -17,6 +17,7 @@ from app.api import (
     datasets,
     documents,
     entities,
+    members,
     reviews,
     rule_packs,
     workspace,
@@ -111,6 +112,7 @@ def create_app() -> FastAPI:
         entities,
         rule_packs,
         datasets,
+        members,
     ):
         app.include_router(module.router, prefix="/api")
 

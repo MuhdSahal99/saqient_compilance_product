@@ -52,6 +52,25 @@ class Settings(BaseSettings):
     # 32 random bytes, base64. Required in production; dev/test derive one from SECRET_KEY.
     field_encryption_key: str = Field(default="", repr=False)
 
+    # Public URL of the web app, used for links in emails (invitations, password reset).
+    app_base_url: str = "http://localhost:5173"
+    # file: writes .eml files to MAIL_FILE_DIR (development only); memory: tests only;
+    # smtp: real delivery; disabled: nothing is sent.
+    mail_backend: Literal["disabled", "file", "memory", "smtp"] = "file"
+    mail_from: str = "Saqient <no-reply@localhost>"
+    mail_file_dir: str = "./var/mail"
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_username: str = ""
+    smtp_password: str = Field(default="", repr=False)
+    smtp_starttls: bool = True
+    smtp_timeout_seconds: int = 10
+    invitation_ttl_days: int = 7
+    password_reset_ttl_minutes: int = 60
+    password_reset_rate_limit: int = 5  # requests per window per ip+email
+    password_reset_rate_window_seconds: int = 900
+    reminder_days_ahead: int = 3
+
     max_upload_mb: int = 20
     dataset_max_upload_mb: int = 100
     dataset_max_rows: int = 1_000_000
@@ -115,6 +134,12 @@ class Settings(BaseSettings):
             problems.append("CELERY_TASK_ALWAYS_EAGER must be false in production")
         if self.ai_provider == "mock":
             problems.append("AI_PROVIDER=mock is not allowed in production")
+        if self.mail_backend in ("file", "memory"):
+            problems.append("MAIL_BACKEND must be smtp or disabled in production")
+        if self.mail_backend == "smtp" and not self.smtp_host:
+            problems.append("MAIL_BACKEND=smtp requires SMTP_HOST")
+        if not self.app_base_url.startswith("https://"):
+            problems.append("APP_BASE_URL must be an https URL in production")
         if problems:
             raise ConfigError("; ".join(problems))
 

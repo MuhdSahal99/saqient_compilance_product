@@ -4,6 +4,7 @@ import logging
 import uuid
 
 from celery import Celery, Task
+from celery.schedules import crontab
 
 from app.config import get_settings
 from app.db import get_sessionmaker
@@ -14,6 +15,7 @@ from app.services import datasets as _datasets  # noqa: F401
 from app.services import documents as _documents  # noqa: F401
 from app.services import reviews as _reviews  # noqa: F401
 from app.services.jobs import Outcome, execute_job
+from app.services.reminders import send_due_reminders
 
 logger = logging.getLogger("saqient.worker")
 _settings = get_settings()
@@ -31,6 +33,13 @@ celery_app.conf.update(
     accept_content=["json"],
     worker_hijack_root_logger=False,
     broker_connection_retry_on_startup=True,
+    timezone="UTC",
+    beat_schedule={
+        "task-due-reminders": {
+            "task": "saqient.send_due_reminders",
+            "schedule": crontab(hour=5, minute=0),  # 09:00 in the UAE (UTC+4)
+        },
+    },
 )
 
 
@@ -43,3 +52,10 @@ def run_job_task(self: Task, job_id: str, org_id: str) -> str:
             return run_job_task(job_id, org_id)
         raise self.retry(countdown=min(60, 5 * (self.request.retries + 1)))
     return outcome.value
+
+
+@celery_app.task(name="saqient.send_due_reminders")
+def send_due_reminders_task() -> dict[str, int]:
+    with get_sessionmaker()() as db:
+        run = send_due_reminders(db)
+    return {"sent": run.sent, "failed": run.failed, "skipped": run.skipped}

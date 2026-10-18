@@ -25,6 +25,8 @@ test-results/
 /backend/data/
 /storage/
 /backend/storage/
+/backend/var/
+/var/
 /backups/
 /backend/backups/
 *.dump

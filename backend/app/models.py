@@ -254,6 +254,89 @@ class UserSession(Base):
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class Invitation(Base):
+    """An emailed, single-use invitation to join an organisation with a role."""
+
+    __tablename__ = "invitations"
+    __table_args__ = (
+        # One open invitation per email per organisation.
+        Index(
+            "uq_invitations_org_email_open",
+            "org_id",
+            "email",
+            unique=True,
+            postgresql_where="accepted_at IS NULL AND revoked_at IS NULL",
+        ),
+    )
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    email: Mapped[str] = mapped_column(String(320))
+    role: Mapped[Role] = mapped_column(_enum(Role, "invitation_role"))
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    invited_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = _created()
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    accepted_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    organization: Mapped[Organization] = relationship(lazy="joined")
+    invited_by: Mapped[User | None] = relationship(foreign_keys=[invited_by_id], lazy="joined")
+
+
+class PasswordResetToken(Base):
+    """Single-use, short-lived. Account-level (not tenant data), like users."""
+
+    __tablename__ = "password_reset_tokens"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    created_at: Mapped[datetime] = _created()
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class NotificationKind(str, enum.Enum):
+    INVITATION = "invitation"
+    TASK_DUE_REMINDER = "task_due_reminder"
+
+
+class NotificationStatus(str, enum.Enum):
+    SENT = "sent"
+    FAILED = "failed"
+    DISABLED = "disabled"
+
+
+class NotificationLog(Base):
+    """Outgoing org notifications. Bodies are not stored (they can hold links)."""
+
+    __tablename__ = "notification_log"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    kind: Mapped[NotificationKind] = mapped_column(_enum(NotificationKind, "notification_kind"))
+    recipient_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    recipient_email: Mapped[str] = mapped_column(String(320))
+    subject: Mapped[str] = mapped_column(String(300))
+    object_type: Mapped[str] = mapped_column(String(40))
+    object_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    # Reminders: one per finding, due date and day, so retries cannot send twice.
+    dedupe_key: Mapped[str | None] = mapped_column(String(200), unique=True)
+    status: Mapped[NotificationStatus] = mapped_column(
+        _enum(NotificationStatus, "notification_status")
+    )
+    error: Mapped[str | None] = mapped_column(String(300))
+    created_at: Mapped[datetime] = _created()
+
+
 # ---------------------------------------------------------------- entities
 
 

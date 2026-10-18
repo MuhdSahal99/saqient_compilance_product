@@ -13,6 +13,18 @@ x-backend-env: &backend-env
   COOKIE_SECURE: ${COOKIE_SECURE:-false}
   STORAGE_BACKEND: local
   STORAGE_LOCAL_PATH: /data/storage
+  FIELD_ENCRYPTION_KEY: ${FIELD_ENCRYPTION_KEY:-}
+  # Links in emails point here. Mail goes to .eml files under the storage volume
+  # unless MAIL_BACKEND=smtp (required in production) and the SMTP_* values are set.
+  APP_BASE_URL: ${APP_BASE_URL:-http://localhost:8080}
+  MAIL_BACKEND: ${MAIL_BACKEND:-file}
+  MAIL_FILE_DIR: /data/storage/mail
+  MAIL_FROM: ${MAIL_FROM:-Saqient <no-reply@localhost>}
+  SMTP_HOST: ${SMTP_HOST:-}
+  SMTP_PORT: ${SMTP_PORT:-587}
+  SMTP_USERNAME: ${SMTP_USERNAME:-}
+  SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+  SMTP_STARTTLS: ${SMTP_STARTTLS:-true}
   # AI stays off unless set explicitly. See docs/MODEL_INTEGRATION.md before changing.
   AI_ENABLED: ${AI_ENABLED:-false}
   AI_PROVIDER: ${AI_PROVIDER:-disabled}
@@ -82,6 +94,16 @@ services:
     command: ["celery", "-A", "app.worker.celery_app", "worker", "-l", "info", "-c", "2"]
     volumes:
       - storage:/data/storage
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+
+  # Celery beat: schedules the daily task due-date reminders (one instance only).
+  beat:
+    image: saqient-backend:local
+    build: ./backend
+    environment: *backend-env
+    command: ["celery", "-A", "app.worker.celery_app", "beat", "-l", "info", "-s", "/tmp/celerybeat-schedule"]
     depends_on:
       migrate: { condition: service_completed_successfully }
       redis: { condition: service_healthy }

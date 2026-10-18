@@ -52,6 +52,54 @@ class ChangePasswordIn(BaseModel):
     new_password: str = Field(min_length=12, max_length=256)
 
 
+class PasswordResetRequestIn(BaseModel):
+    email: EmailStr
+
+
+class PasswordResetConfirmIn(BaseModel):
+    token: str = Field(min_length=20, max_length=200)
+    new_password: str = Field(min_length=12, max_length=256)
+
+
+class InvitationIn(BaseModel):
+    email: EmailStr
+    role: Role
+
+
+class InvitationOut(BaseModel):
+    id: uuid.UUID
+    email: str
+    role: Role
+    invited_by_name: str | None
+    created_at: datetime
+    expires_at: datetime
+    is_expired: bool
+    last_sent_at: datetime | None
+    last_delivery: str | None = None  # sent | failed | disabled
+
+
+class InvitationLookupIn(BaseModel):
+    token: str = Field(min_length=20, max_length=200)
+
+
+class InvitationLookupOut(BaseModel):
+    organization_name: str
+    email: str
+    role: Role
+    has_account: bool
+    expires_at: datetime
+
+
+class InvitationAcceptIn(BaseModel):
+    token: str = Field(min_length=20, max_length=200)
+    password: str = Field(min_length=1, max_length=256)
+    full_name: str | None = Field(default=None, max_length=200)
+
+
+class MemberRoleIn(BaseModel):
+    role: Role
+
+
 class SwitchOrgIn(BaseModel):
     org_id: uuid.UUID
 
@@ -91,6 +139,8 @@ class MemberOut(BaseModel):
     full_name: str
     email: str
     role: Role
+    membership_id: uuid.UUID | None = None
+    joined_at: datetime | None = None
 
 
 # ---------------------------------------------------------------- jobs
