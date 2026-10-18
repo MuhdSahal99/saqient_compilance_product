@@ -27,6 +27,8 @@ from app.models import (
     NotificationKind,
     NotificationLog,
     Organization,
+    Task,
+    TaskStatus,
     User,
 )
 from app.services import notifications
@@ -51,17 +53,28 @@ def _include(due: date, today: date, ahead: int) -> bool:
     return overdue == 1 or (overdue > 0 and overdue % 7 == 0)
 
 
-def _line(f: Finding, today: date) -> str:
-    assert f.due_date is not None
-    days = (f.due_date - today).days
+def _when(due: date, today: date) -> tuple[str, str]:
+    days = (due - today).days
     if days < 0:
         when_en, when_ar = f"overdue by {-days} day(s)", f"متأخرة {-days} يوم"
     elif days == 0:
         when_en, when_ar = "due today", "مستحقة اليوم"
     else:
         when_en, when_ar = f"due in {days} day(s)", f"مستحقة خلال {days} يوم"
+    return when_en, when_ar
+
+
+def _line(f: Finding, today: date) -> str:
+    assert f.due_date is not None
+    when_en, when_ar = _when(f.due_date, today)
     due = f.due_date.isoformat()
     return f"- {f.review.title}: {f.title} — {due}, {when_en} / {when_ar}"
+
+
+def _task_line(t: Task, today: date) -> str:
+    assert t.due_date is not None
+    when_en, when_ar = _when(t.due_date, today)
+    return f"- {t.title} — {t.due_date.isoformat()}, {when_en} / {when_ar}"
 
 
 def reminder_mail(to: str, org_name: str, lines: list[str]) -> mail.Mail:
@@ -96,13 +109,35 @@ def send_due_reminders(db: Session, today: date | None = None) -> ReminderRun:
         )
         .order_by(Finding.org_id, Finding.owner_id, Finding.due_date, Finding.created_at)
     ).all()
-    grouped: dict[tuple[uuid.UUID, uuid.UUID], list[Finding]] = defaultdict(list)
+    grouped: dict[tuple[uuid.UUID, uuid.UUID], list[str]] = defaultdict(list)
     for f in rows:
         assert f.due_date is not None and f.owner_id is not None
         if _include(f.due_date, today, ahead):
-            grouped[(f.org_id, f.owner_id)].append(f)
+            grouped[(f.org_id, f.owner_id)].append(_line(f, today))
+    # General tasks (tax obligations, later PBC and close items; ADR 0009).
+    tasks = db.scalars(
+        select(Task)
+        .join(
+            Membership,
+            (Membership.org_id == Task.org_id) & (Membership.user_id == Task.owner_id),
+        )
+        .join(User, User.id == Task.owner_id)
+        .where(
+            Task.owner_id.is_not(None),
+            Task.due_date.is_not(None),
+            Task.status.in_((TaskStatus.OPEN, TaskStatus.IN_PROGRESS)),
+            Task.due_date <= today + timedelta(days=ahead),
+            User.is_active.is_(True),
+            User.is_demo.is_(False),
+        )
+        .order_by(Task.org_id, Task.owner_id, Task.due_date, Task.created_at)
+    ).all()
+    for t in tasks:
+        assert t.due_date is not None and t.owner_id is not None
+        if _include(t.due_date, today, ahead):
+            grouped[(t.org_id, t.owner_id)].append(_task_line(t, today))
     result = ReminderRun()
-    for (org_id, user_id), findings in grouped.items():
+    for (org_id, user_id), lines in grouped.items():
         key = f"task_due:{org_id}:{user_id}:{today.isoformat()}"
         if db.scalar(select(NotificationLog.id).where(NotificationLog.dedupe_key == key)):
             result.skipped += 1
@@ -110,7 +145,7 @@ def send_due_reminders(db: Session, today: date | None = None) -> ReminderRun:
         user = db.get(User, user_id)
         org = db.get(Organization, org_id)
         assert user is not None and org is not None
-        message = reminder_mail(user.email, org.name, [_line(f, today) for f in findings])
+        message = reminder_mail(user.email, org.name, lines)
         entry = notifications.send_logged(
             db,
             message,

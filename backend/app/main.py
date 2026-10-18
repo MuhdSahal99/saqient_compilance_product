@@ -22,6 +22,7 @@ from app.api import (
     monitors,
     reviews,
     rule_packs,
+    tax_calendar,
     tax_setup,
     workspace,
 )
@@ -117,6 +118,7 @@ def create_app() -> FastAPI:
         datasets,
         members,
         tax_setup,
+        tax_calendar,
         einvoices,
         monitors,
     ):

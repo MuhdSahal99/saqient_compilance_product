@@ -26,6 +26,8 @@ from app.models import (
     RuleVerification,
     Severity,
     SourceVerification,
+    TaskSource,
+    TaskStatus,
     TaxAccountRole,
     TaxPeriodStatus,
     TaxType,
@@ -1033,3 +1035,93 @@ class EInvoiceMonitorRunOut(ORM):
     status: MonitorRunStatus
     message: str
     created_at: datetime
+
+
+# ---------------------------------------------------------------- tax calendar and tasks
+
+
+class TaxCalendarGenerateIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    rule_pack_version_id: uuid.UUID
+    prefix: str = Field(
+        min_length=1,
+        max_length=80,
+        pattern=r"^[a-z0-9_]+(\.[a-z0-9_]+)*$",
+        description="Rule key prefix, e.g. 'ae.vat'; reads <prefix>.obligations.",
+    )
+    start: date
+    end: date
+    owner_id: uuid.UUID | None = None
+    include_einvoicing: bool = Field(
+        default=True, description="Also add go-live and milestones from the waves rule."
+    )
+    waves_rule: str | None = Field(
+        default=None,
+        max_length=120,
+        pattern=r"^[a-z0-9_]+(\.[a-z0-9_]+)*$",
+        description="Defaults to <prefix>.go_live_waves.",
+    )
+
+
+class TaskOut(BaseModel):
+    id: uuid.UUID
+    source_kind: TaskSource
+    source_id: uuid.UUID | None
+    entity_id: uuid.UUID | None
+    entity_name: str | None
+    title: str
+    description: str
+    owner_id: uuid.UUID | None
+    owner_name: str | None
+    due_date: date | None
+    is_overdue: bool
+    status: TaskStatus
+    completion_note: str
+    completed_at: datetime | None
+    created_at: datetime
+
+
+class TaxObligationOut(BaseModel):
+    id: uuid.UUID
+    entity_id: uuid.UUID
+    entity_name: str
+    tax_period_id: uuid.UUID | None
+    obligation_key: str
+    label: str
+    tax_type: str
+    period_start: date
+    period_end: date
+    due_date: date
+    formula: str
+    rule_key: str
+    rule_pack_version_id: uuid.UUID
+    rule_verified: bool
+    rule_snapshot: dict[str, Any]
+    task: TaskOut | None
+
+
+class TaxCalendarResultOut(BaseModel):
+    created: int
+    updated: int
+    unchanged: int
+    periods_created: int
+    warnings: list[str]
+    obligations: list[TaxObligationOut]
+
+
+class TaskIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    title: str = Field(min_length=1, max_length=300)
+    description: str = Field(default="", max_length=4000)
+    entity_id: uuid.UUID | None = None
+    owner_id: uuid.UUID | None = None
+    due_date: date | None = None
+
+
+class TaskPatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    status: TaskStatus | None = None
+    owner_id: uuid.UUID | None = None
+    clear_owner: bool = False
+    due_date: date | None = None
+    note: str | None = Field(default=None, max_length=4000)

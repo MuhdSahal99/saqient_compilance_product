@@ -140,6 +140,18 @@ class TaxType(str, enum.Enum):
     WHT = "wht"
 
 
+class TaskStatus(str, enum.Enum):
+    OPEN = "open"
+    IN_PROGRESS = "in_progress"
+    DONE = "done"
+    CANCELLED = "cancelled"
+
+
+class TaskSource(str, enum.Enum):
+    TAX_OBLIGATION = "tax_obligation"
+    MANUAL = "manual"
+
+
 class MonitorCadence(str, enum.Enum):
     DAILY = "daily"
     WEEKLY = "weekly"
@@ -828,6 +840,82 @@ class EInvoiceMonitorRun(Base):
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
     )
     created_at: Mapped[datetime] = _created()
+
+
+class Task(Base):
+    """A to-do with an owner and due date that is not a finding (ADR 0009).
+
+    ``source_kind`` + ``source_id`` say what created it (a tax obligation now; PBC
+    requests and close checklist items later).
+    """
+
+    __tablename__ = "tasks"
+    __table_args__ = (Index("ix_tasks_org_owner_status", "org_id", "owner_id", "status"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    source_kind: Mapped[TaskSource] = mapped_column(_enum(TaskSource, "task_source"))
+    source_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), index=True)
+    entity_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("legal_entities.id", ondelete="CASCADE"), index=True
+    )
+    title: Mapped[str] = mapped_column(String(300))
+    description: Mapped[str] = mapped_column(Text, default="")
+    owner_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    due_date: Mapped[date | None] = mapped_column(Date, index=True)
+    status: Mapped[TaskStatus] = mapped_column(
+        _enum(TaskStatus, "task_status"), default=TaskStatus.OPEN
+    )
+    completion_note: Mapped[str] = mapped_column(Text, default="")
+    completed_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = _created()
+
+    entity: Mapped[LegalEntity | None] = relationship(lazy="joined")
+    owner: Mapped[User | None] = relationship(foreign_keys=[owner_id], lazy="joined")
+
+
+class TaxObligation(Base):
+    """A filing or e-invoicing deadline of one entity, generated from a rule pack."""
+
+    __tablename__ = "tax_obligations"
+    __table_args__ = (UniqueConstraint("entity_id", "obligation_key", "period_start"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    entity_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("legal_entities.id", ondelete="CASCADE"), index=True
+    )
+    tax_period_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tax_periods.id", ondelete="SET NULL")
+    )
+    # The obligation id from the pack (e.g. vat_return) or einvoicing:<milestone>.
+    obligation_key: Mapped[str] = mapped_column(String(80))
+    label: Mapped[str] = mapped_column(String(300))
+    tax_type: Mapped[str] = mapped_column(String(40))
+    period_start: Mapped[date] = mapped_column(Date)
+    period_end: Mapped[date] = mapped_column(Date)
+    due_date: Mapped[date] = mapped_column(Date, index=True)
+    # How the due date was derived, with the rule used, so a reviewer can reproduce it.
+    rule_pack_version_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("rule_pack_versions.id", ondelete="RESTRICT")
+    )
+    rule_key: Mapped[str] = mapped_column(String(120))
+    rule_snapshot: Mapped[dict[str, Any]] = mapped_column(JSONType, default=dict)
+    formula: Mapped[str] = mapped_column(String(300))
+    rule_verified: Mapped[bool] = mapped_column(Boolean, default=False)
+    task_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tasks.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = _created()
+
+    entity: Mapped[LegalEntity] = relationship(lazy="joined")
+    task: Mapped[Task | None] = relationship(lazy="joined")
 
 
 # ---------------------------------------------------------------- documents
