@@ -12,6 +12,8 @@ from app.models import (
     ChecklistKind,
     ChecklistState,
     CheckOutcome,
+    DatasetKind,
+    DatasetStatus,
     FindingStatus,
     JobStatus,
     ReviewStatus,
@@ -616,3 +618,84 @@ class RulePackOut(BaseModel):
     is_synthetic: bool
     created_at: datetime
     versions: list[RulePackVersionOut]
+
+
+# ---------------------------------------------------------------- datasets
+
+
+class DatasetVersionOut(ORM):
+    id: uuid.UUID
+    version_number: int
+    original_filename: str
+    file_format: str
+    size_bytes: int
+    raw_sha256: str
+    status: DatasetStatus
+    failure_message: str | None
+    source_columns: list[str]
+    source_row_count: int | None
+    column_mapping: dict[str, str] = Field(
+        description="Proposed from header names until confirmed (mapping_confirmed_at set)."
+    )
+    parse_options: dict[str, str]
+    mapping_confirmed_at: datetime | None
+    parquet_sha256: str | None
+    row_count: int | None
+    derived_fields: list[str]
+    totals: dict[str, str] = Field(description="Column sums as exact decimal strings.")
+    errors: list[dict[str, Any]] = Field(description="First rejected values, by row id.")
+    error_count: int
+    created_at: datetime
+    processed_at: datetime | None
+
+
+class DatasetVersionDetailOut(DatasetVersionOut):
+    dataset_id: uuid.UUID
+    kind: DatasetKind
+    preview: list[dict[str, Any]] = Field(description="First rows of the raw file, as text.")
+    latest_job: JobOut | None = None
+
+
+class DatasetOut(BaseModel):
+    id: uuid.UUID
+    entity_id: uuid.UUID
+    entity_name: str
+    kind: DatasetKind
+    name: str
+    period_start: date | None
+    period_end: date | None
+    is_demo: bool
+    created_at: datetime
+    latest_version: DatasetVersionOut | None
+
+
+class DatasetDetailOut(DatasetOut):
+    versions: list[DatasetVersionOut]
+
+
+class MappingIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    mapping: dict[str, str] = Field(description="Canonical field -> source column header.")
+    date_format: Literal["%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y", "%d-%m-%Y", "%d.%m.%Y", "%Y/%m/%d"] = (
+        "%Y-%m-%d"
+    )
+    decimal_separator: Literal[".", ","] = "."
+
+
+class CanonicalFieldOut(BaseModel):
+    name: str
+    type: str
+    required: bool
+
+
+class DatasetKindOut(BaseModel):
+    kind: DatasetKind
+    fields: list[CanonicalFieldOut]
+    require_any: list[list[str]]
+
+
+class DatasetRowsOut(BaseModel):
+    version_id: uuid.UUID
+    columns: list[str]
+    rows: list[dict[str, Any]] = Field(description="Amounts and dates as strings.")
+    total: int

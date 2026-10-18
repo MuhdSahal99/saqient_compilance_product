@@ -53,6 +53,8 @@ class Settings(BaseSettings):
     field_encryption_key: str = Field(default="", repr=False)
 
     max_upload_mb: int = 20
+    dataset_max_upload_mb: int = 100
+    dataset_max_rows: int = 1_000_000
     max_pdf_pages: int = 300
     max_extracted_chars: int = 2_000_000
     processing_time_limit_seconds: int = 120
@@ -87,6 +89,10 @@ class Settings(BaseSettings):
     @property
     def max_upload_bytes(self) -> int:
         return self.max_upload_mb * 1024 * 1024
+
+    @property
+    def dataset_max_upload_bytes(self) -> int:
+        return self.dataset_max_upload_mb * 1024 * 1024
 
     @property
     def is_production(self) -> bool:

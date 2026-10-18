@@ -42,6 +42,13 @@ organizations ─┬─ memberships ── users ── user_sessions
 | `rule_pack_versions` | rule_pack_id, version_number, state (draft/published/archived), published_at, published_by_id | Published versions are immutable; publishing archives the previous one. |
 | `rules` | rule_pack_version_id, rule_key, title, value_type (decimal/integer/string/boolean/date), value (string, parsed by type, never float), unit, effective_from, effective_to, source_url, source_note, todo, verification_status (draft/verified), verified_by_id, verified_at | Unique (version, key, effective_from); periods per key may not overlap. Only org admins verify, and only with a source URL, no open TODO and a non-synthetic pack. Checks resolve a rule by key + date and record a snapshot; a draft rule adds an "unverified rule" warning. |
 
+## Datasets
+
+| Table | Key columns | Notes |
+|---|---|---|
+| `datasets` | entity_id, kind (trial_balance, general_ledger, sales_register, purchase_register, bank_statement), name, period_start, period_end | Logical dataset for one legal entity. |
+| `dataset_versions` | dataset_id, version_number, original_filename, file_format (csv/xlsx/mt940/camt053), size_bytes, raw_sha256, raw_storage_key, status, failure_message, source_columns, source_row_count, column_mapping, parse_options, mapping_confirmed_by_id/at, parquet_storage_key, parquet_sha256, row_count, derived_fields, totals, errors, error_count | Status: pending → parsing → needs_mapping → processing → ready / failed. Canonical schemas per kind are in `app/datasets/schemas.py`. Storage keys are never returned by the API. (ADR 0007) |
+
 ## Documents
 
 | Table | Key columns | Notes |
@@ -63,7 +70,7 @@ organizations ─┬─ memberships ── users ── user_sessions
 
 | Table | Key columns | Notes |
 |---|---|---|
-| `jobs` | kind (extract, review_run, ai_suggest), target_id, status, attempts, max_attempts, progress, cancel_requested, error | Background work record. Workers receive (job_id, org_id) and re-check ownership. |
+| `jobs` | kind (extract, review_run, ai_suggest, dataset_parse, dataset_build), target_id, status, attempts, max_attempts, progress, cancel_requested, error | Background work record. Workers receive (job_id, org_id) and re-check ownership. |
 | `reviews` | title, document_version_id, checklist_version_id, status, signed_off_by_id, signed_off_at | Pinned to exact versions. Status: draft → running → in_review → signed_off (reopen returns to in_review). |
 | `review_runs` | review_id, job_id, engine_version, engine_mode, config_snapshot (JSON), warnings[] | Each run records the engine version and a copy of the requirement configs used. |
 | `check_results` | run_id, requirement_id, outcome, needs_attention, message, evidence (JSON) | Unique (run, requirement). Outcome ∈ match_found, no_match_found, needs_human_review, processing_error, not_applicable. |

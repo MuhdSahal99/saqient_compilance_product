@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.053.001.02">
+  <BkToCstmrStmt>
+    <Stmt>
+      <Id>SYNTH-1</Id>
+      <Ntry>
+        <Amt Ccy="AED">1500.25</Amt>
+        <CdtDbtInd>DBIT</CdtDbtInd>
+        <BookgDt><Dt>2025-01-02</Dt></BookgDt>
+        <ValDt><Dt>2025-01-02</Dt></ValDt>
+        <AcctSvcrRef>BANKREF1</AcctSvcrRef>
+        <NtryDtls><TxDtls>
+          <RltdPties><Cdtr><Nm>Synthetic Supplies Co</Nm></Cdtr></RltdPties>
+          <RmtInf><Ustrd>Invoice INV-1001</Ustrd></RmtInf>
+        </TxDtls></NtryDtls>
+      </Ntry>
+      <Ntry>
+        <Amt Ccy="AED">2500.00</Amt>
+        <CdtDbtInd>CRDT</CdtDbtInd>
+        <BookgDt><DtTm>2025-01-03T09:30:00</DtTm></BookgDt>
+        <NtryRef>BANKREF2</NtryRef>
+        <AddtlNtryInf>Synthetic customer receipt</AddtlNtryInf>
+      </Ntry>
+    </Stmt>
+  </BkToCstmrStmt>
+</Document>

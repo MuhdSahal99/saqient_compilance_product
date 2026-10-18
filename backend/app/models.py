@@ -116,6 +116,23 @@ class RuleValueType(str, enum.Enum):
     DATE = "date"
 
 
+class DatasetKind(str, enum.Enum):
+    TRIAL_BALANCE = "trial_balance"
+    GENERAL_LEDGER = "general_ledger"
+    SALES_REGISTER = "sales_register"
+    PURCHASE_REGISTER = "purchase_register"
+    BANK_STATEMENT = "bank_statement"
+
+
+class DatasetStatus(str, enum.Enum):
+    PENDING = "pending"
+    PARSING = "parsing"
+    NEEDS_MAPPING = "needs_mapping"
+    PROCESSING = "processing"
+    READY = "ready"
+    FAILED = "failed"
+
+
 class Severity(str, enum.Enum):
     LOW = "low"
     MEDIUM = "medium"
@@ -135,6 +152,8 @@ class JobKind(str, enum.Enum):
     EXTRACT = "extract"
     REVIEW_RUN = "review_run"
     AI_SUGGEST = "ai_suggest"
+    DATASET_PARSE = "dataset_parse"
+    DATASET_BUILD = "dataset_build"
 
 
 class AIAssessment(str, enum.Enum):
@@ -352,6 +371,79 @@ class Rule(Base):
 
     version: Mapped[RulePackVersion] = relationship(back_populates="rules")
     verified_by: Mapped[User | None] = relationship(lazy="joined")
+
+
+# ---------------------------------------------------------------- datasets
+
+
+class Dataset(Base):
+    """A logical finance dataset (e.g. FY2025 general ledger) for one legal entity."""
+
+    __tablename__ = "datasets"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    entity_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("legal_entities.id", ondelete="RESTRICT"), index=True
+    )
+    kind: Mapped[DatasetKind] = mapped_column(_enum(DatasetKind, "dataset_kind"))
+    name: Mapped[str] = mapped_column(String(200))
+    period_start: Mapped[date | None] = mapped_column(Date)
+    period_end: Mapped[date | None] = mapped_column(Date)
+    is_demo: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = _created()
+
+    entity: Mapped[LegalEntity] = relationship(lazy="joined")
+    versions: Mapped[list[DatasetVersion]] = relationship(
+        back_populates="dataset", order_by="DatasetVersion.version_number"
+    )
+
+
+class DatasetVersion(Base):
+    """One imported file: raw bytes hashed and stored, canonical Parquet once mapped."""
+
+    __tablename__ = "dataset_versions"
+    __table_args__ = (UniqueConstraint("dataset_id", "version_number"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    dataset_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("datasets.id", ondelete="CASCADE"), index=True
+    )
+    version_number: Mapped[int] = mapped_column(Integer)
+    original_filename: Mapped[str] = mapped_column(String(255))
+    file_format: Mapped[str] = mapped_column(String(10))
+    size_bytes: Mapped[int] = mapped_column(BigInteger)
+    raw_sha256: Mapped[str] = mapped_column(String(64), index=True)
+    raw_storage_key: Mapped[str] = mapped_column(String(200))
+    status: Mapped[DatasetStatus] = mapped_column(
+        _enum(DatasetStatus, "dataset_status"), default=DatasetStatus.PENDING
+    )
+    failure_message: Mapped[str | None] = mapped_column(Text)
+    source_columns: Mapped[list[str]] = mapped_column(JSONType, default=list)
+    source_row_count: Mapped[int | None] = mapped_column(Integer)
+    # Proposed (by header names) until confirmed by a user.
+    column_mapping: Mapped[dict[str, str]] = mapped_column(JSONType, default=dict)
+    parse_options: Mapped[dict[str, str]] = mapped_column(JSONType, default=dict)
+    mapping_confirmed_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    mapping_confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    parquet_storage_key: Mapped[str | None] = mapped_column(String(200))
+    parquet_sha256: Mapped[str | None] = mapped_column(String(64))
+    row_count: Mapped[int | None] = mapped_column(Integer)
+    derived_fields: Mapped[list[str]] = mapped_column(JSONType, default=list)
+    totals: Mapped[dict[str, str]] = mapped_column(JSONType, default=dict)
+    errors: Mapped[list[dict[str, Any]]] = mapped_column(JSONType, default=list)
+    error_count: Mapped[int] = mapped_column(Integer, default=0)
+    uploaded_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = _created()
+    processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    dataset: Mapped[Dataset] = relationship(back_populates="versions", lazy="joined")
 
 
 # ---------------------------------------------------------------- documents
