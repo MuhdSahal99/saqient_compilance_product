@@ -126,6 +126,82 @@ def audit_rules(p: str = "syn.audit") -> list[dict[str, Any]]:
     ]
 
 
+def recon_rules(p: str = "syn.recon") -> list[dict[str, Any]]:
+    """Synthetic reconciliation parameters (Phase E)."""
+    return [
+        row(f"{p}.amount_tolerance", "decimal", "0.00", "Matching amount tolerance", "currency"),
+        row(f"{p}.date_window_days", "integer", 3, "Matching date window", "days"),
+        row(f"{p}.ageing_buckets", "json", [30, 60, 90], "Ageing buckets (days)"),
+        row(f"{p}.variance_abs", "decimal", "1000", "Variance needing explanation", "currency"),
+        row(f"{p}.variance_pct", "decimal", "0.05", "Variance needing explanation (share)"),
+        row(f"{p}.intercompany_abs", "decimal", "100", "Intercompany difference limit", "currency"),
+        row(f"{p}.flux_abs", "decimal", "5000", "Flux needing explanation", "currency"),
+        row(f"{p}.flux_pct", "decimal", "0.10", "Flux needing explanation (share)"),
+    ]
+
+
+SOD_CONFLICTS = [
+    {
+        "id": "SOD-01",
+        "a": ["vendor_maintain"],
+        "b": ["payment_release", "payment_run"],
+        "description": "Maintain vendors and release payments (synthetic)",
+    },
+    {
+        "id": "SOD-02",
+        "a": ["journal_post"],
+        "b": ["journal_approve"],
+        "description": "Post and approve journals (synthetic)",
+    },
+    {
+        "id": "SOD-03",
+        "a": ["AP Clerk"],
+        "b": ["Treasury Approver"],
+        "description": "AP clerk role with treasury approver role (synthetic)",
+    },
+]
+
+
+def sod_rules(p: str = "syn.sod") -> list[dict[str, Any]]:
+    """Synthetic segregation-of-duties conflict matrix (Phase E)."""
+    return [row(f"{p}.sod_conflicts", "json", SOD_CONFLICTS, "Conflict matrix")]
+
+
+EXPENSE_LIMITS = {
+    "meals": {"currency": "AED", "per_claim": "300", "receipt_over": "50"},
+    "travel": {"currency": "AED", "per_claim": "5000", "receipt_over": "0"},
+}
+
+
+def ap_rules(p: str = "syn.ap") -> list[dict[str, Any]]:
+    """Synthetic AP and expense analytics parameters (Phase E)."""
+    return [
+        row(
+            f"{p}.dup_amount_tolerance", "decimal", "0.00", "Duplicate amount tolerance", "currency"
+        ),
+        row(f"{p}.dup_date_window_days", "integer", 30, "Duplicate date window", "days"),
+        row(f"{p}.dup_name_similarity", "decimal", "90", "Vendor name similarity (0-100)"),
+        row(f"{p}.dup_invoice_similarity", "decimal", "90", "Invoice number similarity (0-100)"),
+        row(f"{p}.trn_countries", "json", ["AE"], "Countries where a vendor TRN is expected"),
+        row(f"{p}.trn_min_amount", "decimal", "0", "Minimum payment for the TRN test", "currency"),
+        row(f"{p}.dormant_days", "integer", 180, "Dormant vendor gap", "days"),
+        row(f"{p}.qty_tolerance", "decimal", "0", "Three-way match quantity tolerance"),
+        row(
+            f"{p}.price_tolerance_pct", "decimal", "0.02", "Three-way match price tolerance (share)"
+        ),
+        row(f"{p}.expense_limits", "json", EXPENSE_LIMITS, "Expense policy limits"),
+    ]
+
+
 def rules() -> list[dict[str, Any]]:
-    """All synthetic direct-tax and audit rules."""
-    return [*ct_rules(), *p2_rules(), *zakat_rules(), *wht_rules(), *audit_rules()]
+    """All synthetic direct-tax, audit and assurance rules."""
+    return [
+        *ct_rules(),
+        *p2_rules(),
+        *zakat_rules(),
+        *wht_rules(),
+        *audit_rules(),
+        *recon_rules(),
+        *sod_rules(),
+        *ap_rules(),
+    ]

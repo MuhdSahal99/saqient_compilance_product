@@ -220,6 +220,73 @@ SCHEMAS: dict[DatasetKind, CanonicalSchema] = {
             _CURRENCY,
         ),
     ),
+    DatasetKind.USER_ROLES: CanonicalSchema(
+        DatasetKind.USER_ROLES,
+        (
+            _f("user_id", "text", True, "user", "username", "user name id", "login", "user code"),
+            _f("user_name", "text", False, "name", "full name", "employee name"),
+            _f("role", "text", False, "role name", "responsibility", "security role", "profile"),
+            _f("permission", "text", False, "privilege", "function", "transaction", "tcode"),
+            _f("system", "text", False, "application", "module", "company"),
+            _f("status", "text", False, "user status", "active", "lock status"),
+        ),
+        require_any=(("role",), ("permission",)),
+    ),
+    DatasetKind.AP_PAYMENTS: CanonicalSchema(
+        DatasetKind.AP_PAYMENTS,
+        (
+            _f("payment_id", "text", True, "payment", "payment no", "voucher", "reference"),
+            _f("payment_date", "date", True, "date", "paid on", "value date"),
+            _f("vendor_id", "text", False, "vendor code", "supplier id", "vendor no"),
+            _f("vendor_name", "text", True, "vendor", "supplier", "payee", "beneficiary"),
+            _f("vendor_trn", "text", False, "trn", "vat number", "tax number"),
+            _f("vendor_country", "text", False, "country", "country code"),
+            _f("invoice_number", "text", False, "invoice", "invoice no", "bill number"),
+            _f("amount", "amount", True, "payment amount", "paid amount", "net amount"),
+            _f("iban", "text", False, "bank account", "beneficiary iban", "account iban"),
+            _f("description", "text", False, "memo", "narration", "details"),
+            _CURRENCY,
+        ),
+    ),
+    DatasetKind.EMPLOYEE_MASTER: CanonicalSchema(
+        DatasetKind.EMPLOYEE_MASTER,
+        (
+            _f("employee_id", "text", True, "employee", "employee no", "staff id", "id"),
+            _f("employee_name", "text", True, "name", "full name", "employee full name"),
+            _f("iban", "text", False, "bank account", "salary iban", "account iban"),
+            _f("department", "text", False, "cost centre", "cost center", "division"),
+            _f("status", "text", False, "employment status", "active"),
+        ),
+    ),
+    DatasetKind.THREE_WAY_MATCH: CanonicalSchema(
+        DatasetKind.THREE_WAY_MATCH,
+        (
+            _f("po_number", "text", True, "po", "purchase order", "po no"),
+            _f("invoice_number", "text", False, "invoice", "invoice no", "bill number"),
+            _f("vendor_name", "text", False, "vendor", "supplier"),
+            _f("item", "text", False, "line", "item code", "material", "product"),
+            _f("po_quantity", "amount", False, "ordered quantity", "po qty", "ordered qty"),
+            _f("received_quantity", "amount", False, "grn quantity", "received qty", "grn qty"),
+            _f("invoiced_quantity", "amount", True, "invoice quantity", "invoiced qty"),
+            _f("po_unit_price", "amount", False, "po price", "order price"),
+            _f("invoice_unit_price", "amount", False, "invoice price", "billed price"),
+            _CURRENCY,
+        ),
+    ),
+    DatasetKind.EXPENSE_CLAIMS: CanonicalSchema(
+        DatasetKind.EXPENSE_CLAIMS,
+        (
+            _f("claim_id", "text", True, "claim", "claim no", "expense id", "report id"),
+            _f("employee_id", "text", True, "employee", "employee no", "staff id"),
+            _f("employee_name", "text", False, "name", "claimant"),
+            _f("claim_date", "date", True, "date", "expense date", "transaction date"),
+            _f("category", "text", True, "expense type", "type", "expense category"),
+            _f("amount", "amount", True, "claimed amount", "expense amount"),
+            _f("receipt_ref", "text", False, "receipt", "receipt no", "attachment"),
+            _f("description", "text", False, "purpose", "details", "memo"),
+            _CURRENCY,
+        ),
+    ),
 }
 
 

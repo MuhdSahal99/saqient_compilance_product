@@ -1,4 +1,4 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, type ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createBrowserRouter, Navigate, Outlet, RouterProvider, useLocation } from "react-router-dom";
 import { Toaster } from "sonner";
@@ -34,6 +34,23 @@ import { AcceptInvitePage, ForgotPasswordPage, ResetPasswordPage } from "@/pages
 
 /** The engagement workspace is large; load it on first visit to keep the main bundle small. */
 const EngagementDetailPage = lazy(() => import("@/pages/EngagementDetailPage").then((m) => ({ default: m.EngagementDetailPage })));
+
+/** Phase E assurance screens, each loaded on first visit. */
+const ReconciliationsPage = lazy(() => import("@/pages/ReconciliationsPage").then((m) => ({ default: m.ReconciliationsPage })));
+const BankRecDetailPage = lazy(() => import("@/pages/ReconciliationDetailPages").then((m) => ({ default: m.BankRecDetailPage })));
+const AccountRecDetailPage = lazy(() => import("@/pages/ReconciliationDetailPages").then((m) => ({ default: m.AccountRecDetailPage })));
+const IntercompanyDetailPage = lazy(() => import("@/pages/ReconciliationDetailPages").then((m) => ({ default: m.IntercompanyDetailPage })));
+const ClosePage = lazy(() => import("@/pages/ClosePage").then((m) => ({ default: m.ClosePage })));
+const ClosePeriodDetailPage = lazy(() => import("@/pages/ClosePage").then((m) => ({ default: m.ClosePeriodDetailPage })));
+const FluxDetailPage = lazy(() => import("@/pages/ClosePage").then((m) => ({ default: m.FluxDetailPage })));
+const ControlsPage = lazy(() => import("@/pages/ControlsPage").then((m) => ({ default: m.ControlsPage })));
+const ProcessDetailPage = lazy(() => import("@/pages/ControlDetailPages").then((m) => ({ default: m.ProcessDetailPage })));
+const CertificationDetailPage = lazy(() => import("@/pages/ControlDetailPages").then((m) => ({ default: m.CertificationDetailPage })));
+const ConnectorsPage = lazy(() => import("@/pages/ConnectorsPage").then((m) => ({ default: m.ConnectorsPage })));
+
+function Lazy({ children }: { children: ReactNode }) {
+  return <Suspense fallback={<LoadingState />}>{children}</Suspense>;
+}
 
 function RequireAuth() {
   const { me, loading } = useAuth();
@@ -105,6 +122,17 @@ export const routes = [
                   </Suspense>
                 ),
               },
+              { path: "/reconciliations", element: <Lazy><ReconciliationsPage /></Lazy> },
+              { path: "/reconciliations/bank/:recId", element: <Lazy><BankRecDetailPage /></Lazy> },
+              { path: "/reconciliations/account/:recId", element: <Lazy><AccountRecDetailPage /></Lazy> },
+              { path: "/reconciliations/intercompany/:recId", element: <Lazy><IntercompanyDetailPage /></Lazy> },
+              { path: "/close", element: <Lazy><ClosePage /></Lazy> },
+              { path: "/close/periods/:periodId", element: <Lazy><ClosePeriodDetailPage /></Lazy> },
+              { path: "/close/flux/:fluxId", element: <Lazy><FluxDetailPage /></Lazy> },
+              { path: "/controls", element: <Lazy><ControlsPage /></Lazy> },
+              { path: "/controls/processes/:processId", element: <Lazy><ProcessDetailPage /></Lazy> },
+              { path: "/controls/certifications/:certId", element: <Lazy><CertificationDetailPage /></Lazy> },
+              { path: "/connectors", element: <Lazy><ConnectorsPage /></Lazy> },
               { path: "/portal", element: <PortalPage /> },
               { path: "/reports", element: <ReportsPage /> },
               { path: "/activity", element: <ActivityPage /> },

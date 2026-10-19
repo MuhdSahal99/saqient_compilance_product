@@ -135,6 +135,11 @@ class DatasetKind(str, enum.Enum):
     VAT_RETURN = "vat_return"
     EINVOICE_REJECTIONS = "einvoice_rejections"
     WHT_PAYMENTS = "wht_payments"
+    USER_ROLES = "user_roles"
+    AP_PAYMENTS = "ap_payments"
+    EMPLOYEE_MASTER = "employee_master"
+    THREE_WAY_MATCH = "three_way_match"
+    EXPENSE_CLAIMS = "expense_claims"
 
 
 class TaxType(str, enum.Enum):
@@ -318,6 +323,8 @@ class TaskStatus(str, enum.Enum):
 class TaskSource(str, enum.Enum):
     TAX_OBLIGATION = "tax_obligation"
     MANUAL = "manual"
+    CLOSE_CHECKLIST = "close_checklist"
+    CONTROL_REMEDIATION = "control_remediation"
 
 
 class MonitorCadence(str, enum.Enum):
@@ -396,6 +403,7 @@ class JobKind(str, enum.Enum):
     AI_SUGGEST = "ai_suggest"
     DATASET_PARSE = "dataset_parse"
     DATASET_BUILD = "dataset_build"
+    CONNECTOR_SYNC = "connector_sync"
 
 
 class AIAssessment(str, enum.Enum):
@@ -2261,3 +2269,659 @@ class AuditEvent(Base):
     hash: Mapped[str] = mapped_column(String(64))
 
     actor: Mapped[User | None] = relationship(lazy="joined")
+
+
+# ---------------------------------------------------------------- continuous assurance (Phase E)
+
+
+class AssuranceStatus(str, enum.Enum):
+    DRAFT = "draft"
+    PREPARED = "prepared"
+    SIGNED_OFF = "signed_off"
+
+
+class AssuranceObject(str, enum.Enum):
+    BANK_RECONCILIATION = "bank_reconciliation"
+    ACCOUNT_RECONCILIATION = "account_reconciliation"
+    INTERCOMPANY = "intercompany"
+    FLUX = "flux"
+    CERTIFICATION = "certification"
+
+
+class SignOffMixin:
+    """Prepare → independent sign-off → immutable snapshot (version n), as in Phase D."""
+
+    status: Mapped[AssuranceStatus] = mapped_column(
+        _enum(AssuranceStatus, "assurance_status"), default=AssuranceStatus.DRAFT
+    )
+    prepared_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    prepared_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    signed_off_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    signed_off_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    version: Mapped[int] = mapped_column(Integer, default=0)
+    reopen_reason: Mapped[str] = mapped_column(Text, default="")
+
+
+class AssuranceSnapshot(Base):
+    """A signed-off reconciliation, flux or certification (immutable; trigger rejects UPDATE)."""
+
+    __tablename__ = "assurance_snapshots"
+    __table_args__ = (UniqueConstraint("object_type", "object_id", "version"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    object_type: Mapped[AssuranceObject] = mapped_column(_enum(AssuranceObject, "assurance_object"))
+    object_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), index=True)
+    version: Mapped[int] = mapped_column(Integer)
+    content: Mapped[dict[str, Any]] = mapped_column(JSONType)
+    sha256: Mapped[str] = mapped_column(String(64))
+    signed_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    signed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = _created()
+
+
+class ReconMethod(str, enum.Enum):
+    REFERENCE = "reference"
+    AMOUNT_DATE = "amount_date"
+    REFERENCE_GROUP = "reference_group"
+    MANUAL = "manual"
+
+
+class ReconSide(str, enum.Enum):
+    BANK = "bank"
+    BOOK = "book"
+
+
+class BankReconciliation(SignOffMixin, Base):
+    """A bank statement version matched against general ledger lines for one period."""
+
+    __tablename__ = "bank_reconciliations"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    entity_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("legal_entities.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(200))
+    # A label only (e.g. "Operating account"); account numbers and IBANs are not stored.
+    account_label: Mapped[str] = mapped_column(String(100))
+    period_start: Mapped[date] = mapped_column(Date)
+    period_end: Mapped[date] = mapped_column(Date)
+    currency: Mapped[str] = mapped_column(String(3))
+    statement_version_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("dataset_versions.id", ondelete="RESTRICT")
+    )
+    ledger_version_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("dataset_versions.id", ondelete="RESTRICT")
+    )
+    gl_accounts: Mapped[list[str]] = mapped_column(JSONType, default=list)
+    rule_pack_version_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("rule_pack_versions.id", ondelete="RESTRICT")
+    )
+    rules_prefix: Mapped[str] = mapped_column(String(80))
+    bank_closing_balance: Mapped[Decimal | None] = mapped_column(Numeric(20, 4))
+    book_opening_balance: Mapped[Decimal] = mapped_column(Numeric(20, 4), default=Decimal(0))
+    matcher_version: Mapped[str] = mapped_column(String(40), default="")
+    matched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    warnings: Mapped[list[str]] = mapped_column(JSONType, default=list)
+    is_demo: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = _created()
+
+    entity: Mapped[LegalEntity] = relationship(lazy="joined")
+    matches: Mapped[list[ReconMatch]] = relationship(
+        back_populates="reconciliation",
+        order_by="ReconMatch.created_at",
+        cascade="all, delete-orphan",
+    )
+
+
+class ReconMatch(Base):
+    __tablename__ = "recon_matches"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    reconciliation_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("bank_reconciliations.id", ondelete="CASCADE"), index=True
+    )
+    method: Mapped[ReconMethod] = mapped_column(_enum(ReconMethod, "recon_method"))
+    reason: Mapped[str] = mapped_column(Text, default="")
+    created_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = _created()
+
+    reconciliation: Mapped[BankReconciliation] = relationship(back_populates="matches")
+    lines: Mapped[list[ReconMatchLine]] = relationship(
+        back_populates="match", order_by="ReconMatchLine.row_id", cascade="all, delete-orphan"
+    )
+
+
+class ReconMatchLine(Base):
+    __tablename__ = "recon_match_lines"
+    __table_args__ = (UniqueConstraint("reconciliation_id", "side", "row_id"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    match_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("recon_matches.id", ondelete="CASCADE"), index=True
+    )
+    # Denormalised so a row can be matched only once per reconciliation (unique above).
+    reconciliation_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("bank_reconciliations.id", ondelete="CASCADE")
+    )
+    side: Mapped[ReconSide] = mapped_column(_enum(ReconSide, "recon_side"))
+    row_id: Mapped[int] = mapped_column(Integer)
+    amount: Mapped[Decimal] = mapped_column(Numeric(20, 4))
+
+    match: Mapped[ReconMatch] = relationship(back_populates="lines")
+
+
+class AccountReconciliation(SignOffMixin, Base):
+    """One balance-sheet account at one date: TB balance against supporting items."""
+
+    __tablename__ = "account_reconciliations"
+    __table_args__ = (UniqueConstraint("tb_version_id", "account_code"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    entity_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("legal_entities.id", ondelete="CASCADE"), index=True
+    )
+    tb_version_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("dataset_versions.id", ondelete="RESTRICT")
+    )
+    as_of: Mapped[date] = mapped_column(Date)
+    account_code: Mapped[str] = mapped_column(String(80))
+    account_name: Mapped[str] = mapped_column(String(300), default="")
+    currency: Mapped[str] = mapped_column(String(3))
+    tb_balance: Mapped[Decimal] = mapped_column(Numeric(20, 4))
+    tb_row_ids: Mapped[list[int]] = mapped_column(JSONType, default=list)
+    rule_pack_version_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("rule_pack_versions.id", ondelete="RESTRICT")
+    )
+    rules_prefix: Mapped[str] = mapped_column(String(80))
+    explanation: Mapped[str] = mapped_column(Text, default="")
+    owner_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    is_demo: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = _created()
+
+    entity: Mapped[LegalEntity] = relationship(lazy="joined")
+    items: Mapped[list[ReconSupportItem]] = relationship(
+        back_populates="reconciliation",
+        order_by="ReconSupportItem.ordinal",
+        cascade="all, delete-orphan",
+    )
+
+
+class ReconSupportItem(Base):
+    """A supporting balance (sub-ledger, schedule, statement) with optional evidence."""
+
+    __tablename__ = "recon_support_items"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    reconciliation_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("account_reconciliations.id", ondelete="CASCADE"), index=True
+    )
+    ordinal: Mapped[int] = mapped_column(Integer)
+    description: Mapped[str] = mapped_column(String(500))
+    amount: Mapped[Decimal] = mapped_column(Numeric(20, 4))
+    document_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("documents.id", ondelete="SET NULL")
+    )
+    note: Mapped[str] = mapped_column(Text, default="")
+
+    reconciliation: Mapped[AccountReconciliation] = relationship(back_populates="items")
+
+
+class IntercompanyReconciliation(SignOffMixin, Base):
+    """Two entities' intercompany balances that should net to zero at one date."""
+
+    __tablename__ = "intercompany_reconciliations"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    name: Mapped[str] = mapped_column(String(200))
+    as_of: Mapped[date] = mapped_column(Date)
+    currency: Mapped[str] = mapped_column(String(3))
+    entity_a_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("legal_entities.id", ondelete="CASCADE"), index=True
+    )
+    tb_a_version_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("dataset_versions.id", ondelete="RESTRICT")
+    )
+    accounts_a: Mapped[list[str]] = mapped_column(JSONType, default=list)
+    entity_b_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("legal_entities.id", ondelete="CASCADE"), index=True
+    )
+    tb_b_version_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("dataset_versions.id", ondelete="RESTRICT")
+    )
+    accounts_b: Mapped[list[str]] = mapped_column(JSONType, default=list)
+    rule_pack_version_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("rule_pack_versions.id", ondelete="RESTRICT")
+    )
+    rules_prefix: Mapped[str] = mapped_column(String(80))
+    explanation: Mapped[str] = mapped_column(Text, default="")
+    is_demo: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = _created()
+
+    entity_a: Mapped[LegalEntity] = relationship(foreign_keys=[entity_a_id], lazy="joined")
+    entity_b: Mapped[LegalEntity] = relationship(foreign_keys=[entity_b_id], lazy="joined")
+
+
+class ClosePeriodStatus(str, enum.Enum):
+    OPEN = "open"
+    CLOSED = "closed"
+
+
+class ClosePeriod(Base):
+    """A month-end (or other) close for one entity; its checklist items are tasks."""
+
+    __tablename__ = "close_periods"
+    __table_args__ = (UniqueConstraint("entity_id", "period_end"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    entity_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("legal_entities.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(200))
+    period_end: Mapped[date] = mapped_column(Date)
+    status: Mapped[ClosePeriodStatus] = mapped_column(
+        _enum(ClosePeriodStatus, "close_period_status"), default=ClosePeriodStatus.OPEN
+    )
+    closed_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    note: Mapped[str] = mapped_column(Text, default="")
+    is_demo: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = _created()
+
+    entity: Mapped[LegalEntity] = relationship(lazy="joined")
+    items: Mapped[list[CloseItem]] = relationship(
+        back_populates="period", order_by="CloseItem.ordinal", cascade="all, delete-orphan"
+    )
+
+
+class CloseItem(Base):
+    """One checklist step: due ``day_offset`` days after the period end (may be negative)."""
+
+    __tablename__ = "close_items"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    close_period_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("close_periods.id", ondelete="CASCADE"), index=True
+    )
+    ordinal: Mapped[int] = mapped_column(Integer)
+    title: Mapped[str] = mapped_column(String(300))
+    day_offset: Mapped[int] = mapped_column(Integer)
+    task_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tasks.id", ondelete="CASCADE")
+    )
+
+    period: Mapped[ClosePeriod] = relationship(back_populates="items")
+    task: Mapped[Task] = relationship(lazy="joined")
+
+
+class FluxReview(SignOffMixin, Base):
+    """Current against prior trial balance per account, with explanations above threshold."""
+
+    __tablename__ = "flux_reviews"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    entity_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("legal_entities.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(200))
+    as_of: Mapped[date] = mapped_column(Date)
+    currency: Mapped[str] = mapped_column(String(3))
+    cy_tb_version_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("dataset_versions.id", ondelete="RESTRICT")
+    )
+    py_tb_version_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("dataset_versions.id", ondelete="RESTRICT")
+    )
+    rule_pack_version_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("rule_pack_versions.id", ondelete="RESTRICT")
+    )
+    rules_prefix: Mapped[str] = mapped_column(String(80))
+    is_demo: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = _created()
+
+    entity: Mapped[LegalEntity] = relationship(lazy="joined")
+    explanations: Mapped[list[FluxExplanation]] = relationship(
+        back_populates="review", cascade="all, delete-orphan"
+    )
+
+
+class FluxExplanation(Base):
+    __tablename__ = "flux_explanations"
+    __table_args__ = (UniqueConstraint("review_id", "account_code"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    review_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("flux_reviews.id", ondelete="CASCADE"), index=True
+    )
+    account_code: Mapped[str] = mapped_column(String(80))
+    explanation: Mapped[str] = mapped_column(Text)
+    explained_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    explained_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+    review: Mapped[FluxReview] = relationship(back_populates="explanations")
+
+
+# ---------------------------------------------------------------- internal controls (E3)
+
+
+class ControlNature(str, enum.Enum):
+    PREVENTIVE = "preventive"
+    DETECTIVE = "detective"
+
+
+class ControlAutomation(str, enum.Enum):
+    MANUAL = "manual"
+    AUTOMATED = "automated"
+    IT_DEPENDENT = "it_dependent"
+
+
+class ControlFrequency(str, enum.Enum):
+    MULTIPLE_DAILY = "multiple_daily"
+    DAILY = "daily"
+    WEEKLY = "weekly"
+    MONTHLY = "monthly"
+    QUARTERLY = "quarterly"
+    ANNUAL = "annual"
+    AD_HOC = "ad_hoc"
+
+
+class ControlTestKind(str, enum.Enum):
+    DESIGN = "design"
+    OPERATING = "operating"
+
+
+class ControlTestStatus(str, enum.Enum):
+    PLANNED = "planned"
+    COMPLETED = "completed"
+
+
+class ControlConclusion(str, enum.Enum):
+    EFFECTIVE = "effective"
+    INEFFECTIVE = "ineffective"
+
+
+class DeficiencyClass(str, enum.Enum):
+    DEFICIENCY = "deficiency"
+    SIGNIFICANT_DEFICIENCY = "significant_deficiency"
+    MATERIAL_WEAKNESS = "material_weakness"
+
+
+class DeficiencyStatus(str, enum.Enum):
+    OPEN = "open"
+    REMEDIATED = "remediated"
+
+
+class ControlProcess(Base):
+    __tablename__ = "control_processes"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    entity_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("legal_entities.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(200))
+    description: Mapped[str] = mapped_column(Text, default="")
+    owner_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    is_demo: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = _created()
+
+    entity: Mapped[LegalEntity] = relationship(lazy="joined")
+    risks: Mapped[list[ControlRisk]] = relationship(
+        back_populates="process", order_by="ControlRisk.ref", cascade="all, delete-orphan"
+    )
+    controls: Mapped[list[Control]] = relationship(
+        back_populates="process", order_by="Control.ref", cascade="all, delete-orphan"
+    )
+
+
+class ControlRisk(Base):
+    __tablename__ = "control_risks"
+    __table_args__ = (UniqueConstraint("process_id", "ref"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    process_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("control_processes.id", ondelete="CASCADE"), index=True
+    )
+    ref: Mapped[str] = mapped_column(String(20))
+    description: Mapped[str] = mapped_column(Text)
+    assertions: Mapped[list[str]] = mapped_column(JSONType, default=list)
+    rating: Mapped[RiskLevel] = mapped_column(_enum(RiskLevel, "risk_level"))
+
+    process: Mapped[ControlProcess] = relationship(back_populates="risks")
+
+
+class Control(Base):
+    __tablename__ = "controls"
+    __table_args__ = (UniqueConstraint("process_id", "ref"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    process_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("control_processes.id", ondelete="CASCADE"), index=True
+    )
+    ref: Mapped[str] = mapped_column(String(20))
+    title: Mapped[str] = mapped_column(String(300))
+    description: Mapped[str] = mapped_column(Text, default="")
+    key: Mapped[bool] = mapped_column(Boolean, default=False)
+    nature: Mapped[ControlNature] = mapped_column(_enum(ControlNature, "control_nature"))
+    automation: Mapped[ControlAutomation] = mapped_column(
+        _enum(ControlAutomation, "control_automation")
+    )
+    frequency: Mapped[ControlFrequency] = mapped_column(
+        _enum(ControlFrequency, "control_frequency")
+    )
+    owner_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    risk_ids: Mapped[list[str]] = mapped_column(JSONType, default=list)
+
+    process: Mapped[ControlProcess] = relationship(back_populates="controls")
+    tests: Mapped[list[ControlTest]] = relationship(
+        back_populates="control", order_by="ControlTest.created_at", cascade="all, delete-orphan"
+    )
+
+
+class ControlTest(Base):
+    """A design or operating effectiveness test of one control, with evidence."""
+
+    __tablename__ = "control_tests"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    control_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("controls.id", ondelete="CASCADE"), index=True
+    )
+    kind: Mapped[ControlTestKind] = mapped_column(_enum(ControlTestKind, "control_test_kind"))
+    period_start: Mapped[date] = mapped_column(Date)
+    period_end: Mapped[date] = mapped_column(Date)
+    procedure: Mapped[str] = mapped_column(Text, default="")
+    # Entered by the tester; the product does not compute or recommend a sample size.
+    sample_size: Mapped[int] = mapped_column(Integer, default=0)
+    exceptions: Mapped[int] = mapped_column(Integer, default=0)
+    evidence: Mapped[list[dict[str, Any]]] = mapped_column(JSONType, default=list)
+    status: Mapped[ControlTestStatus] = mapped_column(
+        _enum(ControlTestStatus, "control_test_status"), default=ControlTestStatus.PLANNED
+    )
+    conclusion: Mapped[ControlConclusion | None] = mapped_column(
+        _enum(ControlConclusion, "control_conclusion")
+    )
+    rationale: Mapped[str] = mapped_column(Text, default="")
+    tester_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = _created()
+
+    control: Mapped[Control] = relationship(back_populates="tests")
+
+
+class ControlDeficiency(Base):
+    """A control gap. A person classifies it; the product never does."""
+
+    __tablename__ = "control_deficiencies"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    control_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("controls.id", ondelete="CASCADE"), index=True
+    )
+    test_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("control_tests.id", ondelete="SET NULL")
+    )
+    title: Mapped[str] = mapped_column(String(300))
+    description: Mapped[str] = mapped_column(Text, default="")
+    classification: Mapped[DeficiencyClass | None] = mapped_column(
+        _enum(DeficiencyClass, "deficiency_class")
+    )
+    rationale: Mapped[str] = mapped_column(Text, default="")
+    classified_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    classified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    status: Mapped[DeficiencyStatus] = mapped_column(
+        _enum(DeficiencyStatus, "deficiency_status"), default=DeficiencyStatus.OPEN
+    )
+    remediation_task_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tasks.id", ondelete="SET NULL")
+    )
+    remediation_note: Mapped[str] = mapped_column(Text, default="")
+    created_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = _created()
+
+    control: Mapped[Control] = relationship(lazy="joined")
+
+
+class ControlCertification(SignOffMixin, Base):
+    """Management's certification for an entity and period, frozen at sign-off."""
+
+    __tablename__ = "control_certifications"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    entity_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("legal_entities.id", ondelete="CASCADE"), index=True
+    )
+    period_start: Mapped[date] = mapped_column(Date)
+    period_end: Mapped[date] = mapped_column(Date)
+    statement: Mapped[str] = mapped_column(Text, default="")
+    is_demo: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = _created()
+
+    entity: Mapped[LegalEntity] = relationship(lazy="joined")
+
+
+# ---------------------------------------------------------------- connectors (Phase E6)
+
+
+class ConnectorProvider(str, enum.Enum):
+    ZOHO_BOOKS = "zoho_books"
+    ODOO = "odoo"
+
+
+class ConnectorStatus(str, enum.Enum):
+    PENDING = "pending"  # created; not yet authorised or tested
+    CONNECTED = "connected"
+    ERROR = "error"
+    DISCONNECTED = "disconnected"
+
+
+class ConnectorSyncStatus(str, enum.Enum):
+    QUEUED = "queued"
+    SUCCEEDED = "succeeded"
+    UNCHANGED = "unchanged"  # same content as the latest version; nothing new stored
+    FAILED = "failed"
+
+
+class Connector(Base):
+    """A read-only link to an entity's accounting system. Secrets are encrypted at rest."""
+
+    __tablename__ = "connectors"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    entity_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("legal_entities.id", ondelete="CASCADE"), index=True
+    )
+    provider: Mapped[ConnectorProvider] = mapped_column(
+        _enum(ConnectorProvider, "connector_provider")
+    )
+    name: Mapped[str] = mapped_column(String(200))
+    status: Mapped[ConnectorStatus] = mapped_column(
+        _enum(ConnectorStatus, "connector_status"), default=ConnectorStatus.PENDING
+    )
+    scopes: Mapped[list[str]] = mapped_column(JSONType, default=list)
+    # Non-secret settings (Odoo base URL, database and user; Zoho organisation id).
+    config: Mapped[dict[str, Any]] = mapped_column(JSONType, default=dict)
+    # crypto.encrypt_field of a JSON object (tokens or API key); never returned or logged.
+    secret_enc: Mapped[str | None] = mapped_column(Text)
+    oauth_state_hash: Mapped[str | None] = mapped_column(String(64))
+    oauth_verifier_enc: Mapped[str | None] = mapped_column(Text)
+    oauth_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    oauth_started_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    # Dataset id per dataset kind, so each sync adds a version to the same dataset.
+    datasets: Mapped[dict[str, str]] = mapped_column(JSONType, default=dict)
+    last_sync_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_error: Mapped[str] = mapped_column(Text, default="")
+    created_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = _created()
+
+    entity: Mapped[LegalEntity] = relationship(lazy="joined")
+
+
+class ConnectorSync(Base):
+    """One pull of one dataset kind; succeeds with a new dataset version or none."""
+
+    __tablename__ = "connector_syncs"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    connector_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("connectors.id", ondelete="CASCADE"), index=True
+    )
+    kind: Mapped[DatasetKind] = mapped_column(_enum(DatasetKind, "connector_sync_kind"))
+    status: Mapped[ConnectorSyncStatus] = mapped_column(
+        _enum(ConnectorSyncStatus, "connector_sync_status"), default=ConnectorSyncStatus.QUEUED
+    )
+    rows: Mapped[int] = mapped_column(Integer, default=0)
+    sha256: Mapped[str | None] = mapped_column(String(64))
+    dataset_version_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("dataset_versions.id", ondelete="SET NULL")
+    )
+    message: Mapped[str] = mapped_column(Text, default="")
+    requested_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = _created()
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

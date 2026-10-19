@@ -212,3 +212,16 @@ test("seeded audit engagement and the restricted client portal", async ({ page }
   await expect(page.getByText("Year-end bank statement (synthetic)").first()).toBeVisible();
   await expect(page.getByRole("navigation").getByRole("link", { name: "Engagements" })).toHaveCount(0);
 });
+
+test("seeded close checklist, control matrix and connectors turned off", async ({ page }) => {
+  await login(page, "admin@alpha.example");
+  const nav = page.getByRole("navigation");
+  await nav.getByRole("link", { name: "Close", exact: true }).click();
+  await expect(page.getByText("January 2026 close (synthetic demo)").first()).toBeVisible();
+  await nav.getByRole("link", { name: "Controls", exact: true }).click();
+  await page.getByText("Procure to pay (synthetic demo)").first().click();
+  await expect(page.getByText("P2P-C1").first()).toBeVisible();
+  await expect(page.getByText("P2P-R2").first()).toBeVisible();
+  await nav.getByRole("link", { name: "Connectors", exact: true }).click();
+  await expect(page.getByText("Not available").first()).toBeVisible();
+});

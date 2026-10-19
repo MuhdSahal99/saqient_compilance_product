@@ -156,3 +156,23 @@ All tables carry `org_id` and are reached through the engagement.
 
 `tax_workpapers` gains `engagement_id`, `prepared_by_id`, `prepared_at`; `reviews` gains
 `engagement_id`; roles gain `client`; checklist kinds gain `audit_programme`.
+
+## Assurance (Phase E)
+
+All tables carry `org_id`. Sign-off objects share `status`, `prepared_by/at`,
+`signed_off_by/at`, `version`, `reopen_reason`; snapshots live in `assurance_snapshots`
+(object, object_id, version, content, sha256; immutable by trigger).
+
+| Table | Key columns | Notes |
+|---|---|---|
+| `bank_reconciliations`, `recon_matches`, `recon_match_lines` | entity, period, statement/ledger version, pack + prefix, balances / method, rule / side, row_id | A row matches once per side (unique). |
+| `account_reconciliations`, `recon_support_items` | tb_version_id, account_code (unique pair), support items | Variance vs pack thresholds. |
+| `intercompany_reconciliations` | entity a/b, TB versions a/b, accounts a/b | Difference vs pack limit. |
+| `close_periods`, `close_items` | entity, period_end (unique pair), status / day_offset, task_id | Items are tasks (`close_checklist`). |
+| `flux_reviews`, `flux_explanations` | CY/PY TB versions / account_code, text | Accounts above both pack limits need text. |
+| `control_processes`, `control_risks`, `controls`, `control_tests` | entity / ref, assertions, rating / ref, key, nature, automation, frequency, risk_ids / kind, period, sample, exceptions, evidence, conclusion | Risk-control matrix. |
+| `control_deficiencies`, `control_certifications` | control, test, classification, remediation_task_id / entity, period, statement | Remediation tasks are `control_remediation`. |
+| `connectors`, `connector_syncs` | entity, provider, status, scopes, config, secret_enc, oauth state hash, datasets / kind, status, rows, sha256, dataset_version_id | Secrets encrypted; never returned. |
+
+New dataset kinds: `user_roles`, `ap_payments`, `employee_master`, `three_way_match`,
+`expense_claims`. New job kind: `connector_sync`.

@@ -4,7 +4,7 @@ import re
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Any, Generic, Literal, TypeVar
+from typing import Annotated, Any, Generic, Literal, TypeVar
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 
@@ -13,13 +13,25 @@ from app.models import (
     AIAssessment,
     AISuggestionStatus,
     Assertion,
+    AssuranceStatus,
     ChecklistKind,
     ChecklistState,
     CheckOutcome,
     ConfirmationStatus,
     ConfirmationType,
+    ConnectorProvider,
+    ConnectorStatus,
+    ConnectorSyncStatus,
+    ControlAutomation,
+    ControlConclusion,
+    ControlFrequency,
+    ControlNature,
+    ControlTestKind,
+    ControlTestStatus,
     DatasetKind,
     DatasetStatus,
+    DeficiencyClass,
+    DeficiencyStatus,
     EngagementKind,
     EngagementPhase,
     EngagementRole,
@@ -34,6 +46,8 @@ from app.models import (
     PbcStatus,
     PeriodFrequency,
     ProcedureStatus,
+    ReconMethod,
+    ReconSide,
     RelatedPartyRelation,
     ReviewStatus,
     RiskLevel,
@@ -2082,3 +2096,687 @@ class LetterVersionOut(BaseModel):
 class LetterOut(BaseModel):
     points: list[LetterPointOut]
     versions: list[LetterVersionOut]
+
+
+# ---------------------------------------------------------------- continuous assurance (E)
+
+
+class SignOffOut(BaseModel):
+    status: AssuranceStatus
+    version: int
+    prepared_by_name: str | None
+    prepared_at: datetime | None
+    signed_off_by_name: str | None
+    signed_off_at: datetime | None
+    reopen_reason: str
+
+
+class AssuranceVersionOut(BaseModel):
+    version: int
+    signed_by_name: str | None
+    signed_at: datetime
+    sha256: str
+
+
+def _no_account_number(label: str) -> str:
+    if IBAN_LIKE.search(label.replace(" ", "")):
+        raise ValueError("use a label, not an IBAN or account number")
+    return label
+
+
+class BankRecBase(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=1, max_length=200)
+    account_label: str = Field(
+        min_length=1,
+        max_length=100,
+        description="A name for the bank account. Do not enter account numbers or IBANs.",
+    )
+    gl_accounts: list[Annotated[str, Field(min_length=1, max_length=80)]] = Field(
+        min_length=1, max_length=50, description="GL account codes of this bank account."
+    )
+    bank_closing_balance: Decimal | None = Field(
+        default=None,
+        max_digits=20,
+        decimal_places=4,
+        description="Statement closing balance; when omitted the last statement balance is used.",
+    )
+    book_opening_balance: Decimal = Field(default=Decimal(0), max_digits=20, decimal_places=4)
+
+    @model_validator(mode="after")
+    def _label(self) -> BankRecBase:
+        _no_account_number(self.account_label)
+        if len(set(self.gl_accounts)) != len(self.gl_accounts):
+            raise ValueError("list each GL account once")
+        return self
+
+
+class BankRecIn(BankRecBase):
+    entity_id: uuid.UUID
+    period_start: date
+    period_end: date
+    statement_version_id: uuid.UUID
+    ledger_version_id: uuid.UUID
+    rule_pack_version_id: uuid.UUID
+    rules_prefix: str = Field(max_length=80, pattern=PREFIX_PATTERN)
+
+    @model_validator(mode="after")
+    def _period(self) -> BankRecIn:
+        if self.period_end < self.period_start:
+            raise ValueError("period_end must not be before period_start")
+        return self
+
+
+class BankRecUpdateIn(BankRecBase):
+    pass
+
+
+class ManualMatchIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    bank_row_ids: list[int] = Field(min_length=1, max_length=200)
+    book_row_ids: list[int] = Field(min_length=1, max_length=200)
+    reason: str = Field(min_length=3, max_length=2000)
+
+
+class ReconItemOut(BaseModel):
+    side: ReconSide
+    row_id: int
+    date: date
+    amount: Decimal
+    reference: str
+    description: str
+    match_id: uuid.UUID | None
+    method: ReconMethod | None
+    age_days: int | None
+    bucket: str | None
+
+
+class ReconMatchOut(BaseModel):
+    id: uuid.UUID
+    method: ReconMethod
+    reason: str
+    bank_row_ids: list[int]
+    book_row_ids: list[int]
+    bank_total: Decimal
+    book_total: Decimal
+    difference: Decimal
+    created_by_name: str | None
+    created_at: datetime
+
+
+class AgeingOut(BaseModel):
+    side: ReconSide
+    bucket: str
+    count: int
+    total: Decimal
+
+
+class BankRecSummaryOut(BaseModel):
+    bank_closing_balance: Decimal | None
+    bank_closing_source: Literal["entered", "statement", "unknown"]
+    book_opening_balance: Decimal
+    book_movement: Decimal
+    book_closing_balance: Decimal
+    unmatched_bank_total: Decimal
+    unmatched_book_total: Decimal
+    adjusted_bank: Decimal | None
+    adjusted_book: Decimal
+    difference: Decimal | None
+    bank_items: int
+    book_items: int
+    matched_bank_items: int
+    matched_book_items: int
+    ageing: list[AgeingOut]
+    steps: list[dict[str, str]]
+
+
+class BankRecListOut(BaseModel):
+    id: uuid.UUID
+    entity_id: uuid.UUID
+    entity_name: str
+    name: str
+    account_label: str
+    period_start: date
+    period_end: date
+    currency: str
+    status: AssuranceStatus
+    version: int
+    is_demo: bool
+    created_at: datetime
+
+
+class BankRecOut(BankRecListOut):
+    statement_version_id: uuid.UUID
+    ledger_version_id: uuid.UUID
+    gl_accounts: list[str]
+    rule_pack_version_id: uuid.UUID
+    rules_prefix: str
+    bank_closing_balance: Decimal | None
+    book_opening_balance: Decimal
+    matcher_version: str
+    matched_at: datetime | None
+    warnings: list[str]
+    parameters: dict[str, Any]
+    sign_off: SignOffOut
+    summary: BankRecSummaryOut
+    items: list[ReconItemOut]
+    matches: list[ReconMatchOut]
+    versions: list[AssuranceVersionOut]
+
+
+class SupportItemIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    description: str = Field(min_length=1, max_length=500)
+    amount: Decimal = Field(max_digits=20, decimal_places=4)
+    document_id: uuid.UUID | None = None
+    note: str = Field(default="", max_length=2000)
+
+
+class AccountRecIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    entity_id: uuid.UUID
+    tb_version_id: uuid.UUID
+    as_of: date
+    account_codes: list[Annotated[str, Field(min_length=1, max_length=80)]] = Field(
+        min_length=1, max_length=200, description="One reconciliation is created per account."
+    )
+    rule_pack_version_id: uuid.UUID
+    rules_prefix: str = Field(max_length=80, pattern=PREFIX_PATTERN)
+    owner_id: uuid.UUID | None = None
+
+
+class AccountRecUpdateIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    items: list[SupportItemIn] = Field(max_length=200)
+    explanation: str = Field(default="", max_length=5000)
+    owner_id: uuid.UUID | None = None
+
+
+class SupportItemOut(BaseModel):
+    description: str
+    amount: Decimal
+    document_id: uuid.UUID | None
+    document_title: str | None
+    note: str
+
+
+class VarianceOut(BaseModel):
+    variance: Decimal
+    threshold_abs: Decimal
+    threshold_pct: Decimal
+    exceeds: bool
+    explanation_required: bool
+    steps: list[dict[str, str]]
+
+
+class AccountRecListOut(BaseModel):
+    id: uuid.UUID
+    entity_id: uuid.UUID
+    entity_name: str
+    as_of: date
+    account_code: str
+    account_name: str
+    currency: str
+    tb_balance: Decimal
+    supported: Decimal
+    variance: Decimal
+    exceeds: bool
+    owner_name: str | None
+    status: AssuranceStatus
+    version: int
+    is_demo: bool
+
+
+class AccountRecOut(AccountRecListOut):
+    tb_version_id: uuid.UUID
+    tb_row_ids: list[int]
+    rule_pack_version_id: uuid.UUID
+    rules_prefix: str
+    explanation: str
+    owner_id: uuid.UUID | None
+    items: list[SupportItemOut]
+    check: VarianceOut
+    warnings: list[str]
+    sign_off: SignOffOut
+    versions: list[AssuranceVersionOut]
+
+
+class IntercompanyIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=1, max_length=200)
+    as_of: date
+    entity_a_id: uuid.UUID
+    tb_a_version_id: uuid.UUID
+    accounts_a: list[Annotated[str, Field(min_length=1, max_length=80)]] = Field(
+        min_length=1, max_length=50
+    )
+    entity_b_id: uuid.UUID
+    tb_b_version_id: uuid.UUID
+    accounts_b: list[Annotated[str, Field(min_length=1, max_length=80)]] = Field(
+        min_length=1, max_length=50
+    )
+    rule_pack_version_id: uuid.UUID
+    rules_prefix: str = Field(max_length=80, pattern=PREFIX_PATTERN)
+
+    @model_validator(mode="after")
+    def _two(self) -> IntercompanyIn:
+        if self.entity_a_id == self.entity_b_id:
+            raise ValueError("choose two different entities")
+        return self
+
+
+class ExplanationIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    explanation: str = Field(default="", max_length=5000)
+
+
+class IntercompanySideOut(BaseModel):
+    entity_id: uuid.UUID
+    entity_name: str
+    tb_version_id: uuid.UUID
+    accounts: list[str]
+    balance: Decimal
+    row_ids: list[int]
+
+
+class IntercompanyOut(BaseModel):
+    id: uuid.UUID
+    name: str
+    as_of: date
+    currency: str
+    side_a: IntercompanySideOut
+    side_b: IntercompanySideOut
+    difference: Decimal
+    threshold: Decimal
+    exceeds: bool
+    explanation: str
+    steps: list[dict[str, str]]
+    rule_pack_version_id: uuid.UUID
+    rules_prefix: str
+    warnings: list[str]
+    is_demo: bool
+    sign_off: SignOffOut
+    versions: list[AssuranceVersionOut]
+
+
+class CloseItemIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    title: str = Field(min_length=1, max_length=300)
+    day_offset: int = Field(
+        ge=-60, le=120, description="Days after the period end (may be negative)."
+    )
+    owner_id: uuid.UUID | None = None
+
+
+class ClosePeriodIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    entity_id: uuid.UUID
+    name: str = Field(min_length=1, max_length=200)
+    period_end: date
+    items: list[CloseItemIn] = Field(default_factory=list, max_length=200)
+    copy_from_id: uuid.UUID | None = Field(
+        default=None, description="Copy the checklist (titles, offsets, owners) of another close."
+    )
+
+
+class CloseItemOut(BaseModel):
+    id: uuid.UUID
+    title: str
+    day_offset: int
+    due_date: date | None
+    owner_id: uuid.UUID | None
+    owner_name: str | None
+    task_id: uuid.UUID
+    status: str
+    completion_note: str
+    overdue: bool
+
+
+class ClosePeriodOut(BaseModel):
+    id: uuid.UUID
+    entity_id: uuid.UUID
+    entity_name: str
+    name: str
+    period_end: date
+    status: str
+    closed_by_name: str | None
+    closed_at: datetime | None
+    note: str
+    items: list[CloseItemOut]
+    done: int
+    total: int
+    is_demo: bool
+
+
+class CloseIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    note: str = Field(default="", max_length=2000)
+
+
+class FluxIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    entity_id: uuid.UUID
+    name: str = Field(min_length=1, max_length=200)
+    as_of: date
+    cy_tb_version_id: uuid.UUID
+    py_tb_version_id: uuid.UUID
+    rule_pack_version_id: uuid.UUID
+    rules_prefix: str = Field(max_length=80, pattern=PREFIX_PATTERN)
+
+    @model_validator(mode="after")
+    def _two(self) -> FluxIn:
+        if self.cy_tb_version_id == self.py_tb_version_id:
+            raise ValueError("choose two different trial balance versions")
+        return self
+
+
+class FluxExplainIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    account_code: str = Field(min_length=1, max_length=80)
+    explanation: str = Field(default="", max_length=5000, description="Empty removes it.")
+
+
+class FluxLineOut(BaseModel):
+    account_code: str
+    account_name: str
+    current: Decimal
+    prior: Decimal
+    change: Decimal
+    change_pct: Decimal | None
+    exceeds: bool
+    explanation: str
+    explained_by_name: str | None
+    cy_row_ids: list[int]
+    py_row_ids: list[int]
+
+
+class FluxOut(BaseModel):
+    id: uuid.UUID
+    entity_id: uuid.UUID
+    entity_name: str
+    name: str
+    as_of: date
+    currency: str
+    cy_tb_version_id: uuid.UUID
+    py_tb_version_id: uuid.UUID
+    rule_pack_version_id: uuid.UUID
+    rules_prefix: str
+    threshold_abs: Decimal
+    threshold_pct: Decimal
+    lines: list[FluxLineOut]
+    exceeding: int
+    unexplained: int
+    warnings: list[str]
+    is_demo: bool
+    sign_off: SignOffOut
+    versions: list[AssuranceVersionOut]
+
+
+# ---------------------------------------------------------------- internal controls (E3)
+
+REF = r"^[A-Za-z0-9._-]{1,20}$"
+
+
+class ProcessIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    entity_id: uuid.UUID
+    name: str = Field(min_length=1, max_length=200)
+    description: str = Field(default="", max_length=5000)
+    owner_id: uuid.UUID | None = None
+
+
+class ControlRiskIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    ref: str = Field(pattern=REF)
+    description: str = Field(min_length=1, max_length=5000)
+    assertions: list[Assertion] = Field(default_factory=list, max_length=9)
+    rating: RiskLevel
+
+
+class ControlIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    ref: str = Field(pattern=REF)
+    title: str = Field(min_length=1, max_length=300)
+    description: str = Field(default="", max_length=5000)
+    key: bool = False
+    nature: ControlNature
+    automation: ControlAutomation
+    frequency: ControlFrequency
+    owner_id: uuid.UUID | None = None
+    risk_ids: list[uuid.UUID] = Field(default_factory=list, max_length=50)
+
+
+class ControlRiskOut(ORM):
+    id: uuid.UUID
+    ref: str
+    description: str
+    assertions: list[str]
+    rating: RiskLevel
+
+
+class ControlTestIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    kind: ControlTestKind
+    period_start: date
+    period_end: date
+    procedure: str = Field(default="", max_length=5000)
+    sample_size: int = Field(default=0, ge=0, le=10000, description="Entered by the tester.")
+    evidence: list[EvidenceRefIn] = Field(default_factory=list, max_length=50)
+
+    @model_validator(mode="after")
+    def _period(self) -> ControlTestIn:
+        if self.period_end < self.period_start:
+            raise ValueError("period_end must not be before period_start")
+        return self
+
+
+class ControlTestCompleteIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    conclusion: ControlConclusion
+    exceptions: int = Field(ge=0, le=10000)
+    rationale: str = Field(min_length=3, max_length=5000)
+
+
+class ControlTestOut(BaseModel):
+    id: uuid.UUID
+    control_id: uuid.UUID
+    kind: ControlTestKind
+    period_start: date
+    period_end: date
+    procedure: str
+    sample_size: int
+    exceptions: int
+    evidence: list[dict[str, Any]]
+    status: ControlTestStatus
+    conclusion: ControlConclusion | None
+    rationale: str
+    tester_name: str | None
+    completed_at: datetime | None
+
+
+class ControlOut(BaseModel):
+    id: uuid.UUID
+    process_id: uuid.UUID
+    ref: str
+    title: str
+    description: str
+    key: bool
+    nature: ControlNature
+    automation: ControlAutomation
+    frequency: ControlFrequency
+    owner_id: uuid.UUID | None
+    owner_name: str | None
+    risk_ids: list[uuid.UUID]
+    design: ControlConclusion | None
+    operating: ControlConclusion | None
+    tests: list[ControlTestOut]
+    open_deficiencies: int
+
+
+class ProcessOut(BaseModel):
+    id: uuid.UUID
+    entity_id: uuid.UUID
+    entity_name: str
+    name: str
+    description: str
+    owner_id: uuid.UUID | None
+    owner_name: str | None
+    is_demo: bool
+    risks: list[ControlRiskOut]
+    controls: list[ControlOut]
+    unmitigated_risk_ids: list[uuid.UUID]
+
+
+class DeficiencyIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    control_id: uuid.UUID
+    test_id: uuid.UUID | None = None
+    title: str = Field(min_length=1, max_length=300)
+    description: str = Field(default="", max_length=5000)
+
+
+class ClassifyIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    classification: DeficiencyClass
+    rationale: str = Field(min_length=3, max_length=5000)
+
+
+class DeficiencyRemediationIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    owner_id: uuid.UUID
+    due_date: date
+    title: str = Field(default="", max_length=300)
+
+
+class RemediatedIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    note: str = Field(min_length=3, max_length=5000)
+
+
+class DeficiencyOut(BaseModel):
+    id: uuid.UUID
+    control_id: uuid.UUID
+    control_ref: str
+    control_title: str
+    test_id: uuid.UUID | None
+    title: str
+    description: str
+    classification: DeficiencyClass | None
+    rationale: str
+    classified_by_name: str | None
+    classified_at: datetime | None
+    status: DeficiencyStatus
+    remediation_task_id: uuid.UUID | None
+    remediation_note: str
+    created_at: datetime
+
+
+class CertificationIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    entity_id: uuid.UUID
+    period_start: date
+    period_end: date
+    statement: str = Field(default="", max_length=10000)
+
+
+class StatementIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    statement: str = Field(min_length=1, max_length=10000)
+
+
+class CertificationOut(BaseModel):
+    id: uuid.UUID
+    entity_id: uuid.UUID
+    entity_name: str
+    period_start: date
+    period_end: date
+    statement: str
+    controls: int
+    key_controls: int
+    tested: int
+    ineffective: int
+    open_deficiencies: list[DeficiencyOut]
+    unclassified: int
+    is_demo: bool
+    sign_off: SignOffOut
+    versions: list[AssuranceVersionOut]
+
+
+# ---------------------------------------------------------------- connectors (Phase E6)
+
+
+class ConnectorConfigIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    base_url: str = Field(default="", max_length=300)
+    database: str = Field(default="", max_length=200)
+    username: str = Field(default="", max_length=200)
+
+
+class ConnectorIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    entity_id: uuid.UUID
+    provider: ConnectorProvider
+    name: str = Field(min_length=1, max_length=200)
+    config: ConnectorConfigIn | None = None
+    api_key: str | None = Field(
+        default=None, min_length=8, max_length=500, description="Odoo only; stored encrypted."
+    )
+
+
+class ConnectorSyncIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    kind: DatasetKind
+
+
+class ConnectorSyncOut(BaseModel):
+    id: uuid.UUID
+    kind: DatasetKind
+    status: ConnectorSyncStatus
+    rows: int
+    sha256: str | None
+    dataset_version_id: uuid.UUID | None
+    dataset_version_status: str | None
+    message: str
+    requested_by_name: str | None
+    created_at: datetime
+    finished_at: datetime | None
+
+
+class ConnectorOut(BaseModel):
+    id: uuid.UUID
+    entity_id: uuid.UUID
+    entity_name: str
+    provider: ConnectorProvider
+    provider_label: str
+    auth: str
+    name: str
+    status: ConnectorStatus
+    scopes: list[str]
+    config: dict[str, Any] = Field(description="Non-secret settings only.")
+    has_credentials: bool
+    kinds: list[DatasetKind]
+    datasets: dict[str, uuid.UUID]
+    mapping_status: str
+    last_sync_at: datetime | None
+    last_error: str
+    syncs: list[ConnectorSyncOut]
+    created_at: datetime
+
+
+class ConnectorProviderOut(BaseModel):
+    provider: ConnectorProvider
+    label: str
+    auth: str
+    kinds: list[DatasetKind]
+    scopes: list[str]
+    configured: bool
+    mapping_status: str
+
+
+class ConnectorStatusOut(BaseModel):
+    enabled: bool
+    providers: list[ConnectorProviderOut]
+
+
+class AuthorizeOut(BaseModel):
+    url: str

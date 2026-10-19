@@ -19,7 +19,8 @@ FastAPI (uvicorn) ── PostgreSQL 16  (all state, tenant rows carry org_id)
 - **API** (`backend/app`): FastAPI + Pydantic v2, SQLAlchemy 2 (psycopg 3),
   Alembic migrations.
 - **Worker**: Celery 5 with Redis broker. One task, `saqient.run_job(job_id,
-  org_id)`, dispatches on `jobs.kind` (`extract`, `review_run`, `ai_suggest`)
+  org_id)`, dispatches on `jobs.kind` (`extract`, `review_run`, `ai_suggest`,
+  `dataset_parse`, `dataset_build`, `connector_sync`)
   through `services/jobs.py`. Handlers re-verify tenant ownership, are
   idempotent, have soft/hard time limits, and attempts are bounded by
   `jobs.max_attempts`.
@@ -88,6 +89,14 @@ and procedures (programmes are `audit_programme` checklists), reproducible sampl
 confirmations, adjustments with the SUD, PBC requests and an immutable management
 letter. Engine `deterministic-1.4.0` adds journal entry tests over the general ledger.
 `client` users reach only `/api/auth/` and `/api/portal/`. See ADR 0012.
+
+Phase E adds finance assurance: bank, account and intercompany reconciliations
+(`app/assurance/matching.py`, `recon-1.0.0`), close checklists as tasks, flux reviews,
+a risk-control matrix with tests, deficiencies and management certification, all
+signed off through `services/assurance.py` into immutable snapshots. Engine
+`deterministic-1.5.0` adds segregation of duties and AP analytics. `app/connectors/`
+holds read-only adapters (Zoho Books, Odoo) behind a registry; syncs run as
+`connector_sync` jobs and feed the dataset pipeline. See ADR 0013.
 
 ## Reports
 

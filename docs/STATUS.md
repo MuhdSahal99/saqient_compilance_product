@@ -1,6 +1,16 @@
 # Status
 
-Last updated: 2026-10-19 · Phase A is merged into main. Phase B (PR #7) and Phase C (PR #8) await review. Phase D (audit) is complete on `feat/phase-d-audit`, stacked on Phase C.
+Last updated: 2026-10-19 · Phase A is merged into main. Phases B (PR #7), C (PR #8) and D (PR #9) await review. Phase E (assurance) is complete on `feat/phase-e-assurance`, stacked on Phase D.
+
+## Phase E — finance assurance
+
+**Done:** E1 bank reconciliation with deterministic auto-match (`recon-1.0.0`), manual match, proof and ageing; E2 account and intercompany reconciliations with variance thresholds, close checklists as tasks, flux reviews needing explanations; E3 risk-control matrix, design/operating tests on evidence, deficiency classification and remediation tasks, management certification; E4 engine `deterministic-1.5.0` segregation of duties over `user_roles`; E5 AP and expense analytics (duplicates, vendor-employee IBAN match masked, missing TRN, dormant vendors, three-way match, expense policy); E6 read-only connectors (Zoho Books OAuth + PKCE, Odoo API key) with encrypted secrets and idempotent syncs, off by default. All sign-offs independent with immutable snapshots and HTML/PDF/CSV. UI in en/ar (lazy routes); synthetic seed; ADR 0013. Migrations 0025–0031.
+
+**Checks executed (2026-10-19):** ruff + format, mypy (125 files), every migration round-tripped and `alembic check` clean, pytest **373 passed, 2 skipped** (role and tenant 404 tests on every new endpoint, hand-checked matching, SoD and AP cases, connectors against httpx MockTransport only); seed on a fresh database; pnpm lint (0 errors, 8 existing warnings), typecheck, Vitest **55 passed**, build (main chunk 995 kB, translations); Playwright **8 passed**.
+
+**Not executed:** any live Zoho or Odoo account. **Not built:** UI to edit bank rec balances or delete risks/controls (API exists), incremental connector cursors (see KNOWN_LIMITATIONS).
+
+**Next:** review of PRs #7–#9, then the Phase E PR; Phase F (sector packs) per /mnt/project-files/phase-f/PLAN.md.
 
 ## Phase D — audit
 

@@ -173,6 +173,12 @@ def _bands(v: list[RateBand]) -> list[RateBand]:
     return v
 
 
+def _ascending(v: list[int]) -> list[int]:
+    if any(b <= a for a, b in zip(v, v[1:], strict=False)):
+        raise ValueError("bounds must increase")
+    return v
+
+
 class ShareRange(_M):
     low: Decimal = Field(ge=0, le=1)
     high: Decimal = Field(ge=0, le=1)
@@ -182,6 +188,40 @@ class ShareRange(_M):
         if self.high < self.low:
             raise ValueError("high must not be below low")
         return self
+
+
+SodCode = Annotated[str, Field(min_length=1, max_length=120)]
+
+
+class SodConflict(_M):
+    """Two sets of role or permission codes that one user should not hold together."""
+
+    id: str = Field(pattern=r"^[A-Za-z0-9._-]{1,40}$")
+    a: list[SodCode] = Field(min_length=1, max_length=100)
+    b: list[SodCode] = Field(min_length=1, max_length=100)
+    description: str = Field(min_length=1, max_length=500)
+
+    @model_validator(mode="after")
+    def _disjoint(self) -> SodConflict:
+        a = {" ".join(x.split()).casefold() for x in self.a}
+        if a & {" ".join(x.split()).casefold() for x in self.b}:
+            raise ValueError("a code cannot be on both sides of a conflict")
+        return self
+
+
+def _unique_ids(v: list[SodConflict]) -> list[SodConflict]:
+    ids = [c.id for c in v]
+    if len(ids) != len(set(ids)):
+        raise ValueError("conflict ids must be unique")
+    return v
+
+
+class ExpenseLimit(_M):
+    """A policy limit for one expense category, in one currency."""
+
+    currency: str = Field(pattern=r"^[A-Z]{3}$")
+    per_claim: Decimal | None = Field(default=None, ge=0)
+    receipt_over: Decimal | None = Field(default=None, ge=0)
 
 
 class BenfordBands(_M):
@@ -227,6 +267,28 @@ FAMILIES: dict[str, TypeAdapter[Any]] = {
     ),
     "holidays": TypeAdapter(Annotated[list[date], Field(max_length=400)]),
     "benford_mad_bands": TypeAdapter(BenfordBands),
+    # Inclusive upper bounds in days, ascending (e.g. [30, 60, 90] → 0-30, 31-60, 61-90, 91+).
+    "ageing_buckets": TypeAdapter(
+        Annotated[
+            list[Annotated[int, Field(ge=1, le=3650)]],
+            Field(min_length=1, max_length=10),
+            AfterValidator(_ascending),
+        ]
+    ),
+    "trn_countries": TypeAdapter(
+        Annotated[list[Annotated[str, Field(pattern=r"^[A-Z]{2}$")]], Field(max_length=300)]
+    ),
+    "expense_limits": TypeAdapter(
+        Annotated[
+            dict[Annotated[str, Field(pattern=r"^[a-z0-9_]{1,60}$")], ExpenseLimit],
+            Field(max_length=200),
+        ]
+    ),
+    "sod_conflicts": TypeAdapter(
+        Annotated[
+            list[SodConflict], Field(min_length=1, max_length=500), AfterValidator(_unique_ids)
+        ]
+    ),
     "required_fields": TypeAdapter(
         dict[Annotated[str, Field(pattern=r"^([A-Z]{2}|\*)$")], list[Code]]
     ),
