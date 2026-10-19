@@ -161,3 +161,5 @@ Features listed here are either absent or deliberately labelled in the UI.
   as imported (as in Phase A); only findings and evidence mask them.
 - Close periods have no calendar export; flux needs both trial balances in the same
   account structure.
+- The main JS chunk is now 995 kB because every en/ar string loads eagerly; the new
+  screens themselves are lazy chunks. Splitting translations per route is not done.
