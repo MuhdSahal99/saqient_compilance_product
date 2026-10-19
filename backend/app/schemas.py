@@ -19,8 +19,16 @@ from app.models import (
     CheckOutcome,
     ConfirmationStatus,
     ConfirmationType,
+    ControlAutomation,
+    ControlConclusion,
+    ControlFrequency,
+    ControlNature,
+    ControlTestKind,
+    ControlTestStatus,
     DatasetKind,
     DatasetStatus,
+    DeficiencyClass,
+    DeficiencyStatus,
     EngagementKind,
     EngagementPhase,
     EngagementRole,
@@ -2383,6 +2391,309 @@ class IntercompanyOut(BaseModel):
     rule_pack_version_id: uuid.UUID
     rules_prefix: str
     warnings: list[str]
+    is_demo: bool
+    sign_off: SignOffOut
+    versions: list[AssuranceVersionOut]
+
+
+class CloseItemIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    title: str = Field(min_length=1, max_length=300)
+    day_offset: int = Field(
+        ge=-60, le=120, description="Days after the period end (may be negative)."
+    )
+    owner_id: uuid.UUID | None = None
+
+
+class ClosePeriodIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    entity_id: uuid.UUID
+    name: str = Field(min_length=1, max_length=200)
+    period_end: date
+    items: list[CloseItemIn] = Field(default_factory=list, max_length=200)
+    copy_from_id: uuid.UUID | None = Field(
+        default=None, description="Copy the checklist (titles, offsets, owners) of another close."
+    )
+
+
+class CloseItemOut(BaseModel):
+    id: uuid.UUID
+    title: str
+    day_offset: int
+    due_date: date | None
+    owner_id: uuid.UUID | None
+    owner_name: str | None
+    task_id: uuid.UUID
+    status: str
+    completion_note: str
+    overdue: bool
+
+
+class ClosePeriodOut(BaseModel):
+    id: uuid.UUID
+    entity_id: uuid.UUID
+    entity_name: str
+    name: str
+    period_end: date
+    status: str
+    closed_by_name: str | None
+    closed_at: datetime | None
+    note: str
+    items: list[CloseItemOut]
+    done: int
+    total: int
+    is_demo: bool
+
+
+class CloseIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    note: str = Field(default="", max_length=2000)
+
+
+class FluxIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    entity_id: uuid.UUID
+    name: str = Field(min_length=1, max_length=200)
+    as_of: date
+    cy_tb_version_id: uuid.UUID
+    py_tb_version_id: uuid.UUID
+    rule_pack_version_id: uuid.UUID
+    rules_prefix: str = Field(max_length=80, pattern=PREFIX_PATTERN)
+
+    @model_validator(mode="after")
+    def _two(self) -> FluxIn:
+        if self.cy_tb_version_id == self.py_tb_version_id:
+            raise ValueError("choose two different trial balance versions")
+        return self
+
+
+class FluxExplainIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    account_code: str = Field(min_length=1, max_length=80)
+    explanation: str = Field(default="", max_length=5000, description="Empty removes it.")
+
+
+class FluxLineOut(BaseModel):
+    account_code: str
+    account_name: str
+    current: Decimal
+    prior: Decimal
+    change: Decimal
+    change_pct: Decimal | None
+    exceeds: bool
+    explanation: str
+    explained_by_name: str | None
+    cy_row_ids: list[int]
+    py_row_ids: list[int]
+
+
+class FluxOut(BaseModel):
+    id: uuid.UUID
+    entity_id: uuid.UUID
+    entity_name: str
+    name: str
+    as_of: date
+    currency: str
+    cy_tb_version_id: uuid.UUID
+    py_tb_version_id: uuid.UUID
+    rule_pack_version_id: uuid.UUID
+    rules_prefix: str
+    threshold_abs: Decimal
+    threshold_pct: Decimal
+    lines: list[FluxLineOut]
+    exceeding: int
+    unexplained: int
+    warnings: list[str]
+    is_demo: bool
+    sign_off: SignOffOut
+    versions: list[AssuranceVersionOut]
+
+
+# ---------------------------------------------------------------- internal controls (E3)
+
+REF = r"^[A-Za-z0-9._-]{1,20}$"
+
+
+class ProcessIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    entity_id: uuid.UUID
+    name: str = Field(min_length=1, max_length=200)
+    description: str = Field(default="", max_length=5000)
+    owner_id: uuid.UUID | None = None
+
+
+class ControlRiskIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    ref: str = Field(pattern=REF)
+    description: str = Field(min_length=1, max_length=5000)
+    assertions: list[Assertion] = Field(default_factory=list, max_length=9)
+    rating: RiskLevel
+
+
+class ControlIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    ref: str = Field(pattern=REF)
+    title: str = Field(min_length=1, max_length=300)
+    description: str = Field(default="", max_length=5000)
+    key: bool = False
+    nature: ControlNature
+    automation: ControlAutomation
+    frequency: ControlFrequency
+    owner_id: uuid.UUID | None = None
+    risk_ids: list[uuid.UUID] = Field(default_factory=list, max_length=50)
+
+
+class ControlRiskOut(ORM):
+    id: uuid.UUID
+    ref: str
+    description: str
+    assertions: list[str]
+    rating: RiskLevel
+
+
+class ControlTestIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    kind: ControlTestKind
+    period_start: date
+    period_end: date
+    procedure: str = Field(default="", max_length=5000)
+    sample_size: int = Field(default=0, ge=0, le=10000, description="Entered by the tester.")
+    evidence: list[EvidenceRefIn] = Field(default_factory=list, max_length=50)
+
+    @model_validator(mode="after")
+    def _period(self) -> ControlTestIn:
+        if self.period_end < self.period_start:
+            raise ValueError("period_end must not be before period_start")
+        return self
+
+
+class ControlTestCompleteIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    conclusion: ControlConclusion
+    exceptions: int = Field(ge=0, le=10000)
+    rationale: str = Field(min_length=3, max_length=5000)
+
+
+class ControlTestOut(BaseModel):
+    id: uuid.UUID
+    control_id: uuid.UUID
+    kind: ControlTestKind
+    period_start: date
+    period_end: date
+    procedure: str
+    sample_size: int
+    exceptions: int
+    evidence: list[dict[str, Any]]
+    status: ControlTestStatus
+    conclusion: ControlConclusion | None
+    rationale: str
+    tester_name: str | None
+    completed_at: datetime | None
+
+
+class ControlOut(BaseModel):
+    id: uuid.UUID
+    process_id: uuid.UUID
+    ref: str
+    title: str
+    description: str
+    key: bool
+    nature: ControlNature
+    automation: ControlAutomation
+    frequency: ControlFrequency
+    owner_id: uuid.UUID | None
+    owner_name: str | None
+    risk_ids: list[uuid.UUID]
+    design: ControlConclusion | None
+    operating: ControlConclusion | None
+    tests: list[ControlTestOut]
+    open_deficiencies: int
+
+
+class ProcessOut(BaseModel):
+    id: uuid.UUID
+    entity_id: uuid.UUID
+    entity_name: str
+    name: str
+    description: str
+    owner_id: uuid.UUID | None
+    owner_name: str | None
+    is_demo: bool
+    risks: list[ControlRiskOut]
+    controls: list[ControlOut]
+    unmitigated_risk_ids: list[uuid.UUID]
+
+
+class DeficiencyIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    control_id: uuid.UUID
+    test_id: uuid.UUID | None = None
+    title: str = Field(min_length=1, max_length=300)
+    description: str = Field(default="", max_length=5000)
+
+
+class ClassifyIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    classification: DeficiencyClass
+    rationale: str = Field(min_length=3, max_length=5000)
+
+
+class DeficiencyRemediationIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    owner_id: uuid.UUID
+    due_date: date
+    title: str = Field(default="", max_length=300)
+
+
+class RemediatedIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    note: str = Field(min_length=3, max_length=5000)
+
+
+class DeficiencyOut(BaseModel):
+    id: uuid.UUID
+    control_id: uuid.UUID
+    control_ref: str
+    control_title: str
+    test_id: uuid.UUID | None
+    title: str
+    description: str
+    classification: DeficiencyClass | None
+    rationale: str
+    classified_by_name: str | None
+    classified_at: datetime | None
+    status: DeficiencyStatus
+    remediation_task_id: uuid.UUID | None
+    remediation_note: str
+    created_at: datetime
+
+
+class CertificationIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    entity_id: uuid.UUID
+    period_start: date
+    period_end: date
+    statement: str = Field(default="", max_length=10000)
+
+
+class StatementIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    statement: str = Field(min_length=1, max_length=10000)
+
+
+class CertificationOut(BaseModel):
+    id: uuid.UUID
+    entity_id: uuid.UUID
+    entity_name: str
+    period_start: date
+    period_end: date
+    statement: str
+    controls: int
+    key_controls: int
+    tested: int
+    ineffective: int
+    open_deficiencies: list[DeficiencyOut]
+    unclassified: int
     is_demo: bool
     sign_off: SignOffOut
     versions: list[AssuranceVersionOut]

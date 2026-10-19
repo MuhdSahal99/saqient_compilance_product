@@ -135,6 +135,8 @@ def recon_rules(p: str = "syn.recon") -> list[dict[str, Any]]:
         row(f"{p}.variance_abs", "decimal", "1000", "Variance needing explanation", "currency"),
         row(f"{p}.variance_pct", "decimal", "0.05", "Variance needing explanation (share)"),
         row(f"{p}.intercompany_abs", "decimal", "100", "Intercompany difference limit", "currency"),
+        row(f"{p}.flux_abs", "decimal", "5000", "Flux needing explanation", "currency"),
+        row(f"{p}.flux_pct", "decimal", "0.10", "Flux needing explanation (share)"),
     ]
 
 
