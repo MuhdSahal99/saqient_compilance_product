@@ -5,6 +5,7 @@ from __future__ import annotations
 import enum
 import uuid
 from datetime import date, datetime
+from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import (
@@ -18,6 +19,7 @@ from sqlalchemy import (
     Index,
     Integer,
     MetaData,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
@@ -114,6 +116,9 @@ class RuleValueType(str, enum.Enum):
     STRING = "string"
     BOOLEAN = "boolean"
     DATE = "date"
+    # Structured parameters (lists, tables). Shape checked per rule-key family
+    # (services/rule_schemas.py); size capped.
+    JSON = "json"
 
 
 class DatasetKind(str, enum.Enum):
@@ -122,6 +127,72 @@ class DatasetKind(str, enum.Enum):
     SALES_REGISTER = "sales_register"
     PURCHASE_REGISTER = "purchase_register"
     BANK_STATEMENT = "bank_statement"
+    CUSTOMER_MASTER = "customer_master"
+    SUPPLIER_MASTER = "supplier_master"
+    VAT_RETURN = "vat_return"
+    EINVOICE_REJECTIONS = "einvoice_rejections"
+
+
+class TaxType(str, enum.Enum):
+    VAT = "vat"
+    CORPORATE_TAX = "corporate_tax"
+    ZAKAT = "zakat"
+    WHT = "wht"
+
+
+class TaskStatus(str, enum.Enum):
+    OPEN = "open"
+    IN_PROGRESS = "in_progress"
+    DONE = "done"
+    CANCELLED = "cancelled"
+
+
+class TaskSource(str, enum.Enum):
+    TAX_OBLIGATION = "tax_obligation"
+    MANUAL = "manual"
+
+
+class MonitorCadence(str, enum.Enum):
+    DAILY = "daily"
+    WEEKLY = "weekly"
+    MONTHLY = "monthly"
+
+
+class MonitorRunStatus(str, enum.Enum):
+    REVIEW_CREATED = "review_created"
+    NO_FILES = "no_files"
+    FAILED = "failed"
+
+
+class PeriodFrequency(str, enum.Enum):
+    MONTHLY = "monthly"
+    QUARTERLY = "quarterly"
+    ANNUAL = "annual"
+    CUSTOM = "custom"
+
+
+class TaxPeriodStatus(str, enum.Enum):
+    OPEN = "open"
+    FILED = "filed"
+
+
+class VatTreatment(str, enum.Enum):
+    """Generic VAT treatments an ERP tax code maps to. Box membership comes from rule packs."""
+
+    STANDARD = "standard"
+    ZERO_RATED = "zero_rated"
+    ZERO_RATED_EXPORT = "zero_rated_export"
+    EXEMPT = "exempt"
+    OUT_OF_SCOPE = "out_of_scope"
+    REVERSE_CHARGE = "reverse_charge"
+    IMPORT = "import"
+
+
+class TaxAccountRole(str, enum.Enum):
+    OUTPUT_VAT = "output_vat"
+    INPUT_VAT = "input_vat"
+    REVERSE_CHARGE_OUTPUT = "reverse_charge_output"
+    REVERSE_CHARGE_INPUT = "reverse_charge_input"
 
 
 class DatasetStatus(str, enum.Enum):
@@ -373,12 +444,73 @@ class LegalEntity(Base):
     )
     is_free_zone: Mapped[bool] = mapped_column(Boolean, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # E-invoicing go-live banding: a user-entered revenue figure and its basis year.
+    size_basis_amount: Mapped[Decimal | None] = mapped_column(Numeric(20, 4))
+    size_basis_currency: Mapped[str | None] = mapped_column(String(3))
+    size_basis_year: Mapped[int | None] = mapped_column(Integer)
+    # A go-live date notified to this taxpayer directly, overriding the pack's waves.
+    einvoice_go_live_override: Mapped[date | None] = mapped_column(Date)
+    einvoice_go_live_note: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = _created()
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
 
     tax_group: Mapped[TaxGroup | None] = relationship(lazy="joined")
+
+
+class TaxPeriod(Base):
+    """An explicit tax period of one entity (VAT now; corporate tax, zakat, WHT later)."""
+
+    __tablename__ = "tax_periods"
+    __table_args__ = (UniqueConstraint("entity_id", "tax_type", "period_start"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    entity_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("legal_entities.id", ondelete="CASCADE"), index=True
+    )
+    tax_type: Mapped[TaxType] = mapped_column(_enum(TaxType, "tax_type"))
+    frequency: Mapped[PeriodFrequency] = mapped_column(_enum(PeriodFrequency, "period_frequency"))
+    period_start: Mapped[date] = mapped_column(Date)
+    period_end: Mapped[date] = mapped_column(Date)
+    status: Mapped[TaxPeriodStatus] = mapped_column(
+        _enum(TaxPeriodStatus, "tax_period_status"), default=TaxPeriodStatus.OPEN
+    )
+    created_at: Mapped[datetime] = _created()
+
+    entity: Mapped[LegalEntity] = relationship(lazy="joined")
+
+
+class EntityTaxCode(Base):
+    """How one ERP tax code of an entity is treated for VAT (client configuration)."""
+
+    __tablename__ = "entity_tax_codes"
+    __table_args__ = (UniqueConstraint("entity_id", "register", "tax_code"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    entity_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("legal_entities.id", ondelete="CASCADE"), index=True
+    )
+    register: Mapped[DatasetKind] = mapped_column(_enum(DatasetKind, "tax_code_register"))
+    tax_code: Mapped[str] = mapped_column(String(40))
+    treatment: Mapped[VatTreatment] = mapped_column(_enum(VatTreatment, "vat_treatment"))
+    # Purchases: whether input VAT on this code is claimed as recoverable.
+    recoverable: Mapped[bool] = mapped_column(Boolean, default=True)
+    description: Mapped[str] = mapped_column(String(300), default="")
+
+
+class EntityTaxAccount(Base):
+    """A GL account that holds VAT for an entity, by role."""
+
+    __tablename__ = "entity_tax_accounts"
+    __table_args__ = (UniqueConstraint("entity_id", "role", "account_code"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    entity_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("legal_entities.id", ondelete="CASCADE"), index=True
+    )
+    role: Mapped[TaxAccountRole] = mapped_column(_enum(TaxAccountRole, "tax_account_role"))
+    account_code: Mapped[str] = mapped_column(String(60))
 
 
 # ---------------------------------------------------------------- rule packs
@@ -424,6 +556,9 @@ class RulePackVersion(Base):
     rules: Mapped[list[Rule]] = relationship(
         back_populates="version", order_by="[Rule.rule_key, Rule.effective_from]"
     )
+    files: Mapped[list[RulePackFile]] = relationship(
+        back_populates="version", order_by="RulePackFile.file_key"
+    )
 
 
 class Rule(Base):
@@ -439,7 +574,7 @@ class Rule(Base):
     rule_key: Mapped[str] = mapped_column(String(120))
     title: Mapped[str] = mapped_column(String(300))
     value_type: Mapped[RuleValueType] = mapped_column(_enum(RuleValueType, "rule_value_type"))
-    value: Mapped[str] = mapped_column(String(200))
+    value: Mapped[str] = mapped_column(Text)
     unit: Mapped[str] = mapped_column(String(40), default="")
     effective_from: Mapped[date] = mapped_column(Date)
     effective_to: Mapped[date | None] = mapped_column(Date)
@@ -457,6 +592,45 @@ class Rule(Base):
 
     version: Mapped[RulePackVersion] = relationship(back_populates="rules")
     verified_by: Mapped[User | None] = relationship(lazy="joined")
+
+
+class RulePackFile(Base):
+    """A file a rule pack version relies on (e.g. an XSD bundle), hashed and immutable.
+
+    Like a rule, a file is draft until an org admin verifies it against its source.
+    Files are copied by reference (same storage key) into new draft versions.
+    """
+
+    __tablename__ = "rule_pack_files"
+    __table_args__ = (UniqueConstraint("rule_pack_version_id", "file_key"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    rule_pack_version_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("rule_pack_versions.id", ondelete="CASCADE"), index=True
+    )
+    file_key: Mapped[str] = mapped_column(String(120))
+    kind: Mapped[str] = mapped_column(String(40))  # "xsd_bundle"
+    title: Mapped[str] = mapped_column(String(300))
+    filename: Mapped[str] = mapped_column(String(255))
+    entry_point: Mapped[str] = mapped_column(String(300), default="")
+    size_bytes: Mapped[int] = mapped_column(BigInteger)
+    sha256: Mapped[str] = mapped_column(String(64))
+    storage_key: Mapped[str] = mapped_column(String(200))
+    source_url: Mapped[str | None] = mapped_column(String(500))
+    source_note: Mapped[str] = mapped_column(Text, default="")
+    verification_status: Mapped[RuleVerification] = mapped_column(
+        _enum(RuleVerification, "rule_file_verification"), default=RuleVerification.DRAFT
+    )
+    verified_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    uploaded_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = _created()
+
+    version: Mapped[RulePackVersion] = relationship(back_populates="files")
 
 
 # ---------------------------------------------------------------- datasets
@@ -530,6 +704,218 @@ class DatasetVersion(Base):
     processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     dataset: Mapped[Dataset] = relationship(back_populates="versions", lazy="joined")
+
+
+# ---------------------------------------------------------------- e-invoices
+
+
+class EInvoiceBatch(Base):
+    """A set of e-invoice XML files uploaded together for one entity."""
+
+    __tablename__ = "einvoice_batches"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    entity_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("legal_entities.id", ondelete="RESTRICT"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(200))
+    original_filename: Mapped[str] = mapped_column(String(255))
+    raw_sha256: Mapped[str] = mapped_column(String(64))
+    file_count: Mapped[int] = mapped_column(Integer, default=0)
+    duplicate_count: Mapped[int] = mapped_column(Integer, default=0)
+    failed_count: Mapped[int] = mapped_column(Integer, default=0)
+    is_demo: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = _created()
+
+    entity: Mapped[LegalEntity] = relationship(lazy="joined")
+
+
+class EInvoiceFile(Base):
+    """One stored e-invoice XML. Header fields are read for listing and matching only."""
+
+    __tablename__ = "einvoice_files"
+    __table_args__ = (UniqueConstraint("entity_id", "sha256"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    batch_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("einvoice_batches.id", ondelete="CASCADE"), index=True
+    )
+    entity_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("legal_entities.id", ondelete="RESTRICT"), index=True
+    )
+    filename: Mapped[str] = mapped_column(String(255))
+    size_bytes: Mapped[int] = mapped_column(Integer)
+    sha256: Mapped[str] = mapped_column(String(64))
+    storage_key: Mapped[str] = mapped_column(String(200))
+    # Detected from the document (pint_ae | zatca | unknown); a label, not a validation result.
+    profile: Mapped[str] = mapped_column(String(20), default="unknown")
+    document_type: Mapped[str] = mapped_column(String(20), default="")  # Invoice | CreditNote
+    invoice_number: Mapped[str | None] = mapped_column(String(200), index=True)
+    invoice_uuid: Mapped[str | None] = mapped_column(String(100), index=True)
+    issue_date: Mapped[date | None] = mapped_column(Date)
+    type_code: Mapped[str | None] = mapped_column(String(20))
+    icv: Mapped[int | None] = mapped_column(BigInteger)
+    currency: Mapped[str | None] = mapped_column(String(3))
+    payable_amount: Mapped[Decimal | None] = mapped_column(Numeric(20, 4))
+    tax_amount: Mapped[Decimal | None] = mapped_column(Numeric(20, 4))
+    parse_error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = _created()
+
+
+class ReviewEInvoice(Base):
+    """An e-invoice file a review validates."""
+
+    __tablename__ = "review_einvoices"
+    __table_args__ = (UniqueConstraint("review_id", "file_id"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    review_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("reviews.id", ondelete="CASCADE"), index=True
+    )
+    file_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("einvoice_files.id", ondelete="RESTRICT"), index=True
+    )
+
+    file: Mapped[EInvoiceFile] = relationship(lazy="joined")
+
+
+class EInvoiceMonitor(Base):
+    """A schedule that validates a reproducible sample of an entity's new e-invoices."""
+
+    __tablename__ = "einvoice_monitors"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    entity_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("legal_entities.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(200))
+    checklist_version_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("checklist_versions.id", ondelete="RESTRICT")
+    )
+    rule_pack_version_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("rule_pack_versions.id", ondelete="RESTRICT")
+    )
+    sample_size: Mapped[int] = mapped_column(Integer)
+    cadence: Mapped[MonitorCadence] = mapped_column(_enum(MonitorCadence, "monitor_cadence"))
+    # Random per monitor; recorded with each run so the sample can be re-drawn.
+    seed: Mapped[str] = mapped_column(String(64))
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    next_run_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Files uploaded up to this time have been offered to a sample.
+    covered_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = _created()
+
+    entity: Mapped[LegalEntity] = relationship(lazy="joined")
+    checklist_version: Mapped[ChecklistVersion] = relationship(lazy="joined")
+
+
+class EInvoiceMonitorRun(Base):
+    """One monitor run: the window, the population, the sample drawn and its review."""
+
+    __tablename__ = "einvoice_monitor_runs"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    monitor_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("einvoice_monitors.id", ondelete="CASCADE"), index=True
+    )
+    review_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("reviews.id", ondelete="SET NULL")
+    )
+    window_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    window_end: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    population: Mapped[int] = mapped_column(Integer, default=0)
+    sampled: Mapped[int] = mapped_column(Integer, default=0)
+    seed: Mapped[str] = mapped_column(String(64))
+    sample_method: Mapped[str] = mapped_column(String(300))
+    status: Mapped[MonitorRunStatus] = mapped_column(_enum(MonitorRunStatus, "monitor_run_status"))
+    message: Mapped[str] = mapped_column(String(500), default="")
+    triggered_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = _created()
+
+
+class Task(Base):
+    """A to-do with an owner and due date that is not a finding (ADR 0009).
+
+    ``source_kind`` + ``source_id`` say what created it (a tax obligation now; PBC
+    requests and close checklist items later).
+    """
+
+    __tablename__ = "tasks"
+    __table_args__ = (Index("ix_tasks_org_owner_status", "org_id", "owner_id", "status"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    source_kind: Mapped[TaskSource] = mapped_column(_enum(TaskSource, "task_source"))
+    source_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), index=True)
+    entity_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("legal_entities.id", ondelete="CASCADE"), index=True
+    )
+    title: Mapped[str] = mapped_column(String(300))
+    description: Mapped[str] = mapped_column(Text, default="")
+    owner_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    due_date: Mapped[date | None] = mapped_column(Date, index=True)
+    status: Mapped[TaskStatus] = mapped_column(
+        _enum(TaskStatus, "task_status"), default=TaskStatus.OPEN
+    )
+    completion_note: Mapped[str] = mapped_column(Text, default="")
+    completed_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = _created()
+
+    entity: Mapped[LegalEntity | None] = relationship(lazy="joined")
+    owner: Mapped[User | None] = relationship(foreign_keys=[owner_id], lazy="joined")
+
+
+class TaxObligation(Base):
+    """A filing or e-invoicing deadline of one entity, generated from a rule pack."""
+
+    __tablename__ = "tax_obligations"
+    __table_args__ = (UniqueConstraint("entity_id", "obligation_key", "period_start"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    entity_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("legal_entities.id", ondelete="CASCADE"), index=True
+    )
+    tax_period_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tax_periods.id", ondelete="SET NULL")
+    )
+    # The obligation id from the pack (e.g. vat_return) or einvoicing:<milestone>.
+    obligation_key: Mapped[str] = mapped_column(String(80))
+    label: Mapped[str] = mapped_column(String(300))
+    tax_type: Mapped[str] = mapped_column(String(40))
+    period_start: Mapped[date] = mapped_column(Date)
+    period_end: Mapped[date] = mapped_column(Date)
+    due_date: Mapped[date] = mapped_column(Date, index=True)
+    # How the due date was derived, with the rule used, so a reviewer can reproduce it.
+    rule_pack_version_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("rule_pack_versions.id", ondelete="RESTRICT")
+    )
+    rule_key: Mapped[str] = mapped_column(String(120))
+    rule_snapshot: Mapped[dict[str, Any]] = mapped_column(JSONType, default=dict)
+    formula: Mapped[str] = mapped_column(String(300))
+    rule_verified: Mapped[bool] = mapped_column(Boolean, default=False)
+    task_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tasks.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = _created()
+
+    entity: Mapped[LegalEntity] = relationship(lazy="joined")
+    task: Mapped[Task | None] = relationship(lazy="joined")
 
 
 # ---------------------------------------------------------------- documents
@@ -740,6 +1126,12 @@ class Review(Base):
     )
     # Date rule values are resolved for; defaults to the datasets' period end.
     as_of_date: Mapped[date | None] = mapped_column(Date)
+    entity_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("legal_entities.id", ondelete="RESTRICT"), index=True
+    )
+    tax_period_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tax_periods.id", ondelete="RESTRICT"), index=True
+    )
     status: Mapped[ReviewStatus] = mapped_column(
         _enum(ReviewStatus, "review_status"), default=ReviewStatus.DRAFT
     )
@@ -755,6 +1147,8 @@ class Review(Base):
 
     document_version: Mapped[DocumentVersion | None] = relationship(lazy="joined")
     checklist_version: Mapped[ChecklistVersion] = relationship(lazy="joined")
+    entity: Mapped[LegalEntity | None] = relationship(lazy="joined")
+    tax_period: Mapped[TaxPeriod | None] = relationship(lazy="joined")
     runs: Mapped[list[ReviewRun]] = relationship(
         back_populates="review", order_by="ReviewRun.created_at"
     )
@@ -834,11 +1228,13 @@ class CheckResult(Base):
 class Finding(Base):
     __tablename__ = "findings"
     __table_args__ = (
-        # One automated finding per requirement per review: retries cannot duplicate.
+        # One automated finding per requirement (and finding key) per review: retries
+        # cannot duplicate. A check may raise several findings, one per key.
         Index(
             "uq_findings_review_requirement",
             "review_id",
             "requirement_id",
+            "finding_key",
             unique=True,
             postgresql_where="requirement_id IS NOT NULL",
         ),
@@ -854,6 +1250,8 @@ class Finding(Base):
     check_result_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("check_results.id", ondelete="SET NULL")
     )
+    # "" for one finding per requirement; otherwise e.g. the failed invoice rule id.
+    finding_key: Mapped[str] = mapped_column(String(200), default="", server_default="")
     is_manual: Mapped[bool] = mapped_column(Boolean, default=False)
     title: Mapped[str] = mapped_column(String(300))
     description: Mapped[str] = mapped_column(Text, default="")

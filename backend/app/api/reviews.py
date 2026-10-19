@@ -16,17 +16,22 @@ from app.models import (
     DatasetVersion,
     Document,
     DocumentVersion,
+    EInvoiceBatch,
+    EInvoiceFile,
     Finding,
     FindingStatus,
+    LegalEntity,
     Membership,
     ReportSnapshot,
     Requirement,
     Review,
+    ReviewEInvoice,
     ReviewRun,
     ReviewStatus,
     RulePackVersion,
     Severity,
     SourceBlock,
+    TaxPeriod,
     User,
 )
 from app.schemas import (
@@ -103,6 +108,15 @@ def _review_out(db: Session, r: Review) -> ReviewOut:
         rule_pack_name=rpv.rule_pack.name if rpv else None,
         rule_pack_version_number=rpv.version_number if rpv else None,
         as_of_date=r.as_of_date,
+        entity_id=r.entity_id,
+        entity_name=r.entity.name if r.entity else None,
+        tax_period_id=r.tax_period_id,
+        tax_period_start=r.tax_period.period_start if r.tax_period else None,
+        tax_period_end=r.tax_period.period_end if r.tax_period else None,
+        einvoice_count=db.scalar(
+            select(func.count(ReviewEInvoice.id)).where(ReviewEInvoice.review_id == r.id)
+        )
+        or 0,
         checklist_id=cv.checklist_id,
         checklist_name=cv.checklist.name,
         checklist_version_id=cv.id,
@@ -140,6 +154,7 @@ def finding_out(f: Finding) -> FindingOut:
         requirement_code=f.requirement.code
         if f.requirement
         else (f.ai_suggestion.requirement.code if f.ai_suggestion else None),
+        finding_key=f.finding_key,
         source_reference=f.requirement.source_reference if f.requirement else None,
         is_manual=f.is_manual,
         title=f.title,
@@ -215,6 +230,26 @@ def create_review(body: ReviewCreateIn, ctx: Writer, db: DB) -> ReviewOut:
         if body.rule_pack_version_id
         else None
     )
+    entity = (
+        get_owned_or_404(db, LegalEntity, body.entity_id, ctx.org_id) if body.entity_id else None
+    )
+    period = (
+        get_owned_or_404(db, TaxPeriod, body.tax_period_id, ctx.org_id)
+        if body.tax_period_id
+        else None
+    )
+    files: dict[uuid.UUID, EInvoiceFile] = {}
+    for bid in body.einvoice_batch_ids:
+        batch = get_owned_or_404(db, EInvoiceBatch, bid, ctx.org_id)
+        for f in db.scalars(
+            select(EInvoiceFile).where(
+                EInvoiceFile.org_id == ctx.org_id, EInvoiceFile.batch_id == batch.id
+            )
+        ):
+            files[f.id] = f
+    for fid in body.einvoice_file_ids:
+        f = get_owned_or_404(db, EInvoiceFile, fid, ctx.org_id)
+        files[f.id] = f
     try:
         review, job = reviews.create_review(
             db,
@@ -226,6 +261,9 @@ def create_review(body: ReviewCreateIn, ctx: Writer, db: DB) -> ReviewOut:
             dataset_versions=datasets,
             rule_pack_version=rpv,
             as_of_date=body.as_of_date,
+            entity=entity,
+            tax_period=period,
+            einvoice_files=list(files.values()),
         )
     except reviews.ReviewError as exc:
         raise _bad(exc, status.HTTP_422_UNPROCESSABLE_ENTITY) from exc

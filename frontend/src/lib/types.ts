@@ -204,6 +204,12 @@ export interface Review {
   rule_pack_name: string | null;
   rule_pack_version_number: number | null;
   as_of_date: string | null;
+  entity_id?: string | null;
+  entity_name?: string | null;
+  tax_period_id?: string | null;
+  tax_period_start?: string | null;
+  tax_period_end?: string | null;
+  einvoice_count?: number;
   checklist_id: string;
   checklist_name: string;
   checklist_version_id: string;
@@ -240,10 +246,36 @@ export interface DatasetRowsEvidence {
   detail: Record<string, string | null>;
 }
 
-export type AnyEvidence = Evidence | DatasetRowsEvidence;
+/** A location inside a stored e-invoice XML file. */
+export interface XmlEvidence {
+  type: "xml";
+  einvoice_file_id: string;
+  filename: string;
+  sha256: string;
+  invoice_number: string | null;
+  xpath: string;
+  line: number | null;
+  value: string | null;
+  label: string;
+  detail: Record<string, unknown>;
+}
+
+/** A recomputed figure (expected vs returned) with the formula used. */
+export interface ComputationEvidence {
+  type: "computation";
+  label: string;
+  detail: Record<string, unknown>;
+}
+
+export type AnyEvidence = Evidence | DatasetRowsEvidence | XmlEvidence | ComputationEvidence;
 
 export function isDatasetEvidence(e: AnyEvidence): e is DatasetRowsEvidence {
   return e.type === "dataset_rows";
+}
+
+/** A quote from a document source block (the only evidence type with a block id). */
+export function isQuoteEvidence(e: AnyEvidence): e is Evidence {
+  return e.type === undefined;
 }
 
 export interface CheckResult {
@@ -267,6 +299,7 @@ export interface Finding {
   review_status: ReviewStatus;
   requirement_id: string | null;
   requirement_code: string | null;
+  finding_key?: string;
   source_reference: string | null;
   is_manual: boolean;
   title: string;
@@ -348,8 +381,18 @@ export interface InvitationLookup {
 
 // ---------------------------------------------------------------- finance (Phase A)
 
-export type DatasetKind = "trial_balance" | "general_ledger" | "sales_register" | "purchase_register" | "bank_statement";
-export const DATASET_KINDS: DatasetKind[] = ["trial_balance", "general_ledger", "sales_register", "purchase_register", "bank_statement"];
+export const DATASET_KINDS = [
+  "trial_balance",
+  "general_ledger",
+  "sales_register",
+  "purchase_register",
+  "bank_statement",
+  "customer_master",
+  "supplier_master",
+  "vat_return",
+  "einvoice_rejections",
+] as const;
+export type DatasetKind = (typeof DATASET_KINDS)[number];
 export type DatasetStatus = "pending" | "parsing" | "needs_mapping" | "processing" | "ready" | "failed";
 
 export interface TaxGroup {
@@ -374,6 +417,11 @@ export interface LegalEntity {
   tax_group_name: string | null;
   is_free_zone: boolean;
   is_active: boolean;
+  size_basis_amount?: string | null;
+  size_basis_currency?: string | null;
+  size_basis_year?: number | null;
+  einvoice_go_live_override?: string | null;
+  einvoice_go_live_note?: string;
   created_at: string;
   updated_at: string;
 }
@@ -545,4 +593,171 @@ export interface AISuggestions {
   available: boolean;
   run: AISuggestionRun | null;
   suggestions: AISuggestion[];
+}
+
+// ---------------------------------------------------------------- e-invoicing and VAT (Phase B)
+
+export type TaxType = "vat" | "corporate_tax" | "zakat" | "wht";
+export type PeriodFrequency = "monthly" | "quarterly" | "annual" | "custom";
+export const PERIOD_FREQUENCIES: PeriodFrequency[] = ["monthly", "quarterly", "annual", "custom"];
+export type TaxPeriodStatus = "open" | "filed";
+
+export interface TaxPeriod {
+  id: string;
+  entity_id: string;
+  tax_type: TaxType;
+  frequency: PeriodFrequency;
+  period_start: string;
+  period_end: string;
+  status: TaxPeriodStatus;
+  created_at: string;
+}
+
+export const VAT_TREATMENTS = ["standard", "zero_rated", "zero_rated_export", "exempt", "out_of_scope", "reverse_charge", "import"] as const;
+export type VatTreatment = (typeof VAT_TREATMENTS)[number];
+export const TAX_ACCOUNT_ROLES = ["output_vat", "input_vat", "reverse_charge_output", "reverse_charge_input"] as const;
+export type TaxAccountRole = (typeof TAX_ACCOUNT_ROLES)[number];
+export type TaxCodeRegister = "sales_register" | "purchase_register";
+
+export interface TaxCode {
+  register: TaxCodeRegister;
+  tax_code: string;
+  treatment: VatTreatment;
+  recoverable: boolean;
+  description: string;
+}
+
+export interface TaxAccount {
+  role: TaxAccountRole;
+  account_code: string;
+}
+
+export interface VatSetup {
+  entity_id: string;
+  tax_codes: TaxCode[];
+  tax_accounts: TaxAccount[];
+}
+
+export interface EInvoiceFile {
+  id: string;
+  batch_id: string;
+  entity_id: string;
+  filename: string;
+  size_bytes: number;
+  sha256: string;
+  profile: string;
+  document_type: string;
+  invoice_number: string | null;
+  invoice_uuid: string | null;
+  issue_date: string | null;
+  type_code: string | null;
+  icv: number | null;
+  currency: string | null;
+  payable_amount: string | null;
+  tax_amount: string | null;
+  parse_error: string | null;
+  created_at: string;
+}
+
+export interface EInvoiceBatch {
+  id: string;
+  entity_id: string;
+  entity_name: string;
+  name: string;
+  original_filename: string;
+  raw_sha256: string;
+  file_count: number;
+  duplicate_count: number;
+  failed_count: number;
+  is_demo: boolean;
+  created_at: string;
+}
+
+export interface EInvoiceBatchDetail extends EInvoiceBatch {
+  files: EInvoiceFile[];
+}
+
+export type MonitorCadence = "daily" | "weekly" | "monthly";
+export type MonitorRunStatus = "review_created" | "no_files" | "failed";
+
+export interface EInvoiceMonitor {
+  id: string;
+  entity_id: string;
+  entity_name: string;
+  name: string;
+  checklist_version_id: string;
+  rule_pack_version_id: string | null;
+  sample_size: number;
+  cadence: MonitorCadence;
+  seed: string;
+  is_active: boolean;
+  next_run_at: string;
+  last_run_at: string | null;
+  covered_until: string | null;
+  created_at: string;
+}
+
+export interface EInvoiceMonitorRun {
+  id: string;
+  monitor_id: string;
+  review_id: string | null;
+  window_start: string | null;
+  window_end: string;
+  population: number;
+  sampled: number;
+  seed: string;
+  sample_method: string;
+  status: MonitorRunStatus;
+  message: string;
+  created_at: string;
+}
+
+export type TaskStatus = "open" | "in_progress" | "done" | "cancelled";
+export const TASK_STATUSES: TaskStatus[] = ["open", "in_progress", "done", "cancelled"];
+export type TaskSource = "tax_obligation" | "manual";
+
+export interface Task {
+  id: string;
+  source_kind: TaskSource;
+  source_id: string | null;
+  entity_id: string | null;
+  entity_name: string | null;
+  title: string;
+  description: string;
+  owner_id: string | null;
+  owner_name: string | null;
+  due_date: string | null;
+  is_overdue: boolean;
+  status: TaskStatus;
+  completion_note: string;
+  completed_at: string | null;
+  created_at: string;
+}
+
+export interface TaxObligation {
+  id: string;
+  entity_id: string;
+  entity_name: string;
+  tax_period_id: string | null;
+  obligation_key: string;
+  label: string;
+  tax_type: string;
+  period_start: string;
+  period_end: string;
+  due_date: string;
+  formula: string;
+  rule_key: string;
+  rule_pack_version_id: string;
+  rule_verified: boolean;
+  rule_snapshot: Record<string, unknown>;
+  task: Task | null;
+}
+
+export interface TaxCalendarResult {
+  created: number;
+  updated: number;
+  unchanged: number;
+  periods_created: number;
+  warnings: string[];
+  obligations: TaxObligation[];
 }

@@ -316,6 +316,7 @@ describe("new review with datasets", () => {
         return jsonResponse(200, [
           { id: "rp1", name: "Synthetic thresholds", jurisdiction: "SYNTHETIC", description: "", is_synthetic: true, created_at: "", versions: [{ id: "rpv1", version_number: 1, state: "published", unverified_count: 2 }] },
         ]);
+      if (url.endsWith("/entities")) return jsonResponse(200, []);
       if (url.endsWith("/reviews") && init?.method === "POST") return jsonResponse(201, { id: "r1" });
       if (url.includes("/reviews?")) return jsonResponse(200, { items: [], total: 0, page: 1, page_size: 20 });
     });
@@ -328,7 +329,7 @@ describe("new review with datasets", () => {
     );
     await user.type(await screen.findByLabelText("Review title"), "Ledger review");
     await user.click(screen.getByRole("button", { name: "Create and run checks" }));
-    expect(await screen.findByText("Choose a document, a dataset, or both.")).toBeInTheDocument();
+    expect(await screen.findByText("Choose a document, a dataset, e-invoices or an entity.")).toBeInTheDocument();
 
     await user.click(screen.getByRole("checkbox", { name: /GL FY25/ }));
     // One dataset per type: the other ledger is disabled, the trial balance is not.

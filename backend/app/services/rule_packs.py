@@ -8,6 +8,7 @@ Checks that use a draft rule carry an "unverified rule" warning.
 
 from __future__ import annotations
 
+import hashlib
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
@@ -22,13 +23,14 @@ from app.models import (
     ChecklistState,
     Rule,
     RulePack,
+    RulePackFile,
     RulePackVersion,
     RuleValueType,
     RuleVerification,
     User,
 )
 from app.schemas import RuleIn
-from app.services import audit
+from app.services import audit, rule_schemas
 
 UNVERIFIED_WARNING = "Unverified rule: {key} ({pack} v{version}) has not been verified by an admin."
 
@@ -55,10 +57,14 @@ def parse_value(value_type: RuleValueType, raw: str) -> Any:
             return raw == "true"
         if value_type is RuleValueType.DATE:
             return date.fromisoformat(raw)
+        if value_type is RuleValueType.JSON:
+            return rule_schemas.load_json(raw)
         return raw
     except (InvalidOperation, ValueError) as exc:
         if isinstance(exc, RuleValueError):
             raise
+        if isinstance(exc, rule_schemas.RuleShapeError):
+            raise RuleValueError(str(exc)) from exc
         raise RuleValueError(f"not a valid {value_type.value}") from exc
 
 
@@ -66,8 +72,10 @@ def validate_rules(rules: list[RuleIn]) -> None:
     by_key: dict[str, list[RuleIn]] = {}
     for r in rules:
         try:
-            parse_value(r.value_type, r.value)
-        except RuleValueError as exc:
+            parsed = parse_value(r.value_type, r.value)
+            if r.value_type is RuleValueType.JSON:
+                rule_schemas.validate_shape(r.rule_key, parsed)
+        except (RuleValueError, rule_schemas.RuleShapeError) as exc:
             raise HTTPException(
                 status.HTTP_422_UNPROCESSABLE_CONTENT, f"{r.rule_key}: {exc}."
             ) from exc
@@ -211,6 +219,14 @@ def new_draft(db: Session, pack: RulePack, actor: User) -> RulePackVersion:
                 verified_at=r.verified_at,
             )
         )
+    for f in base.files:
+        db.add(
+            RulePackFile(
+                org_id=pack.org_id,
+                rule_pack_version_id=v.id,
+                **{c: getattr(f, c) for c in _FILE_COPY},
+            )
+        )
     audit.record(
         db,
         org_id=pack.org_id,
@@ -287,10 +303,15 @@ class ResolvedRule:
         )
 
     def snapshot(self) -> dict[str, Any]:
+        is_json = self.value_type is RuleValueType.JSON
         return {
             "rule_id": str(self.rule_id),
             "rule_key": self.rule_key,
-            "value": self.raw_value,
+            # JSON values can be large: the immutable rule id + version and a hash identify it.
+            "value": None if is_json else self.raw_value,
+            "value_sha256": hashlib.sha256(self.raw_value.encode()).hexdigest()
+            if is_json
+            else None,
             "value_type": self.value_type.value,
             "unit": self.unit,
             "rule_pack_version_id": str(self.rule_pack_version_id),
@@ -335,4 +356,194 @@ def resolve(
         verification_status=rule.verification_status,
         effective_from=rule.effective_from,
         effective_to=rule.effective_to,
+    )
+
+
+# ---------------------------------------------------------------- files
+
+MAX_BUNDLE_BYTES = 10 * 1024 * 1024
+_FILE_COPY = (
+    "file_key",
+    "kind",
+    "title",
+    "filename",
+    "entry_point",
+    "size_bytes",
+    "sha256",
+    "storage_key",
+    "source_url",
+    "source_note",
+    "verification_status",
+    "verified_by_id",
+    "verified_at",
+    "uploaded_by_id",
+)
+FILE_KINDS = ("xsd_bundle",)
+UNVERIFIED_FILE_WARNING = (
+    "Unverified rule pack file: {key} ({pack} v{version}) has not been verified by an admin."
+)
+
+
+def add_file(
+    db: Session,
+    v: RulePackVersion,
+    *,
+    file_key: str,
+    kind: str,
+    title: str,
+    filename: str,
+    entry_point: str,
+    data: bytes,
+    source_url: str | None,
+    source_note: str,
+    actor: User,
+) -> RulePackFile:
+    """Attach (or replace) a file on a draft version. XSD bundles must compile."""
+    from app.einvoice import xmlsafe
+    from app.storage import get_storage, new_storage_key
+
+    if v.state != ChecklistState.DRAFT:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Published rule pack versions are immutable.")
+    if kind not in FILE_KINDS:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Unknown file kind.")
+    if len(data) > MAX_BUNDLE_BYTES:
+        raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, "The file is larger than 10 MB.")
+    try:
+        xmlsafe.compile_schema(xmlsafe.read_bundle(data), entry_point)
+    except xmlsafe.UnsafeXML as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
+    for old in [f for f in v.files if f.file_key == file_key]:
+        db.delete(old)
+    db.flush()
+    key = new_storage_key(v.org_id)
+    get_storage().put(key, data)
+    f = RulePackFile(
+        org_id=v.org_id,
+        rule_pack_version_id=v.id,
+        file_key=file_key,
+        kind=kind,
+        title=title,
+        filename=filename[:255],
+        entry_point=entry_point,
+        size_bytes=len(data),
+        sha256=hashlib.sha256(data).hexdigest(),
+        storage_key=key,
+        source_url=source_url,
+        source_note=source_note,
+        uploaded_by_id=actor.id,
+    )
+    db.add(f)
+    db.flush()
+    audit.record(
+        db,
+        org_id=v.org_id,
+        actor_id=actor.id,
+        action="rule_pack.file_added",
+        object_type="rule_pack_version",
+        object_id=v.id,
+        meta={"file_key": file_key, "sha256": f.sha256, "size": f.size_bytes},
+    )
+    return f
+
+
+def set_file_verification(db: Session, f: RulePackFile, verified: bool, actor: User) -> None:
+    if verified:
+        if not f.source_url:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_CONTENT,
+                "Add an official source URL before verifying this file.",
+            )
+        if f.version.rule_pack.is_synthetic:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_CONTENT,
+                "Synthetic demonstration files cannot be verified.",
+            )
+        f.verification_status = RuleVerification.VERIFIED
+        f.verified_by_id = actor.id
+        f.verified_at = datetime.now(UTC)
+    else:
+        f.verification_status = RuleVerification.DRAFT
+        f.verified_by_id = None
+        f.verified_at = None
+    audit.record(
+        db,
+        org_id=f.org_id,
+        actor_id=actor.id,
+        action="rule_pack.file_verified" if verified else "rule_pack.file_unverified",
+        object_type="rule_pack_file",
+        object_id=f.id,
+        meta={"file_key": f.file_key, "sha256": f.sha256},
+    )
+
+
+@dataclass(frozen=True)
+class ResolvedFile:
+    file_id: uuid.UUID
+    file_key: str
+    kind: str
+    entry_point: str
+    sha256: str
+    storage_key: str
+    rule_pack_version_id: uuid.UUID
+    pack_name: str
+    pack_version: int
+    verification_status: RuleVerification
+
+    @property
+    def verified(self) -> bool:
+        return self.verification_status is RuleVerification.VERIFIED
+
+    def warning(self) -> str | None:
+        if self.verified:
+            return None
+        return UNVERIFIED_FILE_WARNING.format(
+            key=self.file_key, pack=self.pack_name, version=self.pack_version
+        )
+
+    def snapshot(self) -> dict[str, Any]:
+        return {
+            "file_id": str(self.file_id),
+            "file_key": self.file_key,
+            "kind": self.kind,
+            "entry_point": self.entry_point,
+            "sha256": self.sha256,
+            "rule_pack_version_id": str(self.rule_pack_version_id),
+            "pack_name": self.pack_name,
+            "pack_version": self.pack_version,
+            "verification_status": self.verification_status.value,
+        }
+
+    def read(self) -> bytes:
+        from app.storage import get_storage
+
+        data = get_storage().get(self.storage_key)
+        if hashlib.sha256(data).hexdigest() != self.sha256:
+            raise RuleNotFound(f"Rule pack file '{self.file_key}' failed its integrity check.")
+        return data
+
+
+def resolve_file(
+    db: Session, org_id: uuid.UUID, version_id: uuid.UUID, file_key: str
+) -> ResolvedFile:
+    f = db.scalar(
+        select(RulePackFile).where(
+            RulePackFile.org_id == org_id,
+            RulePackFile.rule_pack_version_id == version_id,
+            RulePackFile.file_key == file_key,
+        )
+    )
+    if f is None:
+        raise RuleNotFound(f"No rule pack file '{file_key}'.")
+    v = f.version
+    return ResolvedFile(
+        file_id=f.id,
+        file_key=f.file_key,
+        kind=f.kind,
+        entry_point=f.entry_point,
+        sha256=f.sha256,
+        storage_key=f.storage_key,
+        rule_pack_version_id=v.id,
+        pack_name=v.rule_pack.name,
+        pack_version=v.version_number,
+        verification_status=f.verification_status,
     )

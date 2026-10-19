@@ -278,7 +278,11 @@ DataCheckConfig = (
 )
 
 
-def datasets_used(config: DataCheckConfig) -> set[DatasetKind]:
+def datasets_used(config: Any) -> set[DatasetKind]:
+    from app.engine import tax_checks
+
+    if isinstance(config, tax_checks.TAX_CHECK_TYPES):
+        return tax_checks.datasets_used(config)
     if isinstance(config, ReconcileCheck):
         return {config.left.dataset, config.right.dataset}
     if isinstance(config, RatioCheck):
@@ -316,6 +320,22 @@ class DataContext:
     datasets: dict[DatasetKind, LoadedDataset]
     resolve_rule: Callable[[str], RuleLike]
     as_of: date
+    # Engine 1.2.0 inputs (all optional; a check that needs one and lacks it does not run).
+    period: tuple[date, date] | None = None  # the review's tax period
+    entity: Any = None  # engine.tax_checks.EntityInfo
+    einvoices: Any = None  # engine.einvoice_checks.InvoiceSet
+    resolve_file: Callable[[str], Any] | None = None  # services.rule_packs.ResolvedFile
+    extras: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class FindingGroup:
+    """One of several findings a check raises (e.g. one per failed invoice rule)."""
+
+    key: str
+    title: str
+    message: str
+    evidence: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass
@@ -325,10 +345,15 @@ class DataEvaluation:
     message: str
     evidence: list[dict[str, Any]] = field(default_factory=list)
     meta: dict[str, Any] = field(default_factory=dict)
+    groups: list[FindingGroup] = field(default_factory=list)
 
 
 class DataCheckError(ValueError):
     """The check cannot run on these inputs (message safe to show)."""
+
+
+class InputMissing(DataCheckError):
+    """The review lacks an input this check needs: not run, nothing to look at."""
 
 
 # ---------------------------------------------------------------- helpers
@@ -740,7 +765,9 @@ def _date_rule(c: DateRuleCheck, ctx: DataContext, meta: dict[str, Any]) -> Data
     col = pl.col(c.field)
     shown = [c.field, *([c.other_field] if c.other_field else [])]
     if c.rule == "within_period":
-        start, end = c.period_start or ds.period_start, c.period_end or ds.period_end
+        # Literal period, else the review's tax period (1.2.0), else the dataset period.
+        p_start, p_end = ctx.period or (ds.period_start, ds.period_end)
+        start, end = c.period_start or p_start, c.period_end or p_end
         if start is None or end is None:
             raise DataCheckError("Set the dataset period or the check's period_start/period_end.")
         meta["period"] = [start.isoformat(), end.isoformat()]
@@ -815,10 +842,14 @@ def _ratio(c: RatioCheck, ctx: DataContext, meta: dict[str, Any]) -> DataEvaluat
     return _done(0, f"Ratio {shown} is within {bounds}.", "", [], meta)
 
 
-def evaluate_data(config: DataCheckConfig, ctx: DataContext) -> DataEvaluation:
+def evaluate_data(config: Any, ctx: DataContext) -> DataEvaluation:
+    from app.engine import tax_checks
+
     meta: dict[str, Any] = {}
     try:
-        if isinstance(config, ReconcileCheck):
+        if isinstance(config, tax_checks.TAX_CHECK_TYPES):
+            ev = tax_checks.evaluate(config, ctx, meta)
+        elif isinstance(config, ReconcileCheck):
             ev = _reconcile(config, ctx, meta)
         elif isinstance(config, ThresholdCheck):
             ev = _threshold(config, ctx, meta)
@@ -830,6 +861,8 @@ def evaluate_data(config: DataCheckConfig, ctx: DataContext) -> DataEvaluation:
             ev = _date_rule(config, ctx, meta)
         else:
             ev = _ratio(config, ctx, meta)
+    except InputMissing as exc:
+        return DataEvaluation(CheckOutcome.NOT_APPLICABLE, False, str(exc), [], meta)
     except DataCheckError as exc:
         return DataEvaluation(CheckOutcome.NOT_APPLICABLE, True, str(exc), [], meta)
     warnings = ev.meta.get("warnings") or []

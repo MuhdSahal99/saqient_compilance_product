@@ -217,7 +217,7 @@ def confirm_mapping(
 ) -> Job:
     if v.status not in (DatasetStatus.NEEDS_MAPPING, DatasetStatus.FAILED) or not v.source_columns:
         raise DatasetFileError("This version is not waiting for a column mapping.")
-    if v.file_format in ("mt940", "camt053"):
+    if v.file_format in ("mt940", "camt053", "asp_json"):
         raise DatasetFileError("Bank statement formats use a fixed mapping.")
     validate_mapping(v.dataset.kind, mapping, v.source_columns)
     v.column_mapping = dict(mapping)

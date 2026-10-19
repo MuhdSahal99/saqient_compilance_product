@@ -66,6 +66,15 @@ keep the frozen 1.0.0 behaviour. Each result carries a SHA-256 result hash,
 and each run records its inputs (dataset Parquet hashes, rule pack version,
 as-of date). See ADR 0008.
 
+Engine `deterministic-1.2.0` adds e-invoice validation (schema bundle, mandatory
+fields, code lists, arithmetic, tax numbers, ZATCA QR, hash and counter chain,
+duplicates), e-invoicing readiness, platform rejection matching, master data and
+VAT return checks (box and GL reconciliation, reverse charge, zero-rated evidence,
+blocked input VAT). All jurisdiction values come from rule packs; one requirement may
+raise several findings (`finding_key`). E-invoice XML is parsed with defusedxml and a
+locked-down lxml parser. Sampling monitors and the tax calendar run on Celery beat.
+See ADRs 0009 and 0010.
+
 ## Reports
 
 Sign-off freezes a JSON snapshot (`report_snapshots`, version n). HTML, PDF

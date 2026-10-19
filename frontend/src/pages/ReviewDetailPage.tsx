@@ -9,13 +9,16 @@ import {
   AlertTriangle,
   BadgeCheck,
   BookOpen,
+  Building,
   CalendarDays,
+  CalendarRange,
   Check,
   CheckCircle2,
   CircleDot,
   Clock,
   Cpu,
   FileCheck2,
+  FileCode,
   FilePlus,
   FileText,
   Info,
@@ -33,7 +36,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { api, qs } from "@/lib/api";
-import { isDatasetEvidence } from "@/lib/types";
+import { isQuoteEvidence } from "@/lib/types";
 import type { CheckResult, Evidence, Finding, FindingStatus, Job, Page, Report, Review, Severity, SourceBlock } from "@/lib/types";
 import { useAuth } from "@/lib/auth";
 import { cn, formatDate } from "@/lib/utils";
@@ -379,7 +382,7 @@ export function ReviewDetailPage() {
   const selected = items.find((f) => f.id === selectedId) ?? (wide && !selectedId ? (items[0] ?? null) : null);
   const highlight = useMemo(
     () => ({
-      blockIds: new Set((selected?.evidence ?? []).flatMap((e) => (isDatasetEvidence(e) ? [] : [e.block_id]))),
+      blockIds: new Set((selected?.evidence ?? []).flatMap((e) => (isQuoteEvidence(e) ? [e.block_id] : []))),
       focus: focusBlock,
     }),
     [selected, focusBlock],
@@ -389,7 +392,7 @@ export function ReviewDetailPage() {
   const select = useCallback(
     (f: Finding, replace = false) => {
       const first = f.evidence[0];
-      setFocusBlock(first && !isDatasetEvidence(first) ? first.block_id : undefined);
+      setFocusBlock(first && isQuoteEvidence(first) ? first.block_id : undefined);
       setParams(
         (p) => {
           p.set("finding", f.id);
@@ -471,6 +474,27 @@ export function ReviewDetailPage() {
                 {d.dataset_name} v{d.version_number}
               </Link>
             ))}
+            {r.entity_name && (
+              <span className="inline-flex items-center gap-1.5 rounded-md bg-white px-2 py-0.5 text-xs text-slate-600 ring-1 ring-slate-200">
+                <Building className="size-3.5 text-slate-400" aria-hidden />
+                {r.entity_name}
+              </span>
+            )}
+            {r.tax_period_start && r.tax_period_end && (
+              <span className="inline-flex items-center gap-1.5 rounded-md bg-white px-2 py-0.5 text-xs text-slate-600 ring-1 ring-slate-200">
+                <CalendarRange className="size-3.5 text-slate-400" aria-hidden />
+                {t("reviews.taxPeriodChip", {
+                  start: formatDate(r.tax_period_start, i18n.language),
+                  end: formatDate(r.tax_period_end, i18n.language),
+                })}
+              </span>
+            )}
+            {(r.einvoice_count ?? 0) > 0 && (
+              <span className="inline-flex items-center gap-1.5 rounded-md bg-white px-2 py-0.5 text-xs text-slate-600 ring-1 ring-slate-200">
+                <FileCode className="size-3.5 text-slate-400" aria-hidden />
+                {t("reviews.einvoiceCount", { count: r.einvoice_count })}
+              </span>
+            )}
             {r.rule_pack_name && (
               <span className="inline-flex items-center gap-1.5 rounded-md bg-white px-2 py-0.5 text-xs text-slate-600 ring-1 ring-slate-200">
                 <Scale className="size-3.5 text-slate-400" aria-hidden />

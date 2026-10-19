@@ -8,7 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from "@/components/ui/dialog";
 import { ApiError } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import type { CheckOutcome, DatasetStatus, FindingStatus, JobStatus, ReviewStatus, Severity, VersionStatus } from "@/lib/types";
+import type { CheckOutcome, DatasetStatus, FindingStatus, JobStatus, ReviewStatus, Severity, TaskStatus, VersionStatus } from "@/lib/types";
 
 export interface Crumb {
   label: string;
@@ -344,6 +344,16 @@ export function ReviewStatusBadge({ status }: { status: ReviewStatus }) {
   return (
     <Badge tone={tone} dot>
       {t(`reviewStatus.${status}`)}
+    </Badge>
+  );
+}
+
+export function TaskStatusBadge({ status }: { status: TaskStatus }) {
+  const { t } = useTranslation();
+  const tone = status === "done" ? "green" : status === "in_progress" ? "teal" : status === "cancelled" ? "amber" : "neutral";
+  return (
+    <Badge tone={tone} dot>
+      {t(`taskStatus.${status}`)}
     </Badge>
   );
 }

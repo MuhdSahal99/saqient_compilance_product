@@ -52,6 +52,20 @@ organizations ─┬─ memberships ── users ── user_sessions
 | `datasets` | entity_id, kind (trial_balance, general_ledger, sales_register, purchase_register, bank_statement), name, period_start, period_end | Logical dataset for one legal entity. |
 | `dataset_versions` | dataset_id, version_number, original_filename, file_format (csv/xlsx/mt940/camt053), size_bytes, raw_sha256, raw_storage_key, status, failure_message, source_columns, source_row_count, column_mapping, parse_options, mapping_confirmed_by_id/at, parquet_storage_key, parquet_sha256, row_count, derived_fields, totals, errors, error_count | Status: pending → parsing → needs_mapping → processing → ready / failed. Canonical schemas per kind are in `app/datasets/schemas.py`. Storage keys are never returned by the API. (ADR 0007) |
 
+## E-invoicing, VAT and tax calendar (Phase B)
+
+| Table | Key columns | Notes |
+|---|---|---|
+| `rule_pack_files` | rule_pack_version_id, file_key, kind (xsd_bundle), entry_point, size_bytes, sha256, storage_key, source_url, verification_status | Schema bundles attached to a draft version; copied to new drafts. `rules.value` is now Text and `value_type` may be `json` (shape checked by key family). |
+| `tax_periods` | entity_id, tax_type (vat/corporate_tax/zakat/wht), frequency, period_start, period_end, status (open/filed) | Non-overlapping per entity and tax type. |
+| `entity_tax_codes` | entity_id, register, tax_code, treatment, recoverable | The entity's VAT treatment of its ERP tax codes. |
+| `entity_tax_accounts` | entity_id, role (output_vat, input_vat, reverse_charge_output/input), account_code | VAT GL accounts for the GL reconciliation. |
+| `einvoice_batches` / `einvoice_files` | entity_id, raw_sha256 / sha256 (unique per entity), storage_key, profile, invoice_number, invoice_uuid, issue_date, icv, currency, payable_amount, tax_amount, parse_error | Uploaded XML (or ZIP of XML); unreadable files are kept with their parse error. |
+| `review_einvoices` | review_id, file_id | E-invoices a review validates. `reviews` gains entity_id and tax_period_id; `findings` gains finding_key. |
+| `einvoice_monitors` / `einvoice_monitor_runs` | entity_id, checklist_version_id, rule_pack_version_id, sample_size, cadence, seed, next_run_at, covered_until / window, population, sampled, seed, sample_method, status, review_id | Scheduled sampling (Celery beat, hourly). |
+| `tasks` | source_kind (tax_obligation/manual), source_id, entity_id, title, owner_id, due_date, status, completion_note | ADR 0009. Included in the daily digest. |
+| `tax_obligations` | entity_id, tax_period_id, obligation_key, period_start/end, due_date, rule_pack_version_id, rule_key, rule_snapshot, formula, rule_verified, task_id | Generated from `<prefix>.obligations` (and go-live waves); unique (entity, key, period_start). |
+
 ## Documents
 
 | Table | Key columns | Notes |

@@ -5,10 +5,11 @@ import { useTranslation } from "react-i18next";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { ClipboardCheck, ClipboardList, ClipboardPlus, FileText, Info, Loader2, Search, Table2, TriangleAlert } from "lucide-react";
+import { Building, ClipboardCheck, ClipboardList, ClipboardPlus, FileCode, FileText, Info, Loader2, Search, Table2, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 import { api, qs } from "@/lib/api";
-import type { Checklist, Dataset, DocumentSummary, Page, Review, ReviewStatus, RulePack } from "@/lib/types";
+import type { Checklist, Dataset, DocumentSummary, EInvoiceBatch, Page, Review, ReviewStatus, RulePack } from "@/lib/types";
+import { useEntities, useTaxPeriods } from "@/lib/queries";
 import { useAuth } from "@/lib/auth";
 import { cn, formatDate } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -37,12 +38,18 @@ const schema = z
     dataset_version_ids: z.array(z.string()).max(5),
     rule_pack_version_id: z.string(),
     as_of_date: z.string(),
+    entity_id: z.string(),
+    tax_period_id: z.string(),
+    einvoice_batch_ids: z.array(z.string()).max(20),
   })
-  .refine((v) => v.document_version_id || v.dataset_version_ids.length > 0, { path: ["document_version_id"], message: "input" });
+  .refine((v) => v.document_version_id || v.dataset_version_ids.length > 0 || v.einvoice_batch_ids.length > 0 || v.entity_id, {
+    path: ["document_version_id"],
+    message: "input",
+  });
 type Values = z.infer<typeof schema>;
 
 function NewReviewDialog({ open, onOpenChange, initialVersionId }: { open: boolean; onOpenChange: (o: boolean) => void; initialVersionId?: string }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const qc = useQueryClient();
   const navigate = useNavigate();
   const docs = useQuery({
@@ -53,6 +60,7 @@ function NewReviewDialog({ open, onOpenChange, initialVersionId }: { open: boole
   const lists = useQuery({ queryKey: ["checklists"], queryFn: () => api<Checklist[]>("/checklists"), enabled: open });
   const datasets = useQuery({ queryKey: ["datasets", { kind: "" }], queryFn: () => api<Dataset[]>("/datasets"), enabled: open });
   const packs = useQuery({ queryKey: ["rule-packs"], queryFn: () => api<RulePack[]>("/rule-packs"), enabled: open });
+  const entities = useEntities(open);
   const readyDatasets = (datasets.data ?? []).filter((d) => d.latest_version?.status === "ready");
   const publishedPacks = (packs.data ?? []).flatMap((p) => p.versions.filter((v) => v.state === "published").map((v) => ({ p, v })));
   const published = (lists.data ?? []).flatMap((c) => c.versions.filter((v) => v.state === "published").map((v) => ({ c, v })));
@@ -65,6 +73,9 @@ function NewReviewDialog({ open, onOpenChange, initialVersionId }: { open: boole
       dataset_version_ids: [],
       rule_pack_version_id: "",
       as_of_date: "",
+      entity_id: "",
+      tax_period_id: "",
+      einvoice_batch_ids: [],
     },
   });
   useEffect(() => {
@@ -77,6 +88,19 @@ function NewReviewDialog({ open, onOpenChange, initialVersionId }: { open: boole
 
   const chosen = useWatch({ control: form.control, name: "dataset_version_ids" });
   const packId = useWatch({ control: form.control, name: "rule_pack_version_id" });
+  const entityId = useWatch({ control: form.control, name: "entity_id" });
+  const chosenBatches = useWatch({ control: form.control, name: "einvoice_batch_ids" });
+  const periods = useTaxPeriods(entityId || null);
+  const batches = useQuery({
+    queryKey: ["einvoice-batches", { entityId }],
+    queryFn: () => api<EInvoiceBatch[]>(`/einvoice-batches${qs({ entity_id: entityId })}`),
+    enabled: open && !!entityId,
+  });
+  // Periods and batches belong to one entity; clear them when the entity changes.
+  useEffect(() => {
+    form.setValue("tax_period_id", "");
+    form.setValue("einvoice_batch_ids", []);
+  }, [entityId, form]);
   const selectedPack = publishedPacks.find((x) => x.v.id === packId);
 
   const create = useMutation({
@@ -89,6 +113,9 @@ function NewReviewDialog({ open, onOpenChange, initialVersionId }: { open: boole
           dataset_version_ids: v.dataset_version_ids,
           rule_pack_version_id: v.rule_pack_version_id || null,
           as_of_date: v.as_of_date || null,
+          ...(v.entity_id ? { entity_id: v.entity_id } : {}),
+          ...(v.tax_period_id ? { tax_period_id: v.tax_period_id } : {}),
+          ...(v.einvoice_batch_ids.length > 0 ? { einvoice_batch_ids: v.einvoice_batch_ids } : {}),
         },
       }),
     onSuccess: (r) => {
@@ -111,19 +138,20 @@ function NewReviewDialog({ open, onOpenChange, initialVersionId }: { open: boole
             <DialogDescription>{t("reviews.newHint")}</DialogDescription>
           </div>
         </div>
-        {(docs.isLoading || lists.isLoading || datasets.isLoading || packs.isLoading) && <LoadingState rows={3} />}
-        {(docs.isError || lists.isError || datasets.isError || packs.isError) && (
+        {(docs.isLoading || lists.isLoading || datasets.isLoading || packs.isLoading || entities.isLoading) && <LoadingState rows={3} />}
+        {(docs.isError || lists.isError || datasets.isError || packs.isError || entities.isError) && (
           <ErrorState
-            error={docs.error ?? lists.error ?? datasets.error ?? packs.error}
+            error={docs.error ?? lists.error ?? datasets.error ?? packs.error ?? entities.error}
             onRetry={() => {
               void docs.refetch();
               void lists.refetch();
               void datasets.refetch();
               void packs.refetch();
+              void entities.refetch();
             }}
           />
         )}
-        {docs.data && lists.data && datasets.data && packs.data && (
+        {docs.data && lists.data && datasets.data && packs.data && entities.data && (
           <form className="mt-5 space-y-4" onSubmit={form.handleSubmit((v) => create.mutate(v))} noValidate>
             <div className="space-y-1.5">
               <Label htmlFor="review-title">{t("reviews.titleField")}</Label>
@@ -179,6 +207,72 @@ function NewReviewDialog({ open, onOpenChange, initialVersionId }: { open: boole
               )}
               <p className="text-xs text-slate-500">{t("reviews.oneDatasetPerKind")}</p>
             </fieldset>
+            {entities.data.length > 0 && (
+              <fieldset className="space-y-3 rounded-lg border border-slate-200 p-3">
+                <legend className="px-1 text-sm font-medium text-slate-700">{t("reviews.vatScope")}</legend>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="review-entity">{t("datasets.entity")}</Label>
+                    <Select id="review-entity" {...form.register("entity_id")}>
+                      <option value="">{t("reviews.noEntity")}</option>
+                      {entities.data.map((e) => (
+                        <option key={e.id} value={e.id}>
+                          {e.name}
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="review-period">{t("reviews.taxPeriod")}</Label>
+                    <Select id="review-period" disabled={!entityId || periods.isLoading} {...form.register("tax_period_id")}>
+                      <option value="">{t("reviews.noTaxPeriod")}</option>
+                      {(periods.data ?? []).map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {formatDate(p.period_start, i18n.language)} – {formatDate(p.period_end, i18n.language)} · {t(`taxPeriodStatus.${p.status}`)}
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+                </div>
+                {entityId && (
+                  <div className="space-y-1.5">
+                    <p className="text-[13px] font-medium text-slate-700">{t("reviews.einvoiceBatches")}</p>
+                    {batches.isLoading && <LoadingState rows={1} />}
+                    {batches.isError && <ErrorState error={batches.error} onRetry={() => void batches.refetch()} />}
+                    {batches.data?.length === 0 && <p className="text-xs text-slate-500">{t("reviews.noBatches")}</p>}
+                    {batches.data && batches.data.length > 0 && (
+                      <ul className="max-h-36 space-y-1 overflow-y-auto rounded-lg border border-slate-200 p-2">
+                        {batches.data.map((b) => {
+                          const checked = chosenBatches.includes(b.id);
+                          return (
+                            <li key={b.id}>
+                              <label className="flex items-center gap-2 rounded-md px-2 py-1 text-sm text-slate-700 hover:bg-slate-50">
+                                <input
+                                  type="checkbox"
+                                  className="size-4 rounded border-slate-300 accent-teal-600"
+                                  checked={checked}
+                                  disabled={!checked && chosenBatches.length >= 20}
+                                  onChange={(e) =>
+                                    form.setValue(
+                                      "einvoice_batch_ids",
+                                      e.target.checked ? [...chosenBatches, b.id] : chosenBatches.filter((x) => x !== b.id),
+                                      { shouldValidate: form.formState.isSubmitted },
+                                    )
+                                  }
+                                />
+                                <span className="min-w-0 flex-1 truncate">{b.name}</span>
+                                <span className="shrink-0 text-xs tabular-nums text-slate-500">{t("einvoices.fileCount", { count: b.file_count })}</span>
+                              </label>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+                  </div>
+                )}
+                <p className="text-xs text-slate-500">{t("reviews.vatScopeHint")}</p>
+              </fieldset>
+            )}
             <FieldError message={form.formState.errors.document_version_id ? t("reviews.inputRequired") : undefined} />
             {docs.data.items.length === 0 && readyDatasets.length === 0 && (
               <p className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
@@ -186,7 +280,7 @@ function NewReviewDialog({ open, onOpenChange, initialVersionId }: { open: boole
                 {t("reviews.noReadyInputs")}
               </p>
             )}
-            {chosen.length > 0 && (
+            {(chosen.length > 0 || !!entityId || chosenBatches.length > 0) && (
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <Label htmlFor="review-pack">{t("reviews.rulePack")}</Label>
@@ -369,6 +463,18 @@ export function ReviewsPage() {
                             <FileText className="size-3.5 shrink-0 text-slate-400" aria-hidden />
                             <span className="truncate">{r.document_title}</span>
                             <span className="shrink-0 text-xs tabular-nums text-slate-400">v{r.document_version_number}</span>
+                          </div>
+                        )}
+                        {r.entity_name && (
+                          <div className="flex items-center gap-1.5 text-slate-700">
+                            <Building className="size-3.5 shrink-0 text-slate-400" aria-hidden />
+                            <span className="truncate">{r.entity_name}</span>
+                          </div>
+                        )}
+                        {(r.einvoice_count ?? 0) > 0 && (
+                          <div className="flex items-center gap-1.5 text-slate-700">
+                            <FileCode className="size-3.5 shrink-0 text-slate-400" aria-hidden />
+                            <span className="truncate">{t("reviews.einvoiceCount", { count: r.einvoice_count })}</span>
                           </div>
                         )}
                         {r.datasets.map((d) => (

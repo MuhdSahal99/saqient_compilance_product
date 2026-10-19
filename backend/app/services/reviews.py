@@ -13,7 +13,14 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.engine import CheckEvaluation, DocumentContext, evaluate
-from app.engine.data_checks import DataContext, LoadedDataset, datasets_used, evaluate_data
+from app.engine.data_checks import (
+    DataContext,
+    FindingGroup,
+    LoadedDataset,
+    datasets_used,
+    evaluate_data,
+)
+from app.engine.tax_checks import EntityInfo
 from app.engine.versions import ENGINE_VERSION, is_data_check, parse_check
 from app.models import (
     ChecklistState,
@@ -25,23 +32,27 @@ from app.models import (
     DatasetVersion,
     Document,
     DocumentVersion,
+    EInvoiceFile,
     Finding,
     FindingStatus,
     Job,
     JobKind,
     JobStatus,
+    LegalEntity,
     ReportSnapshot,
     Requirement,
     Review,
     ReviewDataset,
+    ReviewEInvoice,
     ReviewRun,
     ReviewStatus,
     RulePackVersion,
     SourceBlock,
+    TaxPeriod,
     User,
     VersionStatus,
 )
-from app.services import audit, rule_packs
+from app.services import audit, einvoice_inputs, rule_packs, tax_setup
 from app.services.datasets import DatasetNotReady, load_frame
 from app.services.jobs import Checkpoint, PermanentJobError, handler, on_unsuccessful
 
@@ -72,6 +83,16 @@ DATA_LIMITATION = (
     "to look at, not a conclusion."
 )
 
+EINVOICE_LIMITATION = (
+    "E-invoice checks validate the stored XML against the rule pack's schema and rules as "
+    "entered; they do not replace validation by the e-invoicing platform or service "
+    "provider, and nothing was submitted to any platform."
+)
+VAT_LIMITATION = (
+    "VAT figures are recomputed from the registers and GL as uploaded, with the entity's "
+    "tax code mapping and the rule pack's box layout. A difference is something to "
+    "investigate; the return is not prepared or filed by Saqient."
+)
 OCR_LIMITATION = (
     "Some pages had no text layer and were read with OCR. OCR text can contain recognition "
     "errors, and quotes from those pages were matched against the OCR text, not the page image."
@@ -107,10 +128,25 @@ def create_review(
     dataset_versions: list[DatasetVersion] | None = None,
     rule_pack_version: RulePackVersion | None = None,
     as_of_date: date | None = None,
+    entity: LegalEntity | None = None,
+    tax_period: TaxPeriod | None = None,
+    einvoice_files: list[EInvoiceFile] | None = None,
 ) -> tuple[Review, Job]:
     dataset_versions = dataset_versions or []
-    if document_version is None and not dataset_versions:
-        raise ReviewError("Choose a document, at least one dataset, or both.")
+    einvoice_files = einvoice_files or []
+    if tax_period is not None:
+        if entity is None:
+            entity = tax_period.entity
+        elif tax_period.entity_id != entity.id:
+            raise ReviewError("The tax period belongs to a different entity.")
+    if entity is None and einvoice_files:
+        entity = db.get(LegalEntity, einvoice_files[0].entity_id)
+    if entity is not None and any(v.dataset.entity_id != entity.id for v in dataset_versions):
+        raise ReviewError("Every dataset must belong to the entity under review.")
+    if entity is not None and any(f.entity_id != entity.id for f in einvoice_files):
+        raise ReviewError("Every e-invoice must belong to the entity under review.")
+    if document_version is None and not dataset_versions and not einvoice_files and not entity:
+        raise ReviewError("Choose a document, datasets, e-invoices or an entity.")
     if document_version is not None and document_version.status != VersionStatus.READY:
         raise ReviewError("The document has not finished processing.")
     if checklist_version.state != ChecklistState.PUBLISHED:
@@ -130,6 +166,8 @@ def create_review(
         checklist_version_id=checklist_version.id,
         rule_pack_version_id=rule_pack_version.id if rule_pack_version else None,
         as_of_date=as_of_date,
+        entity_id=entity.id if entity else None,
+        tax_period_id=tax_period.id if tax_period else None,
         status=ReviewStatus.DRAFT,
         is_demo=bool(doc and doc.is_demo) or any(v.dataset.is_demo for v in dataset_versions),
         created_by_id=user_id,
@@ -142,6 +180,8 @@ def create_review(
                 org_id=org_id, review_id=review.id, kind=v.dataset.kind, dataset_version_id=v.id
             )
         )
+    for f in {f.id: f for f in einvoice_files}.values():
+        db.add(ReviewEInvoice(org_id=org_id, review_id=review.id, file_id=f.id))
     db.flush()
     audit.record(
         db,
@@ -155,6 +195,9 @@ def create_review(
             "document_version": document_version.version_number if document_version else None,
             "dataset_version_ids": [str(v.id) for v in dataset_versions],
             "rule_pack_version": rule_pack_version.version_number if rule_pack_version else None,
+            "entity_id": str(entity.id) if entity else None,
+            "tax_period_id": str(tax_period.id) if tax_period else None,
+            "einvoice_files": len(einvoice_files),
         },
     )
     job = start_run(db, review, user_id)
@@ -284,13 +327,63 @@ def _data_context(
             )
         return rule_packs.resolve(db, org_id, pack_id, key, as_of)
 
+    def resolve_file(key: str) -> rule_packs.ResolvedFile:
+        if pack_id is None:
+            raise rule_packs.RuleNotFound(
+                f"This check needs rule pack file '{key}', but the review has no rule pack."
+            )
+        return rule_packs.resolve_file(db, org_id, pack_id, key)
+
+    period = (
+        (review.tax_period.period_start, review.tax_period.period_end)
+        if review.tax_period
+        else None
+    )
+    entity = _entity_info(db, review, org_id)
     inputs: dict[str, Any] = {
         "datasets": described,
         "rule_pack_version_id": str(pack_id) if pack_id else None,
         "as_of_date": as_of.isoformat(),
         "as_of_source": source,
+        "tax_period": [period[0].isoformat(), period[1].isoformat()] if period else None,
+        "entity": entity.snapshot() if entity else None,
     }
-    return DataContext(datasets=loaded, resolve_rule=resolve_rule, as_of=as_of), inputs
+    ctx = DataContext(
+        datasets=loaded,
+        resolve_rule=resolve_rule,
+        as_of=as_of,
+        period=period,
+        entity=entity,
+        resolve_file=resolve_file,
+    )
+    einvoice_inputs.attach(db, review, org_id, ctx, inputs)
+    return ctx, inputs
+
+
+def _entity_info(db: Session, review: Review, org_id: uuid.UUID) -> EntityInfo | None:
+    e = review.entity
+    if e is None:
+        return None
+    if e.org_id != org_id:
+        raise PermanentJobError("The review's entity is not available.")
+    codes, accounts = tax_setup.vat_setup(db, org_id, e.id)
+    by_role: dict[str, list[str]] = {}
+    for a in accounts:
+        by_role.setdefault(a.role.value, []).append(a.account_code)
+    return EntityInfo(
+        id=str(e.id),
+        name=e.name,
+        country=e.country,
+        size_basis_amount=e.size_basis_amount,
+        size_basis_currency=e.size_basis_currency,
+        size_basis_year=e.size_basis_year,
+        go_live_override=e.einvoice_go_live_override,
+        go_live_note=e.einvoice_go_live_note or "",
+        tax_codes={
+            (c.register.value, c.tax_code): (c.treatment.value, c.recoverable) for c in codes
+        },
+        tax_accounts={k: tuple(sorted(v)) for k, v in by_role.items()},
+    )
 
 
 @handler(JobKind.REVIEW_RUN)
@@ -343,7 +436,7 @@ def execute_run(db: Session, job: Job, checkpoint: Checkpoint) -> None:
     inputs["document_sha256"] = version.sha256 if version else None
     started = _now()
     warnings: list[str] = list(version.extraction_warnings or []) if version else []
-    evaluations: list[tuple[Requirement, CheckEvaluation, dict[str, Any]]] = []
+    evaluations: list[tuple[Requirement, CheckEvaluation, dict[str, Any], list[FindingGroup]]] = []
     snapshot: list[dict[str, Any]] = []
     total = max(1, len(requirements))
     for i, req in enumerate(requirements):
@@ -352,6 +445,7 @@ def execute_run(db: Session, job: Job, checkpoint: Checkpoint) -> None:
             {"requirement_id": str(req.id), "code": req.code, "check_config": req.check_config}
         )
         meta: dict[str, Any] = {}
+        groups: list[FindingGroup] = []
         try:
             config = parse_check(req.check_config, run.engine_version)
         except (PydanticValidationError, ValueError) as exc:
@@ -368,9 +462,7 @@ def execute_run(db: Session, job: Job, checkpoint: Checkpoint) -> None:
         else:
             if is_data_check(config):
                 missing = sorted(
-                    k.value
-                    for k in datasets_used(config)  # type: ignore[arg-type]
-                    if k not in data_ctx.datasets
+                    k.value for k in datasets_used(config) if k not in data_ctx.datasets
                 )
                 if missing:
                     ev = CheckEvaluation(
@@ -379,11 +471,12 @@ def execute_run(db: Session, job: Job, checkpoint: Checkpoint) -> None:
                         f"Not run: this review has no {', '.join(missing)} dataset.",
                     )
                 else:
-                    dev = evaluate_data(config, data_ctx)  # type: ignore[arg-type]
+                    dev = evaluate_data(config, data_ctx)
                     ev = CheckEvaluation(
                         dev.outcome, dev.needs_attention, dev.message, dev.evidence
                     )
                     meta = dev.meta
+                    groups = dev.groups
                     for w in dev.meta.get("warnings", []):
                         if f"{req.code}: {w}" not in warnings:
                             warnings.append(f"{req.code}: {w}")
@@ -392,8 +485,8 @@ def execute_run(db: Session, job: Job, checkpoint: Checkpoint) -> None:
                     CheckOutcome.NOT_APPLICABLE, False, "Not run: this review has no document."
                 )
             else:
-                ev = evaluate(config, doc_ctx)  # type: ignore[arg-type]
-        evaluations.append((req, ev, meta))
+                ev = evaluate(config, doc_ctx)
+        evaluations.append((req, ev, meta, groups))
     checkpoint(95)
 
     # Write everything in one transaction. Unique constraints back this up.
@@ -401,13 +494,13 @@ def execute_run(db: Session, job: Job, checkpoint: Checkpoint) -> None:
         db.scalars(select(CheckResult.requirement_id).where(CheckResult.run_id == run.id))
     )
     existing_findings = set(
-        db.scalars(
-            select(Finding.requirement_id).where(
+        db.execute(
+            select(Finding.requirement_id, Finding.finding_key).where(
                 Finding.review_id == review.id, Finding.requirement_id.is_not(None)
             )
-        )
+        ).tuples()
     )
-    for req, ev, meta in evaluations:
+    for req, ev, meta, groups in evaluations:
         if req.id in existing_results:
             continue
         result = CheckResult(
@@ -423,18 +516,29 @@ def execute_run(db: Session, job: Job, checkpoint: Checkpoint) -> None:
         )
         db.add(result)
         db.flush()
-        if ev.needs_attention and req.id not in existing_findings:
+        if not ev.needs_attention:
+            continue
+        # A check may raise one finding per group (e.g. per failed invoice rule).
+        planned = (
+            [(g.key, f"{g.title}: {req.title}"[:300], g.message, g.evidence) for g in groups]
+            if groups
+            else [("", _attention_title(req, ev), ev.message, ev.evidence)]
+        )
+        for key, title, message, evidence in planned:
+            if (req.id, key) in existing_findings:
+                continue
             db.add(
                 Finding(
                     org_id=job.org_id,
                     review_id=review.id,
                     requirement_id=req.id,
+                    finding_key=key[:200],
                     check_result_id=result.id,
-                    title=_attention_title(req, ev),
-                    description=f"{ev.message} {req.description}".strip()[:5000],
+                    title=title,
+                    description=f"{message} {req.description}".strip()[:5000],
                     severity=req.severity,
                     automated_outcome=ev.outcome,
-                    evidence=ev.evidence,
+                    evidence=evidence,
                     status=FindingStatus.PROPOSED,
                 )
             )
@@ -582,6 +686,24 @@ def _rule_pack_scope(db: Session, review: Review) -> dict[str, Any] | None:
 
 
 def _report_evidence(e: dict[str, Any]) -> dict[str, Any]:
+    if e.get("type") == "xml":
+        return {
+            k: e.get(k)
+            for k in (
+                "type",
+                "einvoice_file_id",
+                "filename",
+                "sha256",
+                "invoice_number",
+                "xpath",
+                "line",
+                "value",
+                "label",
+                "detail",
+            )
+        }
+    if e.get("type") == "computation":
+        return {"type": "computation", "label": e.get("label"), "detail": e.get("detail", {})}
     if e.get("type") == "dataset_rows":
         return {
             "type": "dataset_rows",
@@ -600,6 +722,73 @@ def _report_evidence(e: dict[str, Any]) -> dict[str, Any]:
         "paragraph_number": e.get("paragraph_number"),
         "quote": e.get("quote"),
     }
+
+
+def _tax_scope(db: Session, review: Review) -> dict[str, Any]:
+    e, tp = review.entity, review.tax_period
+    files = list(
+        db.scalars(
+            select(EInvoiceFile)
+            .join(ReviewEInvoice, ReviewEInvoice.file_id == EInvoiceFile.id)
+            .where(ReviewEInvoice.review_id == review.id)
+            .order_by(EInvoiceFile.filename)
+        )
+    )
+    return {
+        "entity": {
+            "name": e.name,
+            "country": e.country,
+            "trn": f"••••{e.trn_last4}" if e.trn_last4 else None,  # masked
+            "functional_currency": e.functional_currency,
+        }
+        if e
+        else None,
+        "tax_period": {
+            "tax_type": tp.tax_type.value,
+            "frequency": tp.frequency.value,
+            "period_start": tp.period_start.isoformat(),
+            "period_end": tp.period_end.isoformat(),
+            "status": tp.status.value,
+        }
+        if tp
+        else None,
+        "einvoice_count": len(files),
+        "einvoices": [
+            {
+                "filename": f.filename,
+                "invoice_number": f.invoice_number,
+                "issue_date": f.issue_date.isoformat() if f.issue_date else None,
+                "sha256": f.sha256,
+            }
+            for f in files[:200]
+        ],
+    }
+
+
+def _vat_pack(results: list[CheckResult]) -> dict[str, Any]:
+    """Reconciliation tables and every rule and file used, from the run's check results."""
+    pack: dict[str, Any] = {"box_table": [], "gl_table": [], "unknown_boxes": []}
+    rules: dict[str, dict[str, Any]] = {}
+    files: dict[str, dict[str, Any]] = {}
+    for r in sorted(results, key=lambda r: r.requirement.ordinal):
+        meta = r.meta or {}
+        if meta.get("box_table"):
+            pack["box_table"] = meta["box_table"]
+            pack["unknown_boxes"] = meta.get("unknown_boxes", [])
+            pack["box_tolerance"] = meta.get("tolerance")
+        if meta.get("gl_table"):
+            pack["gl_table"] = meta["gl_table"]
+            pack["gl_tolerance"] = meta.get("tolerance")
+        for rule in meta.get("rules") or []:
+            rules.setdefault(str(rule.get("rule_id")), rule)
+        for f in meta.get("files") or []:
+            files.setdefault(str(f.get("sha256")), f)
+    pack["rules_used"] = sorted(rules.values(), key=lambda x: str(x.get("rule_key")))
+    pack["files_used"] = list(files.values())
+    pack["unverified_count"] = sum(
+        1 for x in [*rules.values(), *files.values()] if x.get("verification_status") != "verified"
+    )
+    return pack
 
 
 def build_snapshot(
@@ -640,6 +829,12 @@ def build_snapshot(
         limitations[1] = OCR_LIMITATION
     if review.datasets:
         limitations.insert(1, DATA_LIMITATION)
+    tax_scope = _tax_scope(db, review)
+    vat_pack = _vat_pack(results)
+    if tax_scope["einvoice_count"]:
+        limitations.insert(1, EINVOICE_LIMITATION)
+    if vat_pack["box_table"] or vat_pack["gl_table"]:
+        limitations.insert(1, VAT_LIMITATION)
     if not ai_findings:
         limitations.insert(2, AI_DISABLED_LIMITATION)
     else:
@@ -669,7 +864,9 @@ def build_snapshot(
             "checklist_version": cv.version_number,
             "checklist_disclaimer": cv.disclaimer,
             "requirement_count": req_count,
+            **tax_scope,
         },
+        "vat_pack": vat_pack,
         "engine": {
             "version": run.engine_version if run else None,
             "mode": run.engine_mode if run else "none",

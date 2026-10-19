@@ -39,6 +39,10 @@ celery_app.conf.update(
             "task": "saqient.send_due_reminders",
             "schedule": crontab(hour=5, minute=0),  # 09:00 in the UAE (UTC+4)
         },
+        "einvoice-monitors": {
+            "task": "saqient.run_due_monitors",
+            "schedule": crontab(minute=15),  # hourly; each monitor keeps its own cadence
+        },
     },
 )
 
@@ -59,3 +63,15 @@ def send_due_reminders_task() -> dict[str, int]:
     with get_sessionmaker()() as db:
         run = send_due_reminders(db)
     return {"sent": run.sent, "failed": run.failed, "skipped": run.skipped}
+
+
+@celery_app.task(name="saqient.run_due_monitors")
+def run_due_monitors_task() -> dict[str, int]:
+    from app.services.jobs import enqueue
+    from app.services.monitors import run_due
+
+    with get_sessionmaker()() as db:
+        out = run_due(db)
+        for job in out.jobs:
+            enqueue(job)
+    return {"ran": out.ran, "failed": out.failed, "reviews": len(out.jobs)}

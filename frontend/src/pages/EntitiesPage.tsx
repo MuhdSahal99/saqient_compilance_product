@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Archive, ArchiveRestore, Building, Landmark, Loader2, Pencil, Plus } from "lucide-react";
+import { Archive, ArchiveRestore, Building, Landmark, Loader2, Pencil, Plus, Receipt } from "lucide-react";
 import { toast } from "sonner";
 import { api, qs } from "@/lib/api";
 import type { LegalEntity, TaxGroup } from "@/lib/types";
@@ -16,6 +16,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } f
 import { FieldError, Input, Label, Select } from "@/components/ui/input";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { ConfirmDialog, EmptyState, ErrorState, errorMessage, LoadingState, PageHeader } from "@/components/common";
+import { EntityTaxSetupDialog } from "@/components/entity-tax-setup";
 
 /** IANA zones offered in the form; the backend accepts any valid zone. */
 const TIMEZONES = ["Asia/Dubai", "Asia/Riyadh", "Asia/Qatar", "Asia/Bahrain", "Asia/Kuwait", "Asia/Muscat", "UTC"];
@@ -278,6 +279,7 @@ export function EntitiesPage() {
   const [editing, setEditing] = useState<LegalEntity | "new" | null>(null);
   const [groupOpen, setGroupOpen] = useState(false);
   const [archiving, setArchiving] = useState<LegalEntity | null>(null);
+  const [taxSetupId, setTaxSetupId] = useState<string | null>(null);
   const entities = useQuery({
     queryKey: ["entities", { showInactive }],
     queryFn: () => api<LegalEntity[]>(`/entities${qs({ include_inactive: showInactive })}`),
@@ -341,7 +343,7 @@ export function EntitiesPage() {
                   <TH>{t("entities.currency")}</TH>
                   <TH>{t("entities.fiscalYearEnd")}</TH>
                   <TH>{t("entities.taxGroup")}</TH>
-                  {admin && <TH className="text-end">{t("common.actions")}</TH>}
+                  <TH className="text-end">{t("common.actions")}</TH>
                 </tr>
               </THead>
               <TBody>
@@ -366,23 +368,28 @@ export function EntitiesPage() {
                       {e.fiscal_year_end_day} {monthName(e.fiscal_year_end_month, i18n.language)}
                     </TD>
                     <TD className="text-[13px] text-slate-700">{e.tax_group_name ?? "—"}</TD>
-                    {admin && (
-                      <TD className="text-end">
-                        <div className="flex justify-end gap-1">
-                          <Button size="icon-sm" variant="ghost" onClick={() => setEditing(e)} aria-label={t("entities.editNamed", { name: e.name })}>
-                            <Pencil aria-hidden />
-                          </Button>
-                          <Button
-                            size="icon-sm"
-                            variant="ghost"
-                            onClick={() => (e.is_active ? setArchiving(e) : toggleActive.mutate(e))}
-                            aria-label={t(e.is_active ? "entities.archiveNamed" : "entities.restoreNamed", { name: e.name })}
-                          >
-                            {e.is_active ? <Archive aria-hidden /> : <ArchiveRestore aria-hidden />}
-                          </Button>
-                        </div>
-                      </TD>
-                    )}
+                    <TD className="text-end">
+                      <div className="flex justify-end gap-1">
+                        <Button size="sm" variant="ghost" onClick={() => setTaxSetupId(e.id)} aria-label={t("taxSetup.openNamed", { name: e.name })}>
+                          <Receipt aria-hidden /> {t("taxSetup.open")}
+                        </Button>
+                        {admin && (
+                          <>
+                            <Button size="icon-sm" variant="ghost" onClick={() => setEditing(e)} aria-label={t("entities.editNamed", { name: e.name })}>
+                              <Pencil aria-hidden />
+                            </Button>
+                            <Button
+                              size="icon-sm"
+                              variant="ghost"
+                              onClick={() => (e.is_active ? setArchiving(e) : toggleActive.mutate(e))}
+                              aria-label={t(e.is_active ? "entities.archiveNamed" : "entities.restoreNamed", { name: e.name })}
+                            >
+                              {e.is_active ? <Archive aria-hidden /> : <ArchiveRestore aria-hidden />}
+                            </Button>
+                          </>
+                        )}
+                      </div>
+                    </TD>
                   </TR>
                 ))}
               </TBody>
@@ -432,6 +439,11 @@ export function EntitiesPage() {
         groups={groups.data ?? []}
       />
       <TaxGroupDialog open={groupOpen} onOpenChange={setGroupOpen} />
+      <EntityTaxSetupDialog
+        key={taxSetupId ?? "none"}
+        entity={entities.data?.find((x) => x.id === taxSetupId) ?? null}
+        onOpenChange={(o) => !o && setTaxSetupId(null)}
+      />
       <ConfirmDialog
         open={archiving !== null}
         onOpenChange={(o) => !o && setArchiving(null)}

@@ -23,6 +23,8 @@ import { EntitiesPage } from "@/pages/EntitiesPage";
 import { DatasetsPage } from "@/pages/DatasetsPage";
 import { DatasetDetailPage } from "@/pages/DatasetDetailPage";
 import { RulePacksPage, RulePackVersionPage } from "@/pages/RulePacksPage";
+import { EInvoicesPage } from "@/pages/EInvoicesPage";
+import { TaxCalendarPage } from "@/pages/TaxCalendarPage";
 import { AcceptInvitePage, ForgotPasswordPage, ResetPasswordPage } from "@/pages/PublicAuthPages";
 
 function RequireAuth() {
@@ -78,10 +80,12 @@ export const routes = [
               { path: "/entities", element: <EntitiesPage /> },
               { path: "/datasets", element: <DatasetsPage /> },
               { path: "/datasets/:datasetId", element: <DatasetDetailPage /> },
+              { path: "/einvoices", element: <EInvoicesPage /> },
               { path: "/rule-packs", element: <RulePacksPage /> },
               { path: "/rule-packs/versions/:versionId", element: <RulePackVersionPage /> },
               { path: "/findings", element: <FindingsPage /> },
               { path: "/tasks", element: <TasksPage /> },
+              { path: "/tax-calendar", element: <TaxCalendarPage /> },
               { path: "/reports", element: <ReportsPage /> },
               { path: "/activity", element: <ActivityPage /> },
               { path: "/settings", element: <SettingsPage /> },

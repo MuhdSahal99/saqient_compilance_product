@@ -168,3 +168,20 @@ test("seeded ledger review shows dataset exceptions and the unverified rule", as
   await page.getByRole("navigation").getByRole("link", { name: "Rule packs", exact: true }).click();
   await expect(page.getByText("1 unverified").first()).toBeVisible();
 });
+
+test("seeded e-invoices, e-invoice review and tax calendar", async ({ page }) => {
+  await login(page, "reviewer@alpha.example");
+  await page.getByRole("navigation").getByRole("link", { name: "E-invoices", exact: true }).click();
+  await expect(page.getByText(/Nothing on this page is sent to any e-invoicing platform/)).toBeVisible();
+  await expect(page.getByText("March 2026 e-invoices (synthetic)").first()).toBeVisible();
+
+  await page.getByRole("navigation").getByRole("link", { name: "Reviews", exact: true }).click();
+  await page.getByRole("link", { name: "E-invoice validation and readiness (synthetic demo)" }).click();
+  await expect(page.getByText(/Unverified rule/).first()).toBeVisible();
+  await page.getByRole("list", { name: "Findings" }).getByRole("button", { name: /Mandatory|mandatory|Issue date/ }).first().click();
+  await expect(page.getByText("/inv:Invoice/cbc:IssueDate").first()).toBeVisible();
+
+  await page.getByRole("navigation").getByRole("link", { name: "Tax calendar", exact: true }).click();
+  await expect(page.getByText("VAT return (synthetic)").first()).toBeVisible();
+  await expect(page.getByText("Unverified").first()).toBeVisible();
+});

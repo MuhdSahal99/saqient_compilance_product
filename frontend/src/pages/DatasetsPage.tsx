@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { CheckCircle2, Info, Loader2, Sheet, Table2, Upload, UploadCloud } from "lucide-react";
@@ -19,11 +19,13 @@ import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { DatasetStatusBadge, EmptyState, ErrorState, LoadingState, PageHeader, ProgressBar, SyntheticBadge } from "@/components/common";
 
 const ACCEPT = ".csv,.xlsx,.sta,.mt940,.xml,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/xml,text/xml";
+/** E-invoicing platform results are a JSON export; that kind only takes JSON. */
+const ACCEPT_JSON = ".json,application/json";
 
 const schema = z
   .object({
     entity_id: z.string().min(1),
-    kind: z.enum(["trial_balance", "general_ledger", "sales_register", "purchase_register", "bank_statement"]),
+    kind: z.enum(DATASET_KINDS),
     name: z.string().trim().min(1).max(200),
     period_start: z.string(),
     period_end: z.string(),
@@ -56,6 +58,8 @@ export function DatasetUploadDialog({
     defaultValues: { entity_id: "", kind: "general_ledger", name: "", period_start: "", period_end: "" },
   });
   const busy = progress !== null;
+  const kind = useWatch({ control: form.control, name: "kind" });
+  const jsonOnly = !datasetId && kind === "einvoice_rejections";
 
   const reset = () => {
     setFile(null);
@@ -160,7 +164,7 @@ export function DatasetUploadDialog({
                   ref={inputRef}
                   id="ds-file"
                   type="file"
-                  accept={ACCEPT}
+                  accept={jsonOnly ? ACCEPT_JSON : datasetId ? `${ACCEPT},${ACCEPT_JSON}` : ACCEPT}
                   className="sr-only"
                   disabled={busy}
                   onChange={(e) => {
@@ -185,7 +189,7 @@ export function DatasetUploadDialog({
                     <UploadCloud className="size-5 shrink-0 text-teal-600" aria-hidden />
                     <span className="text-sm text-slate-600">
                       {t("upload.dropzone")}
-                      <span className="block text-xs text-slate-400">CSV · XLSX · MT940 · CAMT.053</span>
+                      <span className="block text-xs text-slate-400">{jsonOnly ? "JSON" : "CSV · XLSX · MT940 · CAMT.053"}</span>
                     </span>
                   </>
                 )}

@@ -16,10 +16,14 @@ from app.api import (
     checklists,
     datasets,
     documents,
+    einvoices,
     entities,
     members,
+    monitors,
     reviews,
     rule_packs,
+    tax_calendar,
+    tax_setup,
     workspace,
 )
 from app.config import get_settings
@@ -113,6 +117,10 @@ def create_app() -> FastAPI:
         rule_packs,
         datasets,
         members,
+        tax_setup,
+        tax_calendar,
+        einvoices,
+        monitors,
     ):
         app.include_router(module.router, prefix="/api")
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import date, datetime
+from decimal import Decimal
 from typing import Any, Generic, Literal, TypeVar
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
@@ -16,12 +17,21 @@ from app.models import (
     DatasetStatus,
     FindingStatus,
     JobStatus,
+    MonitorCadence,
+    MonitorRunStatus,
+    PeriodFrequency,
     ReviewStatus,
     Role,
     RuleValueType,
     RuleVerification,
     Severity,
     SourceVerification,
+    TaskSource,
+    TaskStatus,
+    TaxAccountRole,
+    TaxPeriodStatus,
+    TaxType,
+    VatTreatment,
     VersionStatus,
 )
 
@@ -316,11 +326,26 @@ class ReviewCreateIn(BaseModel):
     dataset_version_ids: list[uuid.UUID] = Field(default_factory=list, max_length=5)
     rule_pack_version_id: uuid.UUID | None = None
     as_of_date: date | None = None
+    entity_id: uuid.UUID | None = Field(
+        default=None, description="The legal entity under review (needed for VAT checks)."
+    )
+    tax_period_id: uuid.UUID | None = Field(
+        default=None, description="Tax period of the entity; sets the period for cut-off checks."
+    )
+    einvoice_batch_ids: list[uuid.UUID] = Field(default_factory=list, max_length=20)
+    einvoice_file_ids: list[uuid.UUID] = Field(default_factory=list, max_length=5000)
 
     @model_validator(mode="after")
     def _has_input(self) -> ReviewCreateIn:
-        if self.document_version_id is None and not self.dataset_version_ids:
-            raise ValueError("choose a document, at least one dataset, or both")
+        if (
+            self.document_version_id is None
+            and not self.dataset_version_ids
+            and not self.einvoice_batch_ids
+            and not self.einvoice_file_ids
+            and self.entity_id is None
+            and self.tax_period_id is None
+        ):
+            raise ValueError("choose a document, datasets, e-invoices or an entity")
         if len(set(self.dataset_version_ids)) != len(self.dataset_version_ids):
             raise ValueError("dataset versions must be distinct")
         return self
@@ -364,6 +389,12 @@ class ReviewOut(BaseModel):
     rule_pack_name: str | None = None
     rule_pack_version_number: int | None = None
     as_of_date: date | None = None
+    entity_id: uuid.UUID | None = None
+    entity_name: str | None = None
+    tax_period_id: uuid.UUID | None = None
+    tax_period_start: date | None = None
+    tax_period_end: date | None = None
+    einvoice_count: int = 0
     checklist_id: uuid.UUID
     checklist_name: str
     checklist_version_id: uuid.UUID
@@ -401,6 +432,9 @@ class FindingOut(BaseModel):
     review_status: ReviewStatus
     requirement_id: uuid.UUID | None
     requirement_code: str | None
+    finding_key: str = Field(
+        default="", description="Set when one requirement raised several findings."
+    )
     source_reference: str | None
     is_manual: bool
     title: str
@@ -600,6 +634,21 @@ class LegalEntityPatch(BaseModel):
     clear_tax_group: bool = False
     is_free_zone: bool | None = None
     is_active: bool | None = None
+    size_basis_amount: Decimal | None = Field(
+        default=None,
+        ge=0,
+        max_digits=20,
+        decimal_places=4,
+        description="Revenue figure used to place the entity in an e-invoicing wave.",
+    )
+    size_basis_currency: str | None = Field(default=None, pattern=_CURRENCY)
+    size_basis_year: int | None = Field(default=None, ge=2000, le=2100)
+    clear_size_basis: bool = False
+    einvoice_go_live_override: date | None = Field(
+        default=None, description="A go-live date notified to this taxpayer directly."
+    )
+    einvoice_go_live_note: str | None = Field(default=None, max_length=2000)
+    clear_go_live_override: bool = False
 
 
 class LegalEntityOut(BaseModel):
@@ -615,8 +664,130 @@ class LegalEntityOut(BaseModel):
     tax_group_name: str | None
     is_free_zone: bool
     is_active: bool
+    size_basis_amount: Decimal | None = None
+    size_basis_currency: str | None = None
+    size_basis_year: int | None = None
+    einvoice_go_live_override: date | None = None
+    einvoice_go_live_note: str = ""
     created_at: datetime
     updated_at: datetime
+
+
+# ---------------------------------------------------------------- tax setup
+
+
+class TaxPeriodIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    tax_type: TaxType = TaxType.VAT
+    frequency: PeriodFrequency
+    period_start: date
+    period_end: date
+
+    @model_validator(mode="after")
+    def _order(self) -> TaxPeriodIn:
+        if self.period_end < self.period_start:
+            raise ValueError("period_end is before period_start")
+        if (self.period_end - self.period_start).days > 400:
+            raise ValueError("a tax period cannot exceed about one year")
+        return self
+
+
+class TaxPeriodPatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    status: TaxPeriodStatus
+
+
+class TaxPeriodOut(ORM):
+    id: uuid.UUID
+    entity_id: uuid.UUID
+    tax_type: TaxType
+    frequency: PeriodFrequency
+    period_start: date
+    period_end: date
+    status: TaxPeriodStatus
+    created_at: datetime
+
+
+class TaxCodeIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    register: Literal["sales_register", "purchase_register"]
+    tax_code: str = Field(min_length=1, max_length=40)
+    treatment: VatTreatment
+    recoverable: bool = True
+    description: str = Field(default="", max_length=300)
+
+
+class TaxAccountIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    role: TaxAccountRole
+    account_code: str = Field(min_length=1, max_length=60)
+
+
+class VatSetupIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    tax_codes: list[TaxCodeIn] = Field(default_factory=list, max_length=500)
+    tax_accounts: list[TaxAccountIn] = Field(default_factory=list, max_length=100)
+
+
+class TaxCodeOut(ORM):
+    register: DatasetKind
+    tax_code: str
+    treatment: VatTreatment
+    recoverable: bool
+    description: str
+
+
+class TaxAccountOut(ORM):
+    role: TaxAccountRole
+    account_code: str
+
+
+class VatSetupOut(BaseModel):
+    entity_id: uuid.UUID
+    tax_codes: list[TaxCodeOut]
+    tax_accounts: list[TaxAccountOut]
+
+
+# ---------------------------------------------------------------- e-invoices
+
+
+class EInvoiceFileOut(ORM):
+    id: uuid.UUID
+    batch_id: uuid.UUID
+    entity_id: uuid.UUID
+    filename: str
+    size_bytes: int
+    sha256: str
+    profile: str
+    document_type: str
+    invoice_number: str | None
+    invoice_uuid: str | None
+    issue_date: date | None
+    type_code: str | None
+    icv: int | None
+    currency: str | None
+    payable_amount: Decimal | None
+    tax_amount: Decimal | None
+    parse_error: str | None
+    created_at: datetime
+
+
+class EInvoiceBatchOut(ORM):
+    id: uuid.UUID
+    entity_id: uuid.UUID
+    entity_name: str = ""
+    name: str
+    original_filename: str
+    raw_sha256: str
+    file_count: int
+    duplicate_count: int
+    failed_count: int
+    is_demo: bool
+    created_at: datetime
+
+
+class EInvoiceBatchDetailOut(EInvoiceBatchOut):
+    files: list[EInvoiceFileOut] = []
 
 
 # ---------------------------------------------------------------- rule packs
@@ -639,7 +810,11 @@ class RuleIn(BaseModel):
     rule_key: str = Field(min_length=1, max_length=120, pattern=_RULE_KEY)
     title: str = Field(min_length=1, max_length=300)
     value_type: RuleValueType
-    value: str = Field(min_length=1, max_length=200, description="Parsed by value_type.")
+    value: str = Field(
+        min_length=1,
+        max_length=65536,
+        description="Parsed by value_type. Scalars up to 200 characters; json up to 64 KB.",
+    )
     unit: str = Field(default="", max_length=40)
     effective_from: date
     effective_to: date | None = None
@@ -648,6 +823,12 @@ class RuleIn(BaseModel):
     )
     source_note: str = Field(default="", max_length=4000)
     todo: str = Field(default="", max_length=4000, description="Open question; keeps it draft.")
+
+    @model_validator(mode="after")
+    def _scalar_length(self) -> RuleIn:
+        if self.value_type is not RuleValueType.JSON and len(self.value) > 200:
+            raise ValueError("scalar rule values are limited to 200 characters")
+        return self
 
 
 class RulesReplaceIn(BaseModel):
@@ -685,11 +866,29 @@ class RulePackVersionOut(BaseModel):
     unverified_count: int = 0
 
 
+class RulePackFileOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    file_key: str
+    kind: str
+    title: str
+    filename: str
+    entry_point: str
+    size_bytes: int
+    sha256: str
+    source_url: str | None
+    source_note: str
+    verification_status: RuleVerification
+    verified_at: datetime | None
+    created_at: datetime
+
+
 class RulePackVersionDetailOut(RulePackVersionOut):
     pack_name: str
     jurisdiction: str
     is_synthetic: bool
     rules: list[RuleOut]
+    files: list[RulePackFileOut] = []
 
 
 class RulePackOut(BaseModel):
@@ -781,3 +980,148 @@ class DatasetRowsOut(BaseModel):
     columns: list[str]
     rows: list[dict[str, Any]] = Field(description="Amounts and dates as strings.")
     total: int
+
+
+# ---------------------------------------------------------------- e-invoice monitors
+
+
+class EInvoiceMonitorIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    entity_id: uuid.UUID
+    name: str = Field(min_length=1, max_length=200)
+    checklist_version_id: uuid.UUID
+    rule_pack_version_id: uuid.UUID | None = None
+    sample_size: int = Field(ge=1, le=500, description="Invoices validated per run.")
+    cadence: MonitorCadence
+    first_run_at: datetime | None = Field(
+        default=None, description="Defaults to one cadence step from now."
+    )
+
+
+class EInvoiceMonitorPatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    sample_size: int | None = Field(default=None, ge=1, le=500)
+    is_active: bool | None = None
+
+
+class EInvoiceMonitorOut(ORM):
+    id: uuid.UUID
+    entity_id: uuid.UUID
+    entity_name: str = ""
+    name: str
+    checklist_version_id: uuid.UUID
+    rule_pack_version_id: uuid.UUID | None
+    sample_size: int
+    cadence: MonitorCadence
+    seed: str
+    is_active: bool
+    next_run_at: datetime
+    last_run_at: datetime | None
+    covered_until: datetime | None
+    created_at: datetime
+
+
+class EInvoiceMonitorRunOut(ORM):
+    id: uuid.UUID
+    monitor_id: uuid.UUID
+    review_id: uuid.UUID | None
+    window_start: datetime | None
+    window_end: datetime
+    population: int
+    sampled: int
+    seed: str
+    sample_method: str
+    status: MonitorRunStatus
+    message: str
+    created_at: datetime
+
+
+# ---------------------------------------------------------------- tax calendar and tasks
+
+
+class TaxCalendarGenerateIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    rule_pack_version_id: uuid.UUID
+    prefix: str = Field(
+        min_length=1,
+        max_length=80,
+        pattern=r"^[a-z0-9_]+(\.[a-z0-9_]+)*$",
+        description="Rule key prefix, e.g. 'ae.vat'; reads <prefix>.obligations.",
+    )
+    start: date
+    end: date
+    owner_id: uuid.UUID | None = None
+    include_einvoicing: bool = Field(
+        default=True, description="Also add go-live and milestones from the waves rule."
+    )
+    waves_rule: str | None = Field(
+        default=None,
+        max_length=120,
+        pattern=r"^[a-z0-9_]+(\.[a-z0-9_]+)*$",
+        description="Defaults to <prefix>.go_live_waves.",
+    )
+
+
+class TaskOut(BaseModel):
+    id: uuid.UUID
+    source_kind: TaskSource
+    source_id: uuid.UUID | None
+    entity_id: uuid.UUID | None
+    entity_name: str | None
+    title: str
+    description: str
+    owner_id: uuid.UUID | None
+    owner_name: str | None
+    due_date: date | None
+    is_overdue: bool
+    status: TaskStatus
+    completion_note: str
+    completed_at: datetime | None
+    created_at: datetime
+
+
+class TaxObligationOut(BaseModel):
+    id: uuid.UUID
+    entity_id: uuid.UUID
+    entity_name: str
+    tax_period_id: uuid.UUID | None
+    obligation_key: str
+    label: str
+    tax_type: str
+    period_start: date
+    period_end: date
+    due_date: date
+    formula: str
+    rule_key: str
+    rule_pack_version_id: uuid.UUID
+    rule_verified: bool
+    rule_snapshot: dict[str, Any]
+    task: TaskOut | None
+
+
+class TaxCalendarResultOut(BaseModel):
+    created: int
+    updated: int
+    unchanged: int
+    periods_created: int
+    warnings: list[str]
+    obligations: list[TaxObligationOut]
+
+
+class TaskIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    title: str = Field(min_length=1, max_length=300)
+    description: str = Field(default="", max_length=4000)
+    entity_id: uuid.UUID | None = None
+    owner_id: uuid.UUID | None = None
+    due_date: date | None = None
+
+
+class TaskPatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    status: TaskStatus | None = None
+    owner_id: uuid.UUID | None = None
+    clear_owner: bool = False
+    due_date: date | None = None
+    note: str | None = Field(default=None, max_length=4000)

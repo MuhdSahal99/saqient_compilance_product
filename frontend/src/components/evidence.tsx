@@ -1,7 +1,7 @@
 import { useTranslation } from "react-i18next";
-import { Table2 } from "lucide-react";
-import { isDatasetEvidence, type AnyEvidence, type DatasetRowsEvidence, type Evidence } from "@/lib/types";
-import { evidenceLocation } from "@/lib/evidence";
+import { Calculator, Download, FileCode, Table2 } from "lucide-react";
+import type { AnyEvidence, ComputationEvidence, DatasetRowsEvidence, Evidence, XmlEvidence } from "@/lib/types";
+import { detailText, evidenceLocation } from "@/lib/evidence";
 
 export function EvidenceQuote({ evidence, onLocate }: { evidence: Evidence; onLocate?: (e: Evidence) => void }) {
   const { t } = useTranslation();
@@ -96,6 +96,108 @@ export function DatasetRowsTable({ evidence }: { evidence: DatasetRowsEvidence }
   );
 }
 
+function DetailList({ detail }: { detail: [string, unknown][] }) {
+  if (detail.length === 0) return null;
+  return (
+    <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 px-3.5 py-2 text-xs">
+      {detail.map(([k, v]) => (
+        <div key={k} className="contents">
+          <dt className="text-slate-500">{k}</dt>
+          <dd className="break-words font-mono tabular-nums text-slate-800" dir="ltr">
+            {detailText(v)}
+          </dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+/** A location in a stored e-invoice XML file, with a link to download the exact bytes. */
+export function XmlEvidenceCard({ evidence }: { evidence: XmlEvidence }) {
+  const { t } = useTranslation();
+  const detail = Object.entries(evidence.detail ?? {});
+  return (
+    <figure className="overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-xs">
+      <figcaption className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-3.5 py-2.5 text-xs text-slate-500">
+        <span className="inline-flex min-w-0 items-center gap-1.5 font-medium text-slate-700">
+          <FileCode className="size-3.5 shrink-0 text-slate-400" aria-hidden />
+          <span className="truncate" dir="auto">
+            {evidence.invoice_number ?? evidence.filename}
+          </span>
+          {evidence.invoice_number && (
+            <span className="truncate font-normal text-slate-500" dir="ltr">
+              · {evidence.filename}
+            </span>
+          )}
+        </span>
+        <a
+          href={`/api/einvoice-files/${evidence.einvoice_file_id}/download`}
+          className="inline-flex items-center gap-1 rounded-md bg-teal-50 px-1.5 py-0.5 font-medium text-teal-700 transition-colors hover:bg-teal-100"
+        >
+          <Download className="size-3" aria-hidden />
+          {t("evidence.downloadXml")}
+        </a>
+      </figcaption>
+      <div className="space-y-1.5 px-3.5 py-2.5 text-xs">
+        <p className="text-[13px] text-slate-700">{evidence.label}</p>
+        <p className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+          <span className="text-slate-500">{t("evidence.xpath")}</span>
+          <span className="break-all rounded bg-slate-50 px-1.5 py-0.5 font-mono text-[11.5px] text-slate-800 ring-1 ring-slate-200/80" dir="ltr">
+            {evidence.xpath}
+          </span>
+          {evidence.line != null && <span className="text-slate-500">{t("evidence.line", { n: evidence.line })}</span>}
+        </p>
+        {evidence.value != null && (
+          <p className="flex flex-wrap items-baseline gap-x-2">
+            <span className="text-slate-500">{t("evidence.value")}</span>
+            <span className="break-all font-mono text-slate-800" dir="ltr">
+              {evidence.value}
+            </span>
+          </p>
+        )}
+      </div>
+      {detail.length > 0 && (
+        <div className="border-t border-slate-100">
+          <DetailList detail={detail} />
+        </div>
+      )}
+      <p className="border-t border-slate-100 px-3.5 py-1.5 font-mono text-[10px] text-slate-400" dir="ltr" title={t("evidence.sha256")}>
+        SHA-256 {evidence.sha256}
+      </p>
+    </figure>
+  );
+}
+
+const COMPUTATION_ORDER = ["expected", "returned", "gl", "difference", "formula"];
+
+/** A recomputed figure: what the data gives, what was reported, the difference and the formula. */
+export function ComputationEvidenceCard({ evidence }: { evidence: ComputationEvidence }) {
+  const entries = Object.entries(evidence.detail ?? {});
+  const rank = (k: string) => {
+    const i = COMPUTATION_ORDER.indexOf(k);
+    return i === -1 ? COMPUTATION_ORDER.length : i;
+  };
+  entries.sort(([a], [b]) => rank(a) - rank(b));
+  return (
+    <figure className="overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-xs">
+      <figcaption className="flex items-center gap-1.5 border-b border-slate-100 px-3.5 py-2.5 text-xs font-medium text-slate-700">
+        <Calculator className="size-3.5 text-slate-400" aria-hidden />
+        <span dir="auto">{evidence.label}</span>
+      </figcaption>
+      <DetailList detail={entries} />
+    </figure>
+  );
+}
+
 export function EvidenceItem({ evidence, onLocate }: { evidence: AnyEvidence; onLocate?: (e: Evidence) => void }) {
-  return isDatasetEvidence(evidence) ? <DatasetRowsTable evidence={evidence} /> : <EvidenceQuote evidence={evidence} onLocate={onLocate} />;
+  switch (evidence.type) {
+    case "dataset_rows":
+      return <DatasetRowsTable evidence={evidence} />;
+    case "xml":
+      return <XmlEvidenceCard evidence={evidence} />;
+    case "computation":
+      return <ComputationEvidenceCard evidence={evidence} />;
+    default:
+      return <EvidenceQuote evidence={evidence} onLocate={onLocate} />;
+  }
 }

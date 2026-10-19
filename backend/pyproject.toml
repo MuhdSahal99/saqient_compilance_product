@@ -29,6 +29,7 @@ dependencies = [
   "openpyxl>=3.1.5,<4",
   "rapidfuzz>=3.10,<4",
   "pypdfium2>=4.30,<6",
+  "lxml>=6.0,<7",
 ]
 
 [project.optional-dependencies]

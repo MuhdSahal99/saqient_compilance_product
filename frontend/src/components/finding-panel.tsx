@@ -287,7 +287,10 @@ export function FindingPanel({ finding, onLocate }: { finding: Finding; onLocate
           <SeverityBadge severity={finding.severity} />
           <FindingStatusBadge status={finding.status} />
           {finding.requirement_code && (
-            <code className="rounded-md bg-slate-100 px-1.5 py-0.5 font-mono text-[11px] text-slate-600">{finding.requirement_code}</code>
+            <code className="rounded-md bg-slate-100 px-1.5 py-0.5 font-mono text-[11px] text-slate-600" dir="ltr">
+              {finding.requirement_code}
+              {finding.finding_key ? ` · ${finding.finding_key}` : ""}
+            </code>
           )}
           {finding.is_manual && <Badge>{t("findings.manual")}</Badge>}
           {finding.ai_suggestion_id && (

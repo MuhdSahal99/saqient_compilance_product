@@ -19,8 +19,15 @@ from typing import IO
 import polars as pl
 from defusedxml import ElementTree as DET
 
-FORMATS = ("csv", "xlsx", "mt940", "camt053")
-_EXT = {"csv": "csv", "xlsx": "xlsx", "sta": "mt940", "mt940": "mt940", "xml": "camt053"}
+FORMATS = ("csv", "xlsx", "mt940", "camt053", "asp_json")
+_EXT = {
+    "csv": "csv",
+    "xlsx": "xlsx",
+    "sta": "mt940",
+    "mt940": "mt940",
+    "xml": "camt053",
+    "json": "asp_json",
+}
 _MIMES = {
     "csv": {
         "text/csv",
@@ -35,6 +42,7 @@ _MIMES = {
     },
     "mt940": {"text/plain", "application/octet-stream"},
     "camt053": {"application/xml", "text/xml", "application/octet-stream"},
+    "asp_json": {"application/json", "text/plain", "application/octet-stream"},
 }
 MAX_XLSX_UNCOMPRESSED = 400 * 1024 * 1024
 MAX_COLUMNS = 200
@@ -65,6 +73,8 @@ def detect_format(filename: str, declared_mime: str, data: bytes, kind: str) -> 
         raise DatasetFileError("Unsupported file type. Upload CSV, XLSX, MT940 or CAMT.053 XML.")
     if fmt in ("mt940", "camt053") and kind != "bank_statement":
         raise DatasetFileError("MT940 and CAMT.053 files can only be bank statements.")
+    if fmt == "asp_json" and kind != "einvoice_rejections":
+        raise DatasetFileError("JSON validation results can only be e-invoice rejection files.")
     mime = (declared_mime or "application/octet-stream").split(";")[0].strip().lower()
     if mime not in _MIMES[fmt]:
         raise DatasetFileError(f"The file's declared type ({mime}) does not match .{ext}.")
@@ -178,6 +188,9 @@ def read_table(data: bytes, file_format: str, max_rows: int) -> RawTable:
         table.fixed_mapping = {c: c for c in table.frame.columns}
     elif file_format == "camt053":
         table = RawTable(parse_camt053(data), "camt053")
+        table.fixed_mapping = {c: c for c in table.frame.columns}
+    elif file_format == "asp_json":
+        table = RawTable(parse_validation_json(data), "asp_json")
         table.fixed_mapping = {c: c for c in table.frame.columns}
     else:
         frame = _read_csv(data) if file_format == "csv" else _read_xlsx(data)
@@ -313,3 +326,80 @@ def parse_camt053(data: bytes) -> pl.DataFrame:
     if not rows:
         raise DatasetFileError("The CAMT.053 file has no entries.")
     return pl.DataFrame(rows, schema={k: pl.String for k in rows[0]})
+
+
+# ------------------------------------------------------------------ e-invoice platform results
+
+_VALIDATION_COLUMNS = (
+    "invoice_number",
+    "invoice_uuid",
+    "invoice_hash",
+    "status",
+    "message_type",
+    "error_code",
+    "message",
+)
+_MESSAGE_LISTS = (("errorMessages", "error"), ("warningMessages", "warning"))
+
+
+def _s(v: object, limit: int = 2000) -> str | None:
+    if v is None or isinstance(v, (dict, list)):
+        return None
+    return str(v)[:limit]
+
+
+def parse_validation_json(data: bytes) -> pl.DataFrame:
+    """Flatten platform validation results (one row per error or warning).
+
+    Accepts a JSON array of results, or an object with a ``results`` array. Each
+    result is shaped like a clearance/reporting response: ``uuid``,
+    ``invoiceHash``, optional ``invoiceNumber``, a status and
+    ``validationResults`` with ``errorMessages`` / ``warningMessages`` lists of
+    ``{code, message}``. A result without messages becomes one row.
+    """
+    import json
+
+    try:
+        doc = json.loads(_decode_text(data))
+    except ValueError as exc:
+        raise DatasetFileError("The JSON file could not be read.") from exc
+    items = doc.get("results") if isinstance(doc, dict) else doc
+    if isinstance(doc, dict) and items is None:
+        items = [doc]
+    if not isinstance(items, list):
+        raise DatasetFileError("Expected a list of validation results.")
+    rows: list[dict[str, str | None]] = []
+    for item in items:
+        if not isinstance(item, dict):
+            raise DatasetFileError("Each validation result must be an object.")
+        vr = (
+            item.get("validationResults") if isinstance(item.get("validationResults"), dict) else {}
+        )
+        status = (
+            item.get("clearanceStatus")
+            or item.get("reportingStatus")
+            or item.get("status")
+            or (vr or {}).get("status")
+        )
+        base = {
+            "invoice_number": _s(item.get("invoiceNumber") or item.get("invoice_number")),
+            "invoice_uuid": _s(item.get("uuid") or item.get("invoiceUuid")),
+            "invoice_hash": _s(item.get("invoiceHash")),
+            "status": _s(status) or "UNKNOWN",
+        }
+        found = False
+        for key, kind in _MESSAGE_LISTS:
+            for m in (vr or {}).get(key) or []:
+                if isinstance(m, dict):
+                    found = True
+                    rows.append(
+                        {
+                            **base,
+                            "message_type": kind,
+                            "error_code": _s(m.get("code"), 200),
+                            "message": _s(m.get("message")),
+                        }
+                    )
+        if not found:
+            rows.append({**base, "message_type": None, "error_code": None, "message": None})
+    return pl.DataFrame(rows, schema={c: pl.String for c in _VALIDATION_COLUMNS})

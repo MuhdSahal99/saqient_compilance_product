@@ -29,6 +29,14 @@ def _row_ids(ids: list[Any], total: Any) -> str:
 
 
 def _evidence_label(e: dict[str, Any]) -> str:
+    if e.get("type") == "xml":
+        line = f" (line {e['line']})" if e.get("line") else ""
+        return (
+            f"E-invoice {e.get('invoice_number') or e.get('filename')} · {e.get('xpath')}{line}"
+            f" · SHA-256 {str(e.get('sha256') or '')[:12]}…"
+        )
+    if e.get("type") == "computation":
+        return f"Computation · {e.get('label')}"
     if e.get("type") == "dataset_rows":
         kind = str(e.get("dataset_kind") or "").replace("_", " ")
         return (
@@ -42,7 +50,21 @@ def _evidence_label(e: dict[str, Any]) -> str:
     return str(e.get("ref") or "")
 
 
+def _computation_text(d: dict[str, Any]) -> str:
+    parts = [
+        f"{k}={d[k]}"
+        for k in ("expected", "gl", "returned", "difference", "formula")
+        if d.get(k) is not None
+    ]
+    return ", ".join(parts)
+
+
 def _evidence_text(e: dict[str, Any]) -> str:
+    if e.get("type") == "xml":
+        value = f" Value: {e['value']}." if e.get("value") is not None else ""
+        return f"{e.get('label') or ''}.{value}"
+    if e.get("type") == "computation":
+        return _computation_text(e.get("detail") or {})
     if e.get("type") == "dataset_rows":
         cols = e.get("columns") or []
         return " | ".join(
@@ -72,7 +94,44 @@ def _scope_rule_pack(scope: dict[str, Any]) -> str | None:
     )
 
 
+def _scope_tax(scope: dict[str, Any]) -> list[tuple[str, str]]:
+    rows: list[tuple[str, str]] = []
+    e = scope.get("entity")
+    if e:
+        trn = f", TRN {e['trn']}" if e.get("trn") else ""
+        rows.append(("Entity", f"{e['name']} ({e['country']}{trn}, {e['functional_currency']})"))
+    tp = scope.get("tax_period")
+    if tp:
+        rows.append(
+            (
+                "Tax period",
+                f"{tp['tax_type'].upper()} {tp['frequency']} {tp['period_start']} to "
+                f"{tp['period_end']} ({tp['status']})",
+            )
+        )
+    if scope.get("einvoice_count"):
+        rows.append(("E-invoices", f"{scope['einvoice_count']} stored XML file(s)"))
+    return rows
+
+
+def _rule_line(rule: dict[str, Any]) -> str:
+    value = rule.get("value")
+    shown = (
+        value if value is not None else f"structured, SHA-256 {str(rule.get('value_sha256'))[:12]}…"
+    )
+    status = rule.get("verification_status")
+    flag = "" if status == "verified" else " — UNVERIFIED (draft) rule"
+    return (
+        f"{rule.get('rule_key')} = {shown} {rule.get('unit') or ''}".rstrip()
+        + f" · {rule.get('pack_name')} v{rule.get('pack_version')}"
+        + f" · effective {rule.get('effective_from')}{flag}"
+    )
+
+
 _env.filters["evidence_label"] = _evidence_label
+_env.filters["evidence_text"] = _evidence_text
+_env.globals["scope_tax"] = _scope_tax
+_env.globals["rule_line"] = _rule_line
 _env.globals["scope_datasets"] = _scope_datasets
 _env.globals["scope_rule_pack"] = _scope_rule_pack
 _env.filters["human"] = lambda s: (s or "").replace("_", " ")
@@ -115,6 +174,7 @@ blockquote{margin:.25rem 0;padding:.25rem .75rem;border-inline-start:3px solid #
 <h2>Scope</h2>
 <table>
 {% if r.scope.document_title %}<tr><th>Document</th><td>{{ r.scope.document_title }} — version {{ r.scope.document_version }} ({{ r.scope.file_format|upper }}, {{ r.scope.original_filename }})<br><span class="muted">SHA-256 {{ r.scope.sha256 }}</span></td></tr>{% endif %}
+{% for label, text in scope_tax(r.scope) %}<tr><th>{{ label }}</th><td>{{ text }}</td></tr>{% endfor %}
 {% for d in scope_datasets(r.scope) %}<tr><th>Dataset</th><td>{{ d }}</td></tr>{% endfor %}
 {% if scope_rule_pack(r.scope) %}<tr><th>Rule pack</th><td>{{ scope_rule_pack(r.scope) }}</td></tr>{% endif %}
 <tr><th>Checklist</th><td>{{ r.scope.checklist_name }} — version {{ r.scope.checklist_version }} ({{ r.scope.checklist_kind|human }}, {{ r.scope.requirement_count }} requirements)
@@ -138,10 +198,38 @@ blockquote{margin:.25rem 0;padding:.25rem .75rem;border-inline-start:3px solid #
 <tr><th>Remediation</th><td colspan="3">Owner: {{ f.owner or 'unassigned' }} · Due: {{ f.due_date or '—' }}<br>{{ f.remediation_notes }}</td></tr>
 <tr><th>Evidence</th><td colspan="3">{% for e in f.evidence %}<div>{{ e|evidence_label }}{% if e.type == 'dataset_rows' %}
 <table><tr>{% for c in e.columns %}<th>{{ c }}</th>{% endfor %}</tr>{% for row in e.rows %}<tr>{% for v in row %}<td>{{ v if v is not none else '' }}</td>{% endfor %}</tr>{% endfor %}</table>
-{% else %}<blockquote>{{ e.quote }}</blockquote>{% endif %}</div>{% else %}<span class="muted">No matching text in the document (absence noted by the check).</span>{% endfor %}</td></tr>
+{% elif e.quote %}<blockquote>{{ e.quote }}</blockquote>{% else %}<div class="muted">{{ e|evidence_text }}</div>{% endif %}</div>{% else %}<span class="muted">No matching text in the document (absence noted by the check).</span>{% endfor %}</td></tr>
 </table>
 <p class="muted">{{ f.description }}</p>
 {% else %}<p class="muted">No findings were recorded.</p>{% endfor %}
+
+{% set vp = r.vat_pack or {} %}
+{% if vp.box_table %}
+<h2>VAT return reconciliation</h2>
+<p class="muted">Each box recomputed from the registers with the entity's tax code mapping and the rule pack's layout; tolerance {{ vp.box_tolerance }}.</p>
+<table><tr><th>Box</th><th>Formula</th><th>Recomputed</th><th>Return</th><th>Difference</th></tr>
+{% for b in vp.box_table %}<tr><td>{{ b.code }} — {{ b.label }}</td><td>{{ b.formula }}</td><td>{{ b.expected }}</td><td>{{ b.returned if b.returned is not none else '—' }}</td><td>{{ b.difference }}</td></tr>{% endfor %}
+</table>
+{% if vp.unknown_boxes %}<p>Boxes in the return that the layout does not define: {{ vp.unknown_boxes|join(', ') }}</p>{% endif %}
+{% endif %}
+{% if vp.gl_table %}
+<h3>Return against GL VAT accounts</h3>
+<table><tr><th>Side</th><th>Accounts</th><th>GL</th><th>Return</th><th>Difference</th></tr>
+{% for g in vp.gl_table %}<tr><td>{{ g.side }}</td><td>{{ g.accounts|join(', ') }}</td><td>{{ g.gl }}</td><td>{{ g.returned }}</td><td>{{ g.difference }}</td></tr>{% endfor %}
+</table>
+{% endif %}
+{% if vp.rules_used or vp.files_used %}
+<h2>Rules and schemas used</h2>
+{% if vp.unverified_count %}<p class="synthetic">{{ vp.unverified_count }} rule(s) or file(s) used are unverified drafts. Results that depend on them must not be relied on until an admin verifies the source.</p>{% endif %}
+<ul>{% for rule in vp.rules_used %}<li>{{ rule_line(rule) }}</li>{% endfor %}
+{% for f in vp.files_used %}<li>Schema {{ f.file_key }} — SHA-256 {{ f.sha256 }} ({{ f.verification_status }})</li>{% endfor %}</ul>
+{% endif %}
+{% if r.scope.einvoices %}
+<h2>E-invoices in scope</h2>
+<table><tr><th>File</th><th>Invoice</th><th>Issue date</th><th>SHA-256</th></tr>
+{% for f in r.scope.einvoices %}<tr><td>{{ f.filename }}</td><td>{{ f.invoice_number or '—' }}</td><td>{{ f.issue_date or '—' }}</td><td class="muted">{{ f.sha256 }}</td></tr>{% endfor %}
+</table>
+{% endif %}
 
 <h2>All check results</h2>
 <table><tr><th>Requirement</th><th>Outcome</th><th>Detail</th></tr>
@@ -255,6 +343,7 @@ def render_pdf(content: dict[str, Any]) -> bytes:
                 ),
             ]
         )
+    scope_rows += [[p(label), p(text)] for label, text in _scope_tax(s)]
     scope_rows += [[p("Dataset"), p(d)] for d in _scope_datasets(s)]
     rule_pack = _scope_rule_pack(s)
     if rule_pack:
@@ -325,6 +414,32 @@ def render_pdf(content: dict[str, Any]) -> bytes:
         story += [ft, Spacer(1, 3 * mm)]
     if not r["findings"]:
         story.append(p("No findings were recorded.", small))
+    vp = r.get("vat_pack") or {}
+    if vp.get("box_table"):
+        story.append(p("VAT return reconciliation", h2))
+        rows = [[p("Box"), p("Recomputed"), p("Return"), p("Difference")]] + [
+            [
+                p(f"{b['code']} — {b['label']}"),
+                p(b["expected"]),
+                p(b["returned"] if b["returned"] is not None else "—"),
+                p(b["difference"]),
+            ]
+            for b in vp["box_table"]
+        ]
+        vt = Table(rows, colWidths=[80 * mm, 30 * mm, 30 * mm, 30 * mm])
+        vt.setStyle(TableStyle([("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1"))]))
+        story.append(vt)
+    if vp.get("gl_table"):
+        story.append(p("Return against GL VAT accounts", h2))
+        story += [
+            p(f"{g['side']}: GL {g['gl']} · return {g['returned']} · difference {g['difference']}")
+            for g in vp["gl_table"]
+        ]
+    if vp.get("rules_used"):
+        story.append(p("Rules used", h2))
+        if vp.get("unverified_count"):
+            story.append(p(f"{vp['unverified_count']} rule(s) or file(s) used are unverified."))
+        story += [p(f"• {_rule_line(rule)}", small) for rule in vp["rules_used"]]
     story.append(p("Limitations", h2))
     story += [p(f"• {lim}") for lim in r["limitations"]]
     story.append(p("Disclaimer", h2))
