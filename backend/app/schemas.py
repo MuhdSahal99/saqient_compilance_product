@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
@@ -8,12 +9,15 @@ from typing import Any, Generic, Literal, TypeVar
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 
 from app.models import (
+    AdjustmentStatus,
     AIAssessment,
     AISuggestionStatus,
     Assertion,
     ChecklistKind,
     ChecklistState,
     CheckOutcome,
+    ConfirmationStatus,
+    ConfirmationType,
     DatasetKind,
     DatasetStatus,
     EngagementKind,
@@ -1882,3 +1886,112 @@ class ReproduceOut(BaseModel):
     reproducible: bool
     population_unchanged: bool
     differences: list[int]
+
+
+# ------------------------------------------------------- confirmations and adjustments (D7)
+
+IBAN_LIKE = re.compile(r"[A-Za-z]{2}[0-9]{2}[A-Za-z0-9]{10,30}")
+
+
+class ConfirmationIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    type: ConfirmationType
+    counterparty: str = Field(min_length=1, max_length=200)
+    reference: str = Field(
+        default="",
+        max_length=100,
+        description="An internal reference. Do not enter bank account numbers or IBANs.",
+    )
+    book_amount: Decimal = Field(max_digits=20, decimal_places=4)
+
+    @model_validator(mode="after")
+    def _no_iban(self) -> ConfirmationIn:
+        if IBAN_LIKE.fullmatch(self.reference.replace(" ", "")):
+            raise ValueError("do not enter an IBAN or bank account number as the reference")
+        return self
+
+
+class ConfirmationUpdateIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    status: ConfirmationStatus
+    sent_on: date | None = None
+    responded_on: date | None = None
+    confirmed_amount: Decimal | None = Field(default=None, max_digits=20, decimal_places=4)
+    response_document_id: uuid.UUID | None = None
+    conclusion: str = Field(default="", max_length=5000)
+
+
+class ConfirmationOut(BaseModel):
+    id: uuid.UUID
+    type: ConfirmationType
+    counterparty: str
+    reference: str
+    book_amount: Decimal
+    currency: str
+    status: ConfirmationStatus
+    sent_on: date | None
+    responded_on: date | None
+    confirmed_amount: Decimal | None
+    difference: Decimal | None  # book − confirmed
+    response_document_id: uuid.UUID | None
+    conclusion: str
+
+
+class AdjustmentLineIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    account_code: str = Field(min_length=1, max_length=80)
+    debit: Decimal = Field(default=Decimal(0), ge=0, max_digits=20, decimal_places=4)
+    credit: Decimal = Field(default=Decimal(0), ge=0, max_digits=20, decimal_places=4)
+
+    @model_validator(mode="after")
+    def _one_side(self) -> AdjustmentLineIn:
+        if (self.debit > 0) == (self.credit > 0):
+            raise ValueError("each line has either a debit or a credit")
+        return self
+
+
+class AdjustmentIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    ref: str = Field(pattern=r"^[A-Za-z0-9._-]{1,20}$")
+    description: str = Field(min_length=1, max_length=5000)
+    finding_id: uuid.UUID | None = None
+    lines: list[AdjustmentLineIn] = Field(min_length=2, max_length=50)
+
+
+class AdjustmentDecisionIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    status: AdjustmentStatus
+    reason: str = Field(default="", max_length=5000)
+
+
+class AdjustmentLineOut(BaseModel):
+    account_code: str
+    debit: Decimal
+    credit: Decimal
+    lead_code: str | None
+    section: FsSection | None
+
+
+class AdjustmentOut(BaseModel):
+    id: uuid.UUID
+    ref: str
+    description: str
+    status: AdjustmentStatus
+    reason: str
+    finding_id: uuid.UUID | None
+    lines: list[AdjustmentLineOut]
+    profit_effect: Decimal  # positive increases profit
+    net_assets_effect: Decimal
+    unmapped_accounts: list[str]
+
+
+class SudOut(BaseModel):
+    """Summary of unadjusted differences: passed adjustments against materiality."""
+
+    adjustments: list[AdjustmentOut]
+    profit_effect: Decimal
+    net_assets_effect: Decimal
+    materiality: dict[str, Any] | None
+    clearly_trivial: list[str]  # refs at or below the clearly trivial threshold
+    total_vs_overall: str  # below | at_or_above | not_determinable
+    steps: list[dict[str, str]]

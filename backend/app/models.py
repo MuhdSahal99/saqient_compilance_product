@@ -270,6 +270,28 @@ class SampleItemResult(str, enum.Enum):
     EXCEPTION = "exception"
 
 
+class ConfirmationType(str, enum.Enum):
+    BANK = "bank"
+    RECEIVABLE = "receivable"
+    PAYABLE = "payable"
+    LEGAL = "legal"
+    OTHER = "other"
+
+
+class ConfirmationStatus(str, enum.Enum):
+    PLANNED = "planned"
+    SENT = "sent"
+    RESPONDED = "responded"
+    NO_RESPONSE = "no_response"
+    CLOSED = "closed"
+
+
+class AdjustmentStatus(str, enum.Enum):
+    PROPOSED = "proposed"
+    RECORDED = "recorded"  # booked by the client
+    PASSED = "passed"  # not booked; on the summary of unadjusted differences
+
+
 class EngagementRole(str, enum.Enum):
     PARTNER = "partner"
     MANAGER = "manager"
@@ -1999,6 +2021,85 @@ class AuditSampleItem(Base):
     tested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     sample: Mapped[AuditSample] = relationship(back_populates="items")
+
+
+class AuditConfirmation(Base):
+    """An external confirmation request (bank, receivable, payable, legal, other)."""
+
+    __tablename__ = "audit_confirmations"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    engagement_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("audit_engagements.id", ondelete="CASCADE"), index=True
+    )
+    type: Mapped[ConfirmationType] = mapped_column(_enum(ConfirmationType, "confirmation_type"))
+    counterparty: Mapped[str] = mapped_column(String(200))
+    # An internal reference; bank account numbers are not stored here.
+    reference: Mapped[str] = mapped_column(String(100), default="")
+    book_amount: Mapped[Decimal] = mapped_column(Numeric(20, 4))
+    currency: Mapped[str] = mapped_column(String(3))
+    status: Mapped[ConfirmationStatus] = mapped_column(
+        _enum(ConfirmationStatus, "confirmation_status"), default=ConfirmationStatus.PLANNED
+    )
+    sent_on: Mapped[date | None] = mapped_column(Date)
+    responded_on: Mapped[date | None] = mapped_column(Date)
+    confirmed_amount: Mapped[Decimal | None] = mapped_column(Numeric(20, 4))
+    response_document_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("documents.id", ondelete="SET NULL")
+    )
+    conclusion: Mapped[str] = mapped_column(Text, default="")
+    created_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = _created()
+
+
+class AuditAdjustment(Base):
+    """A proposed audit adjustment; recorded by the client or passed (unadjusted)."""
+
+    __tablename__ = "audit_adjustments"
+    __table_args__ = (UniqueConstraint("engagement_id", "ref"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    engagement_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("audit_engagements.id", ondelete="CASCADE"), index=True
+    )
+    ref: Mapped[str] = mapped_column(String(20))
+    description: Mapped[str] = mapped_column(Text)
+    status: Mapped[AdjustmentStatus] = mapped_column(
+        _enum(AdjustmentStatus, "adjustment_status"), default=AdjustmentStatus.PROPOSED
+    )
+    reason: Mapped[str] = mapped_column(Text, default="")
+    finding_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("findings.id", ondelete="SET NULL")
+    )
+    decided_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = _created()
+
+    lines: Mapped[list[AdjustmentLine]] = relationship(
+        back_populates="adjustment", order_by="AdjustmentLine.ordinal", cascade="all, delete-orphan"
+    )
+
+
+class AdjustmentLine(Base):
+    __tablename__ = "audit_adjustment_lines"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    adjustment_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("audit_adjustments.id", ondelete="CASCADE"), index=True
+    )
+    ordinal: Mapped[int] = mapped_column(Integer)
+    account_code: Mapped[str] = mapped_column(String(80))
+    debit: Mapped[Decimal] = mapped_column(Numeric(20, 4), default=Decimal(0))
+    credit: Mapped[Decimal] = mapped_column(Numeric(20, 4), default=Decimal(0))
+
+    adjustment: Mapped[AuditAdjustment] = relationship(back_populates="lines")
 
 
 class TimeEntry(Base):
