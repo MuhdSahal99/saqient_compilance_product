@@ -17,6 +17,7 @@ from app.api import (
     datasets,
     documents,
     einvoices,
+    engagements,
     entities,
     members,
     monitors,
@@ -127,6 +128,7 @@ def create_app() -> FastAPI:
         transfer_pricing,
         monitors,
         workpapers,
+        engagements,
     ):
         app.include_router(module.router, prefix="/api")
 

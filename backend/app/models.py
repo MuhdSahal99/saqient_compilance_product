@@ -197,6 +197,35 @@ class LossEntryKind(str, enum.Enum):
     FORFEITED = "forfeited"
 
 
+class EngagementKind(str, enum.Enum):
+    EXTERNAL_AUDIT = "external_audit"
+    INTERNAL_AUDIT = "internal_audit"
+
+
+class EngagementPhase(str, enum.Enum):
+    PLANNING = "planning"
+    FIELDWORK = "fieldwork"
+    COMPLETION = "completion"
+    REPORTING = "reporting"
+
+
+class EngagementStatus(str, enum.Enum):
+    """The current phase, or closed. Moves forward one step; a step back needs a reason."""
+
+    PLANNING = "planning"
+    FIELDWORK = "fieldwork"
+    COMPLETION = "completion"
+    REPORTING = "reporting"
+    CLOSED = "closed"
+
+
+class EngagementRole(str, enum.Enum):
+    PARTNER = "partner"
+    MANAGER = "manager"
+    SENIOR = "senior"
+    STAFF = "staff"
+
+
 class TaskStatus(str, enum.Enum):
     OPEN = "open"
     IN_PROGRESS = "in_progress"
@@ -1660,6 +1689,97 @@ class RelatedPartyTransaction(Base):
     created_at: Mapped[datetime] = _created()
 
     party: Mapped[RelatedParty] = relationship(lazy="joined")
+
+
+# ---------------------------------------------------------------- audit engagements
+
+
+class AuditEngagement(Base):
+    """An external or internal audit of one entity and period (Phase D)."""
+
+    __tablename__ = "audit_engagements"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    entity_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("legal_entities.id", ondelete="RESTRICT"), index=True
+    )
+    kind: Mapped[EngagementKind] = mapped_column(_enum(EngagementKind, "engagement_kind"))
+    name: Mapped[str] = mapped_column(String(300))
+    period_start: Mapped[date] = mapped_column(Date)
+    period_end: Mapped[date] = mapped_column(Date)
+    currency: Mapped[str] = mapped_column(String(3))
+    status: Mapped[EngagementStatus] = mapped_column(
+        _enum(EngagementStatus, "engagement_status"), default=EngagementStatus.PLANNING
+    )
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    is_demo: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = _created()
+
+    entity: Mapped[LegalEntity] = relationship(lazy="joined")
+    members: Mapped[list[EngagementMember]] = relationship(
+        back_populates="engagement", cascade="all, delete-orphan"
+    )
+    budgets: Mapped[list[EngagementBudget]] = relationship(
+        back_populates="engagement", cascade="all, delete-orphan"
+    )
+
+
+class EngagementMember(Base):
+    __tablename__ = "engagement_members"
+    __table_args__ = (UniqueConstraint("engagement_id", "user_id"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    engagement_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("audit_engagements.id", ondelete="CASCADE"), index=True
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), index=True
+    )
+    role: Mapped[EngagementRole] = mapped_column(_enum(EngagementRole, "engagement_role"))
+    created_at: Mapped[datetime] = _created()
+
+    engagement: Mapped[AuditEngagement] = relationship(back_populates="members")
+    user: Mapped[User] = relationship(lazy="joined")
+
+
+class EngagementBudget(Base):
+    """Budgeted hours for one phase of an engagement."""
+
+    __tablename__ = "engagement_budgets"
+    __table_args__ = (UniqueConstraint("engagement_id", "phase"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    engagement_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("audit_engagements.id", ondelete="CASCADE"), index=True
+    )
+    phase: Mapped[EngagementPhase] = mapped_column(_enum(EngagementPhase, "engagement_phase"))
+    hours: Mapped[Decimal] = mapped_column(Numeric(10, 2))
+
+    engagement: Mapped[AuditEngagement] = relationship(back_populates="budgets")
+
+
+class TimeEntry(Base):
+    """Hours one team member worked on one phase on one day."""
+
+    __tablename__ = "engagement_time_entries"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    engagement_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("audit_engagements.id", ondelete="CASCADE"), index=True
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), index=True
+    )
+    phase: Mapped[EngagementPhase] = mapped_column(_enum(EngagementPhase, "engagement_phase"))
+    work_date: Mapped[date] = mapped_column(Date)
+    hours: Mapped[Decimal] = mapped_column(Numeric(6, 2))
+    note: Mapped[str] = mapped_column(String(500), default="")
+    created_at: Mapped[datetime] = _created()
+
+    user: Mapped[User] = relationship(lazy="joined")
 
 
 class AuditEvent(Base):

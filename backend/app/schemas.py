@@ -15,6 +15,10 @@ from app.models import (
     CheckOutcome,
     DatasetKind,
     DatasetStatus,
+    EngagementKind,
+    EngagementPhase,
+    EngagementRole,
+    EngagementStatus,
     FindingStatus,
     JobStatus,
     LineSource,
@@ -1485,3 +1489,99 @@ class TPCheckOut(BaseModel):
     result_hash: str
     lines: list[CalcLineOut]
     warnings: list[str]
+
+
+# ---------------------------------------------------------------- audit engagements (D1)
+
+
+class EngagementIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    entity_id: uuid.UUID
+    kind: EngagementKind
+    name: str = Field(min_length=1, max_length=300)
+    period_start: date
+    period_end: date
+
+    @model_validator(mode="after")
+    def _period(self) -> EngagementIn:
+        if self.period_end < self.period_start:
+            raise ValueError("period_end must not be before period_start")
+        return self
+
+
+class EngagementStatusIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    status: EngagementStatus
+    reason: str = Field(default="", max_length=2000)
+
+
+class EngagementMemberIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    role: EngagementRole
+
+
+class PhaseBudgetIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    phase: EngagementPhase
+    hours: Decimal = Field(ge=0, le=100000, max_digits=10, decimal_places=2)
+
+
+class EngagementBudgetIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    phases: list[PhaseBudgetIn] = Field(max_length=4)
+
+
+class TimeEntryIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    phase: EngagementPhase
+    work_date: date
+    hours: Decimal = Field(gt=0, le=24, max_digits=6, decimal_places=2)
+    note: str = Field(default="", max_length=500)
+
+
+class TimeEntryOut(BaseModel):
+    id: uuid.UUID
+    user_id: uuid.UUID
+    user_name: str
+    phase: EngagementPhase
+    work_date: date
+    hours: Decimal
+    note: str
+
+
+class EngagementMemberOut(BaseModel):
+    user_id: uuid.UUID
+    full_name: str
+    email: str
+    role: EngagementRole
+    actual_hours: Decimal
+
+
+class PhaseHoursOut(BaseModel):
+    phase: EngagementPhase
+    budget_hours: Decimal
+    actual_hours: Decimal
+    variance_hours: Decimal  # budget - actual; negative is an overrun
+    used_share: Decimal | None  # actual / budget, null when no budget
+
+
+class EngagementSummaryOut(BaseModel):
+    id: uuid.UUID
+    entity_id: uuid.UUID
+    entity_name: str
+    kind: EngagementKind
+    name: str
+    period_start: date
+    period_end: date
+    currency: str
+    status: EngagementStatus
+    is_demo: bool
+    created_at: datetime
+
+
+class EngagementOut(EngagementSummaryOut):
+    closed_at: datetime | None
+    members: list[EngagementMemberOut]
+    phases: list[PhaseHoursOut]
+    budget_hours: Decimal
+    actual_hours: Decimal
