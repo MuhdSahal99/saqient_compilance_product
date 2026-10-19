@@ -21,8 +21,10 @@ from app.api import (
     einvoices,
     engagements,
     entities,
+    letters,
     members,
     monitors,
+    pbc,
     reviews,
     rule_packs,
     sampling,
@@ -135,6 +137,8 @@ def create_app() -> FastAPI:
         audit_risks,
         sampling,
         audit_completion,
+        pbc,
+        letters,
     ):
         app.include_router(module.router, prefix="/api")
 

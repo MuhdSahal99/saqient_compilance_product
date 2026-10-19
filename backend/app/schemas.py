@@ -31,6 +31,7 @@ from app.models import (
     LossEntryKind,
     MonitorCadence,
     MonitorRunStatus,
+    PbcStatus,
     PeriodFrequency,
     ProcedureStatus,
     RelatedPartyRelation,
@@ -1995,3 +1996,89 @@ class SudOut(BaseModel):
     clearly_trivial: list[str]  # refs at or below the clearly trivial threshold
     total_vs_overall: str  # below | at_or_above | not_determinable
     steps: list[dict[str, str]]
+
+
+# ---------------------------------------------------------------- PBC portal and letter (D8)
+
+
+class PbcRequestIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    ref: str = Field(pattern=r"^[A-Za-z0-9._-]{1,20}$")
+    title: str = Field(min_length=1, max_length=300)
+    description: str = Field(default="", max_length=5000)
+    due_date: date | None = None
+    assignee_id: uuid.UUID | None = Field(default=None, description="A user with the client role.")
+
+
+class PbcReviewIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    status: Literal["accepted", "rejected"]
+    note: str = Field(default="", max_length=5000)
+
+
+class PbcSubmitIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    note: str = Field(default="", max_length=5000)
+
+
+class PbcFileOut(BaseModel):
+    document_id: uuid.UUID
+    title: str
+    uploaded_at: datetime
+
+
+class PbcRequestOut(BaseModel):
+    """What both staff and the assigned client see; no engagement internals."""
+
+    id: uuid.UUID
+    ref: str
+    title: str
+    description: str
+    due_date: date | None
+    status: PbcStatus
+    client_note: str
+    review_note: str
+    submitted_at: datetime | None
+    files: list[PbcFileOut]
+
+
+class PbcStaffOut(PbcRequestOut):
+    assignee_id: uuid.UUID | None
+    assignee_name: str | None
+    overdue: bool
+
+
+class LetterPointIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    include: bool = True
+    recommendation: str = Field(default="", max_length=5000)
+    management_response: str = Field(default="", max_length=5000)
+    response_owner: str = Field(default="", max_length=200)
+    response_due: date | None = None
+
+
+class LetterPointOut(BaseModel):
+    id: uuid.UUID
+    finding_id: uuid.UUID
+    finding_title: str
+    finding_status: FindingStatus
+    severity: Severity
+    observation: str
+    include: bool
+    recommendation: str
+    management_response: str
+    response_owner: str
+    response_due: date | None
+    evidence_refs: list[str]
+
+
+class LetterVersionOut(BaseModel):
+    version: int
+    issued_by_name: str | None
+    issued_at: datetime
+    points: int
+
+
+class LetterOut(BaseModel):
+    points: list[LetterPointOut]
+    versions: list[LetterVersionOut]

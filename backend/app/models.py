@@ -78,6 +78,8 @@ class Role(str, enum.Enum):
     REVIEWER = "reviewer"
     ANALYST = "analyst"
     VIEWER = "viewer"
+    # Audit client contact: reaches only the request portal (/api/portal/*).
+    CLIENT = "client"
 
 
 class VersionStatus(str, enum.Enum):
@@ -290,6 +292,13 @@ class AdjustmentStatus(str, enum.Enum):
     PROPOSED = "proposed"
     RECORDED = "recorded"  # booked by the client
     PASSED = "passed"  # not booked; on the summary of unadjusted differences
+
+
+class PbcStatus(str, enum.Enum):
+    REQUESTED = "requested"
+    SUBMITTED = "submitted"
+    ACCEPTED = "accepted"
+    REJECTED = "rejected"
 
 
 class EngagementRole(str, enum.Enum):
@@ -2100,6 +2109,105 @@ class AdjustmentLine(Base):
     credit: Mapped[Decimal] = mapped_column(Numeric(20, 4), default=Decimal(0))
 
     adjustment: Mapped[AuditAdjustment] = relationship(back_populates="lines")
+
+
+class PbcRequest(Base):
+    """A 'prepared by client' request; the assigned client user answers it in the portal."""
+
+    __tablename__ = "pbc_requests"
+    __table_args__ = (UniqueConstraint("engagement_id", "ref"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    engagement_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("audit_engagements.id", ondelete="CASCADE"), index=True
+    )
+    ref: Mapped[str] = mapped_column(String(20))
+    title: Mapped[str] = mapped_column(String(300))
+    description: Mapped[str] = mapped_column(Text, default="")
+    due_date: Mapped[date | None] = mapped_column(Date)
+    status: Mapped[PbcStatus] = mapped_column(
+        _enum(PbcStatus, "pbc_status"), default=PbcStatus.REQUESTED
+    )
+    assignee_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), index=True
+    )
+    client_note: Mapped[str] = mapped_column(Text, default="")
+    review_note: Mapped[str] = mapped_column(Text, default="")
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    reviewed_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = _created()
+
+    assignee: Mapped[User | None] = relationship(foreign_keys=[assignee_id], lazy="joined")
+    files: Mapped[list[PbcFile]] = relationship(
+        back_populates="request", order_by="PbcFile.created_at", cascade="all, delete-orphan"
+    )
+
+
+class PbcFile(Base):
+    __tablename__ = "pbc_files"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    request_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("pbc_requests.id", ondelete="CASCADE"), index=True
+    )
+    document_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("documents.id", ondelete="RESTRICT")
+    )
+    uploaded_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = _created()
+
+    request: Mapped[PbcRequest] = relationship(back_populates="files")
+    document: Mapped[Document] = relationship(lazy="joined")
+
+
+class LetterPoint(Base):
+    """A management letter point drawn from one confirmed finding of the engagement."""
+
+    __tablename__ = "letter_points"
+    __table_args__ = (UniqueConstraint("engagement_id", "finding_id"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    engagement_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("audit_engagements.id", ondelete="CASCADE"), index=True
+    )
+    finding_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("findings.id", ondelete="RESTRICT")
+    )
+    ordinal: Mapped[int] = mapped_column(Integer, default=0)
+    include: Mapped[bool] = mapped_column(Boolean, default=True)
+    recommendation: Mapped[str] = mapped_column(Text, default="")
+    management_response: Mapped[str] = mapped_column(Text, default="")
+    response_owner: Mapped[str] = mapped_column(String(200), default="")
+    response_due: Mapped[date | None] = mapped_column(Date)
+
+    finding: Mapped[Finding] = relationship(lazy="joined")
+
+
+class LetterSnapshot(Base):
+    """An issued management letter version (immutable; a database trigger rejects UPDATE)."""
+
+    __tablename__ = "letter_snapshots"
+    __table_args__ = (UniqueConstraint("engagement_id", "version"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    engagement_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("audit_engagements.id", ondelete="CASCADE"), index=True
+    )
+    version: Mapped[int] = mapped_column(Integer)
+    content: Mapped[dict[str, Any]] = mapped_column(JSONType)
+    issued_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    issued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = _created()
 
 
 class TimeEntry(Base):
