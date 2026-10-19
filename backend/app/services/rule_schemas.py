@@ -216,6 +216,14 @@ def _unique_ids(v: list[SodConflict]) -> list[SodConflict]:
     return v
 
 
+class ExpenseLimit(_M):
+    """A policy limit for one expense category, in one currency."""
+
+    currency: str = Field(pattern=r"^[A-Z]{3}$")
+    per_claim: Decimal | None = Field(default=None, ge=0)
+    receipt_over: Decimal | None = Field(default=None, ge=0)
+
+
 class BenfordBands(_M):
     """Mean absolute deviation upper bounds; above ``marginal`` is nonconformity."""
 
@@ -265,6 +273,15 @@ FAMILIES: dict[str, TypeAdapter[Any]] = {
             list[Annotated[int, Field(ge=1, le=3650)]],
             Field(min_length=1, max_length=10),
             AfterValidator(_ascending),
+        ]
+    ),
+    "trn_countries": TypeAdapter(
+        Annotated[list[Annotated[str, Field(pattern=r"^[A-Z]{2}$")]], Field(max_length=300)]
+    ),
+    "expense_limits": TypeAdapter(
+        Annotated[
+            dict[Annotated[str, Field(pattern=r"^[a-z0-9_]{1,60}$")], ExpenseLimit],
+            Field(max_length=200),
         ]
     ),
     "sod_conflicts": TypeAdapter(

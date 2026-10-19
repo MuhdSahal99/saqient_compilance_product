@@ -7,7 +7,8 @@ e-invoice, master data, readiness and VAT return checks, and lets checks take
 their period from the review's tax period; 1.1.0 checks run unchanged.
 ``deterministic-1.3.0`` adds the withholding tax check; 1.2.0 checks run unchanged.
 ``deterministic-1.4.0`` adds journal entry tests; 1.3.0 checks run unchanged.
-``deterministic-1.5.0`` adds segregation of duties; 1.4.0 checks run unchanged. New runs
+``deterministic-1.5.0`` adds segregation of duties and AP analytics; 1.4.0 checks run
+unchanged. New runs
 use ``ENGINE_VERSION``; a run records the version it used, so earlier results stay explainable.
 """
 
@@ -27,6 +28,7 @@ from app.engine import (
     ProhibitedTermsCheck,
     RequiredTextCheck,
 )
+from app.engine.ap_checks import ApAnalyticsCheck
 from app.engine.data_checks import (
     DATA_CHECK_TYPES,
     DateRuleCheck,
@@ -114,7 +116,7 @@ DataCheckConfig14 = Annotated[
 ]
 
 AnyCheckConfig = Annotated[
-    DataCheckConfig14 | SodConflictCheck,
+    DataCheckConfig14 | SodConflictCheck | ApAnalyticsCheck,
     Field(discriminator="type"),
 ]
 

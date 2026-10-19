@@ -136,6 +136,10 @@ class DatasetKind(str, enum.Enum):
     EINVOICE_REJECTIONS = "einvoice_rejections"
     WHT_PAYMENTS = "wht_payments"
     USER_ROLES = "user_roles"
+    AP_PAYMENTS = "ap_payments"
+    EMPLOYEE_MASTER = "employee_master"
+    THREE_WAY_MATCH = "three_way_match"
+    EXPENSE_CLAIMS = "expense_claims"
 
 
 class TaxType(str, enum.Enum):

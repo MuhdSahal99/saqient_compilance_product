@@ -627,6 +627,10 @@ def test_engine_versions() -> None:
     parse_check(sod)
     with pytest.raises(ValidationError):
         parse_check(sod, "deterministic-1.4.0")
+    apc = {"type": "ap_analytics", "test": "missing_trn", "rules_prefix": "syn.ap"}
+    parse_check(apc)
+    with pytest.raises(ValidationError):
+        parse_check(apc, "deterministic-1.4.0")
     with pytest.raises(ValueError, match="Unknown engine version"):
         parse_check(threshold, "deterministic-9.9.9")
     text = {"type": "required_text", "phrases": ["retention"]}

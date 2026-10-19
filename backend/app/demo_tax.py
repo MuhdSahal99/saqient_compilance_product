@@ -167,6 +167,32 @@ def sod_rules(p: str = "syn.sod") -> list[dict[str, Any]]:
     return [row(f"{p}.sod_conflicts", "json", SOD_CONFLICTS, "Conflict matrix")]
 
 
+EXPENSE_LIMITS = {
+    "meals": {"currency": "AED", "per_claim": "300", "receipt_over": "50"},
+    "travel": {"currency": "AED", "per_claim": "5000", "receipt_over": "0"},
+}
+
+
+def ap_rules(p: str = "syn.ap") -> list[dict[str, Any]]:
+    """Synthetic AP and expense analytics parameters (Phase E)."""
+    return [
+        row(
+            f"{p}.dup_amount_tolerance", "decimal", "0.00", "Duplicate amount tolerance", "currency"
+        ),
+        row(f"{p}.dup_date_window_days", "integer", 30, "Duplicate date window", "days"),
+        row(f"{p}.dup_name_similarity", "decimal", "90", "Vendor name similarity (0-100)"),
+        row(f"{p}.dup_invoice_similarity", "decimal", "90", "Invoice number similarity (0-100)"),
+        row(f"{p}.trn_countries", "json", ["AE"], "Countries where a vendor TRN is expected"),
+        row(f"{p}.trn_min_amount", "decimal", "0", "Minimum payment for the TRN test", "currency"),
+        row(f"{p}.dormant_days", "integer", 180, "Dormant vendor gap", "days"),
+        row(f"{p}.qty_tolerance", "decimal", "0", "Three-way match quantity tolerance"),
+        row(
+            f"{p}.price_tolerance_pct", "decimal", "0.02", "Three-way match price tolerance (share)"
+        ),
+        row(f"{p}.expense_limits", "json", EXPENSE_LIMITS, "Expense policy limits"),
+    ]
+
+
 def rules() -> list[dict[str, Any]]:
     """All synthetic direct-tax, audit and assurance rules."""
     return [
@@ -177,4 +203,5 @@ def rules() -> list[dict[str, Any]]:
         *audit_rules(),
         *recon_rules(),
         *sod_rules(),
+        *ap_rules(),
     ]
