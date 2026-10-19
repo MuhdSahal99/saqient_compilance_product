@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 from app.models import (
     AIAssessment,
     AISuggestionStatus,
+    Assertion,
     ChecklistKind,
     ChecklistState,
     CheckOutcome,
@@ -27,8 +28,10 @@ from app.models import (
     MonitorCadence,
     MonitorRunStatus,
     PeriodFrequency,
+    ProcedureStatus,
     RelatedPartyRelation,
     ReviewStatus,
+    RiskLevel,
     Role,
     RPTransactionType,
     RuleValueType,
@@ -1693,3 +1696,92 @@ class AuditWorkpaperIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     kind: Literal["lead_schedule", "materiality"]
     title: str = Field(min_length=1, max_length=300)
+
+
+# ---------------------------------------------------------------- risks and programmes (D4)
+
+
+class RiskIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    ref: str = Field(pattern=r"^[A-Za-z0-9._-]{1,20}$")
+    title: str = Field(min_length=1, max_length=300)
+    description: str = Field(default="", max_length=5000)
+    lead_code: str | None = Field(default=None, pattern=LEAD_CODE)
+    assertions: list[Assertion] = Field(min_length=1, max_length=9)
+    inherent_risk: RiskLevel
+    significant: bool = False
+    fraud: bool = False
+    response: str = Field(default="", max_length=5000)
+
+    @model_validator(mode="after")
+    def _unique(self) -> RiskIn:
+        if len(set(self.assertions)) != len(self.assertions):
+            raise ValueError("list each assertion once")
+        return self
+
+
+class RiskOut(BaseModel):
+    id: uuid.UUID
+    ref: str
+    title: str
+    description: str
+    lead_code: str | None
+    assertions: list[Assertion]
+    inherent_risk: RiskLevel
+    significant: bool
+    fraud: bool
+    response: str
+    procedure_ids: list[uuid.UUID]
+
+
+class ProcedureIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    title: str = Field(min_length=1, max_length=300)
+    description: str = Field(default="", max_length=5000)
+    requirement_id: uuid.UUID | None = None
+    assignee_id: uuid.UUID | None = None
+    review_id: uuid.UUID | None = None
+    risk_ids: list[uuid.UUID] = Field(default_factory=list, max_length=50)
+
+
+class ProcedureStatusIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    status: ProcedureStatus
+    conclusion: str = Field(default="", max_length=5000)
+
+
+class ProcedureOut(BaseModel):
+    id: uuid.UUID
+    title: str
+    description: str
+    requirement_id: uuid.UUID | None
+    requirement_code: str | None
+    review_id: uuid.UUID | None
+    assignee_id: uuid.UUID | None
+    assignee_name: str | None
+    status: ProcedureStatus
+    conclusion: str
+    completed_at: datetime | None
+    risk_ids: list[uuid.UUID]
+
+
+class ProgrammeIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    checklist_version_id: uuid.UUID
+
+
+class RiskCoverageOut(BaseModel):
+    risk_id: uuid.UUID
+    ref: str
+    title: str
+    significant: bool
+    fraud: bool
+    procedures: int
+    done: int
+
+
+class CoverageOut(BaseModel):
+    risks: list[RiskCoverageOut]
+    uncovered: list[str]  # risk refs with no procedure
+    significant_open: list[str]  # significant or fraud risks with no completed procedure
+    unlinked_procedures: list[uuid.UUID]  # procedures answering no risk

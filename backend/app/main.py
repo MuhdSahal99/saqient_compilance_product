@@ -12,6 +12,7 @@ from sqlalchemy import text
 
 from app.api import (
     ai,
+    audit_risks,
     auth,
     checklists,
     datasets,
@@ -129,6 +130,7 @@ def create_app() -> FastAPI:
         monitors,
         workpapers,
         engagements,
+        audit_risks,
     ):
         app.include_router(module.router, prefix="/api")
 

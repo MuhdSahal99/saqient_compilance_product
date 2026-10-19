@@ -91,6 +91,7 @@ class ChecklistKind(str, enum.Enum):
     SYNTHETIC_DEMO = "synthetic_demo"
     INTERNAL_POLICY = "internal_policy"
     EXTERNAL_REGULATORY = "external_regulatory"
+    AUDIT_PROGRAMME = "audit_programme"
 
 
 class ChecklistState(str, enum.Enum):
@@ -231,6 +232,30 @@ class FsSection(str, enum.Enum):
     EQUITY = "equity"
     INCOME = "income"
     EXPENSE = "expense"
+
+
+class Assertion(str, enum.Enum):
+    EXISTENCE = "existence"
+    OCCURRENCE = "occurrence"
+    COMPLETENESS = "completeness"
+    ACCURACY = "accuracy"
+    VALUATION = "valuation"
+    CUT_OFF = "cut_off"
+    CLASSIFICATION = "classification"
+    RIGHTS_OBLIGATIONS = "rights_obligations"
+    PRESENTATION = "presentation"
+
+
+class RiskLevel(str, enum.Enum):
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+
+
+class ProcedureStatus(str, enum.Enum):
+    NOT_STARTED = "not_started"
+    IN_PROGRESS = "in_progress"
+    DONE = "done"
 
 
 class EngagementRole(str, enum.Enum):
@@ -1232,6 +1257,10 @@ class Review(Base):
     tax_period_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("tax_periods.id", ondelete="RESTRICT"), index=True
     )
+    # An audit programme or journal entry review run for an engagement (Phase D).
+    engagement_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("audit_engagements.id", ondelete="RESTRICT"), index=True
+    )
     status: Mapped[ReviewStatus] = mapped_column(
         _enum(ReviewStatus, "review_status"), default=ReviewStatus.DRAFT
     )
@@ -1824,6 +1853,78 @@ class AccountMapping(Base):
     account_code: Mapped[str] = mapped_column(String(80))
     lead_schedule_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("lead_schedules.id", ondelete="RESTRICT"), index=True
+    )
+
+
+class AuditRisk(Base):
+    """A risk of material misstatement for a financial statement area and assertions."""
+
+    __tablename__ = "audit_risks"
+    __table_args__ = (UniqueConstraint("engagement_id", "ref"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    engagement_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("audit_engagements.id", ondelete="CASCADE"), index=True
+    )
+    ref: Mapped[str] = mapped_column(String(20))  # e.g. R1
+    title: Mapped[str] = mapped_column(String(300))
+    description: Mapped[str] = mapped_column(Text, default="")
+    lead_code: Mapped[str | None] = mapped_column(String(20))  # FS area, if mapped
+    assertions: Mapped[list[str]] = mapped_column(JSONType, default=list)
+    inherent_risk: Mapped[RiskLevel] = mapped_column(_enum(RiskLevel, "risk_level"))
+    significant: Mapped[bool] = mapped_column(Boolean, default=False)
+    fraud: Mapped[bool] = mapped_column(Boolean, default=False)
+    response: Mapped[str] = mapped_column(Text, default="")
+    created_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = _created()
+
+
+class AuditProcedure(Base):
+    """A planned audit procedure, optionally from an audit programme requirement."""
+
+    __tablename__ = "audit_procedures"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    engagement_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("audit_engagements.id", ondelete="CASCADE"), index=True
+    )
+    title: Mapped[str] = mapped_column(String(300))
+    description: Mapped[str] = mapped_column(Text, default="")
+    requirement_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("requirements.id", ondelete="RESTRICT"), index=True
+    )
+    review_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("reviews.id", ondelete="SET NULL")
+    )
+    assignee_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    status: Mapped[ProcedureStatus] = mapped_column(
+        _enum(ProcedureStatus, "procedure_status"), default=ProcedureStatus.NOT_STARTED
+    )
+    conclusion: Mapped[str] = mapped_column(Text, default="")
+    completed_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = _created()
+
+    requirement: Mapped[Requirement | None] = relationship(lazy="joined")
+    assignee: Mapped[User | None] = relationship(foreign_keys=[assignee_id], lazy="joined")
+
+
+class RiskProcedure(Base):
+    __tablename__ = "risk_procedures"
+    __table_args__ = (UniqueConstraint("risk_id", "procedure_id"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    risk_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("audit_risks.id", ondelete="CASCADE"), index=True
+    )
+    procedure_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("audit_procedures.id", ondelete="CASCADE"), index=True
     )
 
 
