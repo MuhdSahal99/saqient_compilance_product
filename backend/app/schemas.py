@@ -17,11 +17,15 @@ from app.models import (
     DatasetStatus,
     FindingStatus,
     JobStatus,
+    LineSource,
+    LossEntryKind,
     MonitorCadence,
     MonitorRunStatus,
     PeriodFrequency,
+    RelatedPartyRelation,
     ReviewStatus,
     Role,
+    RPTransactionType,
     RuleValueType,
     RuleVerification,
     Severity,
@@ -31,8 +35,11 @@ from app.models import (
     TaxAccountRole,
     TaxPeriodStatus,
     TaxType,
+    TPMethod,
     VatTreatment,
     VersionStatus,
+    WorkpaperKind,
+    WorkpaperStatus,
 )
 
 T = TypeVar("T")
@@ -1125,3 +1132,356 @@ class TaskPatch(BaseModel):
     clear_owner: bool = False
     due_date: date | None = None
     note: str | None = Field(default=None, max_length=4000)
+
+
+# ---------------------------------------------------------------- tax workpapers (Phase C)
+
+KEY_PATTERN = r"^[a-z][a-z0-9_]{0,79}$"
+PREFIX_PATTERN = r"^[a-z0-9_]+(\.[a-z0-9_]+)*$"
+
+
+class EvidenceRefIn(BaseModel):
+    """A stored source block, or rows of a dataset version, that support an input."""
+
+    model_config = ConfigDict(extra="forbid")
+    kind: Literal["source_block", "dataset_rows"]
+    source_block_id: uuid.UUID | None = None
+    dataset_version_id: uuid.UUID | None = None
+    row_ids: list[int] = Field(default_factory=list, max_length=500)
+
+    @model_validator(mode="after")
+    def _shape(self) -> EvidenceRefIn:
+        if self.kind == "source_block" and self.source_block_id is None:
+            raise ValueError("source_block evidence needs source_block_id")
+        if self.kind == "dataset_rows" and (self.dataset_version_id is None or not self.row_ids):
+            raise ValueError("dataset_rows evidence needs dataset_version_id and row_ids")
+        return self
+
+
+class WorkpaperIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    entity_id: uuid.UUID
+    kind: WorkpaperKind
+    title: str = Field(min_length=1, max_length=300)
+    period_start: date
+    period_end: date
+    rule_pack_version_id: uuid.UUID
+    rules_prefix: str = Field(
+        min_length=1,
+        max_length=80,
+        pattern=PREFIX_PATTERN,
+        description="Rule key prefix, e.g. 'ae.ct'; the formula reads <prefix>.<rule>.",
+    )
+    currency: str | None = Field(
+        default=None, pattern=r"^[A-Z]{3}$", description="Defaults to the entity's currency."
+    )
+
+
+class WorkpaperInputIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    category: str = Field(
+        default="input", max_length=60, description="'input', or an adjustment category."
+    )
+    label: str = Field(min_length=1, max_length=300)
+    amount: Decimal | None = Field(default=None, max_digits=20, decimal_places=4)
+    value: str | None = Field(
+        default=None, max_length=200, description="Non-amount inputs: true/false flags."
+    )
+    note: str = Field(default="", max_length=4000)
+    evidence: list[EvidenceRefIn] = Field(default_factory=list, max_length=20)
+
+    @model_validator(mode="after")
+    def _one(self) -> WorkpaperInputIn:
+        if (self.amount is None) == (self.value is None):
+            raise ValueError("Give either an amount or a value.")
+        return self
+
+
+class TrialBalanceLineMap(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    line_key: str = Field(pattern=KEY_PATTERN)
+    category: str = Field(default="input", max_length=60)
+    label: str = Field(min_length=1, max_length=300)
+    account_codes: list[str] = Field(min_length=1, max_length=500)
+    sign: Literal["debit", "credit"] = Field(
+        description="'credit' takes credit balances as positive (income, profit)."
+    )
+
+
+class TrialBalanceImportIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    dataset_version_id: uuid.UUID
+    lines: list[TrialBalanceLineMap] = Field(min_length=1, max_length=100)
+
+
+class ReasonIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    reason: str = Field(min_length=3, max_length=4000)
+
+
+class WorkpaperLineOut(BaseModel):
+    id: uuid.UUID
+    source: LineSource
+    section: str
+    line_key: str
+    category: str
+    label: str
+    ordinal: int
+    amount: Decimal | None
+    value: str | None
+    formula_id: str | None
+    explanation: list[dict[str, Any]]
+    rule_snapshots: list[dict[str, Any]]
+    evidence: list[dict[str, Any]]
+    note: str
+
+
+class WorkpaperSnapshotOut(BaseModel):
+    version: int
+    signed_off_by_name: str | None
+    signed_off_at: datetime
+    result_hash: str | None
+
+
+class WorkpaperSummaryOut(BaseModel):
+    id: uuid.UUID
+    entity_id: uuid.UUID
+    entity_name: str
+    kind: WorkpaperKind
+    title: str
+    period_start: date
+    period_end: date
+    currency: str
+    status: WorkpaperStatus
+    computed_at: datetime | None
+    is_demo: bool
+    created_at: datetime
+
+
+class WorkpaperOut(WorkpaperSummaryOut):
+    rule_pack_version_id: uuid.UUID
+    rules_prefix: str
+    calc_version: str | None
+    result_hash: str | None
+    warnings: list[str]
+    lines: list[WorkpaperLineOut]
+    snapshots: list[WorkpaperSnapshotOut]
+
+
+class LossEntryIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    kind: Literal["incurred", "used", "forfeited"] = Field(
+        description="Manual movements; transfers and workpaper postings have their own endpoints."
+    )
+    period_start: date
+    period_end: date
+    amount: Decimal = Field(gt=0, max_digits=20, decimal_places=4)
+    note: str = Field(min_length=1, max_length=4000)
+    evidence: list[EvidenceRefIn] = Field(default_factory=list, max_length=20)
+
+
+class LossEntryOut(BaseModel):
+    id: uuid.UUID
+    entity_id: uuid.UUID
+    kind: LossEntryKind
+    period_start: date
+    period_end: date
+    amount: Decimal
+    signed_amount: Decimal
+    currency: str
+    workpaper_id: uuid.UUID | None
+    counterparty_entity_id: uuid.UUID | None
+    counterparty_name: str | None
+    transfer_id: uuid.UUID | None
+    explanation: list[dict[str, Any]]
+    rule_snapshots: list[dict[str, Any]]
+    evidence: list[dict[str, Any]]
+    note: str
+    created_at: datetime
+
+
+class LossRegisterOut(BaseModel):
+    entity_id: uuid.UUID
+    currency: str
+    balance: Decimal
+    entries: list[LossEntryOut]
+
+
+class LossPostingOut(BaseModel):
+    created: list[LossEntryOut]
+    warnings: list[str]
+
+
+class LossTransferIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    from_entity_id: uuid.UUID
+    to_entity_id: uuid.UUID
+    amount: Decimal = Field(gt=0, max_digits=20, decimal_places=4)
+    period_start: date
+    period_end: date
+    common_ownership: Decimal = Field(ge=0, le=1, max_digits=7, decimal_places=6)
+    same_business_continuity: bool
+    both_resident: bool
+    rule_pack_version_id: uuid.UUID
+    rules_prefix: str = Field(min_length=1, max_length=80, pattern=PREFIX_PATTERN)
+    note: str = Field(min_length=1, max_length=4000)
+    evidence: list[EvidenceRefIn] = Field(default_factory=list, max_length=20)
+
+
+class CalcLineOut(BaseModel):
+    key: str
+    label: str
+    section: str
+    formula_id: str
+    amount: Decimal | None
+    value: str | None
+    explanation: list[dict[str, Any]]
+    rule_snapshots: list[dict[str, Any]]
+
+
+class MembershipIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    entity_id: uuid.UUID
+    is_parent: bool = False
+    ownership_share: Decimal = Field(ge=0, le=1, max_digits=7, decimal_places=6)
+    joined_on: date
+    left_on: date | None = None
+    note: str = Field(default="", max_length=4000)
+    evidence: list[EvidenceRefIn] = Field(default_factory=list, max_length=20)
+
+
+class MembershipEndIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    left_on: date
+    note: str = Field(min_length=1, max_length=4000)
+
+
+class GroupMembershipOut(BaseModel):
+    id: uuid.UUID
+    tax_group_id: uuid.UUID
+    entity_id: uuid.UUID
+    entity_name: str
+    is_parent: bool
+    ownership_share: Decimal
+    joined_on: date
+    left_on: date | None
+    evidence: list[dict[str, Any]]
+    note: str
+
+
+class GroupTestIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    rule_pack_version_id: uuid.UUID
+    rules_prefix: str = Field(min_length=1, max_length=80, pattern=PREFIX_PATTERN)
+    on: date
+
+
+class GroupTestOut(BaseModel):
+    on: date
+    calc_version: str
+    result_hash: str
+    lines: list[CalcLineOut]
+    warnings: list[str]
+
+
+class LossTransferOut(BaseModel):
+    entries: list[LossEntryOut]
+    lines: list[CalcLineOut]
+    warnings: list[str]
+
+
+# ---------------------------------------------------------------- transfer pricing
+
+
+class RelatedPartyIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=1, max_length=200)
+    relation: RelatedPartyRelation
+    jurisdiction: str = Field(pattern=r"^[A-Z]{2}$", description="ISO 3166-1 alpha-2 code.")
+    note: str = Field(default="", max_length=4000)
+
+
+class RelatedPartyOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    entity_id: uuid.UUID
+    name: str
+    relation: RelatedPartyRelation
+    jurisdiction: str
+    note: str
+    is_demo: bool
+
+
+class RPTransactionIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    related_party_id: uuid.UUID
+    period_start: date
+    period_end: date
+    transaction_type: RPTransactionType
+    direction: Literal["receipt", "payment"]
+    description: str = Field(default="", max_length=500)
+    amount: Decimal = Field(gt=0, max_digits=20, decimal_places=4)
+    currency: str | None = Field(
+        default=None, pattern=r"^[A-Z]{3}$", description="Must be the entity's currency."
+    )
+    method: TPMethod = TPMethod.NOT_SET
+    range_low: Decimal | None = Field(default=None, max_digits=20, decimal_places=6)
+    range_high: Decimal | None = Field(default=None, max_digits=20, decimal_places=6)
+    tested_value: Decimal | None = Field(default=None, max_digits=20, decimal_places=6)
+    range_metric: str = Field(default="", max_length=80)
+    benchmark_document_ids: list[uuid.UUID] = Field(default_factory=list, max_length=10)
+    evidence: list[EvidenceRefIn] = Field(default_factory=list, max_length=20)
+
+    @model_validator(mode="after")
+    def _range(self) -> RPTransactionIn:
+        if (self.range_low is None) != (self.range_high is None):
+            raise ValueError("Give both ends of the range, or neither.")
+        if self.range_low is not None and self.range_high is not None:
+            if self.range_low > self.range_high:
+                raise ValueError("The range low must not exceed the high.")
+        elif self.tested_value is not None:
+            raise ValueError("A tested value needs a range.")
+        return self
+
+
+class RPTransactionOut(BaseModel):
+    id: uuid.UUID
+    entity_id: uuid.UUID
+    related_party_id: uuid.UUID
+    related_party_name: str
+    period_start: date
+    period_end: date
+    transaction_type: RPTransactionType
+    direction: str
+    description: str
+    amount: Decimal
+    currency: str
+    method: TPMethod
+    range_low: Decimal | None
+    range_high: Decimal | None
+    tested_value: Decimal | None
+    range_metric: str
+    benchmark_documents: list[dict[str, Any]]
+    evidence: list[dict[str, Any]]
+    is_demo: bool
+
+
+class TPCheckIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    rule_pack_version_id: uuid.UUID
+    rules_prefix: str = Field(min_length=1, max_length=80, pattern=PREFIX_PATTERN)
+    period_start: date
+    period_end: date
+    entity_revenue: Decimal = Field(ge=0, max_digits=20, decimal_places=4)
+    in_mne_group: bool | None = None
+    group_revenue: Decimal | None = Field(default=None, ge=0, max_digits=20, decimal_places=4)
+
+
+class TPCheckOut(BaseModel):
+    currency: str
+    rp_total: Decimal
+    transaction_count: int
+    calc_version: str
+    result_hash: str
+    lines: list[CalcLineOut]
+    warnings: list[str]

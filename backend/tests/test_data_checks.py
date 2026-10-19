@@ -595,7 +595,7 @@ def test_engine_versions() -> None:
         "flag_if": "gt",
         "value": {"value": "1"},
     }
-    assert ENGINE_VERSION == "deterministic-1.2.0"
+    assert ENGINE_VERSION == "deterministic-1.3.0"
     with pytest.raises(ValidationError):
         parse_check(threshold, "deterministic-1.0.0")
     # 1.1.0 still parses its own data checks, but not the 1.2.0 ones.
@@ -604,6 +604,17 @@ def test_engine_versions() -> None:
     parse_check(rc)
     with pytest.raises(ValidationError):
         parse_check(rc, "deterministic-1.1.0")
+    assert parse_check(rc, "deterministic-1.2.0") == parse_check(rc)
+    # 1.3.0 adds the withholding check; 1.2.0 does not accept it.
+    wht = {
+        "type": "wht_rates",
+        "rates_rule": "syn.wht.wht_rates",
+        "resident_country_rule": "syn.wht.resident_country",
+        "tolerance_rule": "syn.wht.tolerance",
+    }
+    parse_check(wht)
+    with pytest.raises(ValidationError):
+        parse_check(wht, "deterministic-1.2.0")
     with pytest.raises(ValueError, match="Unknown engine version"):
         parse_check(threshold, "deterministic-9.9.9")
     text = {"type": "required_text", "phrases": ["retention"]}

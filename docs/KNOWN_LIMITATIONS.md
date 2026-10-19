@@ -1,4 +1,4 @@
-# Known limitations (through Phase A)
+# Known limitations (through Phase C)
 
 Features listed here are either absent or deliberately labelled in the UI.
 
@@ -102,3 +102,30 @@ Features listed here are either absent or deliberately labelled in the UI.
 - Light theme only.
 - The production bundle is about 1.1 MB minified (330 KB gzip) across four
   chunks; routes are not lazy-loaded yet.
+
+## Direct tax (Phase C)
+- **No real rates or thresholds.** Only a SYNTHETIC direct-tax pack is seeded.
+  Its values are deliberately unlike published ones, and every result shows
+  unverified-rule warnings until an admin verifies real rules with a source.
+- **Formula structure is generic.** The interest limitation, loss cap, SBR, QFZP,
+  transfer pricing thresholds, zakat base and Pillar Two follow a configurable shape.
+  Rules the shape cannot express need a new `CALC_VERSION`.
+  - TODO (question for a tax adviser): the exact interest limitation ordering
+    relative to exempt income and loss relief.
+  - TODO (question for a tax adviser): the zakat treatment of short or long first periods.
+- **Pillar Two is simplified.** ETR is covered taxes ÷ GloBE income, and top-up is
+  (minimum − ETR) × (income − SBIE). It has no deferred tax recast, QDMTT credit
+  ordering, minority interest, or prior-year adjustments. Safe harbour tests use
+  CbCR figures the preparer enters. It is not a GloBE information return.
+- **Assertions are the preparer's.** Substance, continuity, residence, MNE group
+  membership and readiness flags are entered with evidence, not verified by Saqient.
+- **Transfer pricing** has no benchmarking analytics. Studies are linked documents,
+  and ranges and tested results are entered by hand. Amounts must be in the
+  entity's currency. The disclosure CSV is data for a form, not the form itself.
+- **Trial balance import** sums balances of listed accounts. The account mapping is
+  sent with each import and recorded on the line's evidence; it is not stored as
+  entity configuration.
+- **WHT** compares withholding with gross × rate per payment type. It does not handle
+  grossed-up payments, payee exemptions or multiple tax years in one file. Treaty
+  rates are used only when the row has a certificate reference.
+- Nothing is filed with the FTA or ZATCA.

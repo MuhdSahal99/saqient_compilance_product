@@ -131,6 +131,7 @@ class DatasetKind(str, enum.Enum):
     SUPPLIER_MASTER = "supplier_master"
     VAT_RETURN = "vat_return"
     EINVOICE_REJECTIONS = "einvoice_rejections"
+    WHT_PAYMENTS = "wht_payments"
 
 
 class TaxType(str, enum.Enum):
@@ -138,6 +139,62 @@ class TaxType(str, enum.Enum):
     CORPORATE_TAX = "corporate_tax"
     ZAKAT = "zakat"
     WHT = "wht"
+
+
+class WorkpaperKind(str, enum.Enum):
+    CORPORATE_TAX = "corporate_tax"
+    SBR_TEST = "sbr_test"
+    QFZP_TEST = "qfzp_test"
+    PILLAR_TWO = "pillar_two"
+    ZAKAT = "zakat"
+
+
+class WorkpaperStatus(str, enum.Enum):
+    DRAFT = "draft"
+    SIGNED_OFF = "signed_off"
+
+
+class LineSource(str, enum.Enum):
+    MANUAL = "manual"
+    COMPUTED = "computed"
+
+
+class RelatedPartyRelation(str, enum.Enum):
+    PARENT = "parent"
+    SUBSIDIARY = "subsidiary"
+    SISTER = "sister"
+    PERMANENT_ESTABLISHMENT = "permanent_establishment"
+    CONNECTED_PERSON = "connected_person"
+    OTHER = "other"
+
+
+class RPTransactionType(str, enum.Enum):
+    GOODS = "goods"
+    SERVICES = "services"
+    ROYALTIES = "royalties"
+    FINANCING = "financing"
+    GUARANTEE = "guarantee"
+    COST_SHARING = "cost_sharing"
+    ASSET_TRANSFER = "asset_transfer"
+    OTHER = "other"
+
+
+class TPMethod(str, enum.Enum):
+    CUP = "cup"
+    RESALE_PRICE = "resale_price"
+    COST_PLUS = "cost_plus"
+    TNMM = "tnmm"
+    PROFIT_SPLIT = "profit_split"
+    OTHER = "other"
+    NOT_SET = "not_set"
+
+
+class LossEntryKind(str, enum.Enum):
+    INCURRED = "incurred"
+    USED = "used"
+    TRANSFERRED_IN = "transferred_in"
+    TRANSFERRED_OUT = "transferred_out"
+    FORFEITED = "forfeited"
 
 
 class TaskStatus(str, enum.Enum):
@@ -1386,6 +1443,223 @@ class ReportSnapshot(Base):
     )
     signed_off_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = _created()
+
+
+class TaxWorkpaper(Base):
+    """A direct-tax workpaper: input lines a preparer enters, lines a formula computes."""
+
+    __tablename__ = "tax_workpapers"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    entity_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("legal_entities.id", ondelete="RESTRICT"), index=True
+    )
+    kind: Mapped[WorkpaperKind] = mapped_column(_enum(WorkpaperKind, "workpaper_kind"))
+    title: Mapped[str] = mapped_column(String(300))
+    period_start: Mapped[date] = mapped_column(Date)
+    period_end: Mapped[date] = mapped_column(Date)
+    currency: Mapped[str] = mapped_column(String(3))
+    rule_pack_version_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("rule_pack_versions.id", ondelete="RESTRICT")
+    )
+    # Rule keys hang off this prefix, e.g. 'ae.ct'.
+    rules_prefix: Mapped[str] = mapped_column(String(80))
+    status: Mapped[WorkpaperStatus] = mapped_column(
+        _enum(WorkpaperStatus, "workpaper_status"), default=WorkpaperStatus.DRAFT
+    )
+    calc_version: Mapped[str | None] = mapped_column(String(40))
+    computed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # SHA-256 of inputs, rule snapshots and outputs of the latest computation.
+    result_hash: Mapped[str | None] = mapped_column(String(64))
+    warnings: Mapped[list[str]] = mapped_column(JSONType, default=list)
+    is_demo: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = _created()
+
+    entity: Mapped[LegalEntity] = relationship(lazy="joined")
+    lines: Mapped[list[WorkpaperLine]] = relationship(
+        back_populates="workpaper", order_by="WorkpaperLine.ordinal", cascade="all, delete-orphan"
+    )
+
+
+class WorkpaperLine(Base):
+    __tablename__ = "workpaper_lines"
+    __table_args__ = (UniqueConstraint("workpaper_id", "line_key"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    workpaper_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tax_workpapers.id", ondelete="CASCADE"), index=True
+    )
+    source: Mapped[LineSource] = mapped_column(_enum(LineSource, "workpaper_line_source"))
+    section: Mapped[str] = mapped_column(String(40))
+    # Input lines: the formula's input name (e.g. 'accounting_profit'), unique per paper.
+    line_key: Mapped[str] = mapped_column(String(80))
+    category: Mapped[str] = mapped_column(String(60), default="")
+    label: Mapped[str] = mapped_column(String(300))
+    ordinal: Mapped[int] = mapped_column(Integer, default=0)
+    amount: Mapped[Decimal | None] = mapped_column(Numeric(20, 4))
+    value: Mapped[str | None] = mapped_column(String(200))  # non-amount inputs (flags, dates)
+    formula_id: Mapped[str | None] = mapped_column(String(80))
+    explanation: Mapped[list[dict[str, Any]]] = mapped_column(JSONType, default=list)
+    rule_snapshots: Mapped[list[dict[str, Any]]] = mapped_column(JSONType, default=list)
+    # References to stored evidence: document source blocks or dataset rows.
+    evidence: Mapped[list[dict[str, Any]]] = mapped_column(JSONType, default=list)
+    note: Mapped[str] = mapped_column(Text, default="")
+    created_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = _created()
+
+    workpaper: Mapped[TaxWorkpaper] = relationship(back_populates="lines")
+
+
+class WorkpaperSnapshot(Base):
+    """Immutable workpaper content frozen at reviewer sign-off (like report snapshots)."""
+
+    __tablename__ = "workpaper_snapshots"
+    __table_args__ = (UniqueConstraint("workpaper_id", "version"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    workpaper_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tax_workpapers.id", ondelete="CASCADE"), index=True
+    )
+    version: Mapped[int] = mapped_column(Integer)
+    content: Mapped[dict[str, Any]] = mapped_column(JSONType)
+    signed_off_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    signed_off_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = _created()
+
+
+class TaxLossEntry(Base):
+    """One movement in an entity's tax loss register (amounts are always positive)."""
+
+    __tablename__ = "tax_loss_entries"
+    __table_args__ = (
+        # A signed-off workpaper feeds the register at most once per movement kind.
+        UniqueConstraint("workpaper_id", "kind"),
+        Index("ix_tax_loss_entries_entity_period", "entity_id", "period_end"),
+    )
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    entity_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("legal_entities.id", ondelete="RESTRICT")
+    )
+    kind: Mapped[LossEntryKind] = mapped_column(_enum(LossEntryKind, "loss_entry_kind"))
+    period_start: Mapped[date] = mapped_column(Date)
+    period_end: Mapped[date] = mapped_column(Date)
+    amount: Mapped[Decimal] = mapped_column(Numeric(20, 4))
+    currency: Mapped[str] = mapped_column(String(3))
+    workpaper_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tax_workpapers.id", ondelete="RESTRICT"), index=True
+    )
+    counterparty_entity_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("legal_entities.id", ondelete="RESTRICT")
+    )
+    # Pairs the two sides of a transfer.
+    transfer_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), index=True)
+    explanation: Mapped[list[dict[str, Any]]] = mapped_column(JSONType, default=list)
+    rule_snapshots: Mapped[list[dict[str, Any]]] = mapped_column(JSONType, default=list)
+    evidence: Mapped[list[dict[str, Any]]] = mapped_column(JSONType, default=list)
+    note: Mapped[str] = mapped_column(Text, default="")
+    is_demo: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = _created()
+
+    entity: Mapped[LegalEntity] = relationship(foreign_keys=[entity_id], lazy="joined")
+    counterparty: Mapped[LegalEntity | None] = relationship(
+        foreign_keys=[counterparty_entity_id], lazy="joined"
+    )
+
+
+class TaxGroupMembership(Base):
+    """Dated membership of an entity in a tax group, with the parent's ownership share."""
+
+    __tablename__ = "tax_group_memberships"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    tax_group_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tax_groups.id", ondelete="CASCADE"), index=True
+    )
+    entity_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("legal_entities.id", ondelete="RESTRICT"), index=True
+    )
+    is_parent: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Share held by the parent (0..1); the parent itself records 1.
+    ownership_share: Mapped[Decimal] = mapped_column(Numeric(7, 6))
+    joined_on: Mapped[date] = mapped_column(Date)
+    left_on: Mapped[date | None] = mapped_column(Date)
+    evidence: Mapped[list[dict[str, Any]]] = mapped_column(JSONType, default=list)
+    note: Mapped[str] = mapped_column(Text, default="")
+    created_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = _created()
+
+    entity: Mapped[LegalEntity] = relationship(lazy="joined")
+
+
+class RelatedParty(Base):
+    """A related party or connected person of one entity (transfer pricing register)."""
+
+    __tablename__ = "related_parties"
+    __table_args__ = (UniqueConstraint("entity_id", "name"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    entity_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("legal_entities.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(200))
+    relation: Mapped[RelatedPartyRelation] = mapped_column(
+        _enum(RelatedPartyRelation, "related_party_relation")
+    )
+    jurisdiction: Mapped[str] = mapped_column(String(2))  # ISO 3166-1 alpha-2
+    note: Mapped[str] = mapped_column(Text, default="")
+    is_demo: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = _created()
+
+
+class RelatedPartyTransaction(Base):
+    """One controlled transaction (or an annual total of one type) with a related party."""
+
+    __tablename__ = "related_party_transactions"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    entity_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("legal_entities.id", ondelete="CASCADE"), index=True
+    )
+    related_party_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("related_parties.id", ondelete="RESTRICT"), index=True
+    )
+    period_start: Mapped[date] = mapped_column(Date)
+    period_end: Mapped[date] = mapped_column(Date)
+    transaction_type: Mapped[RPTransactionType] = mapped_column(
+        _enum(RPTransactionType, "rp_transaction_type")
+    )
+    direction: Mapped[str] = mapped_column(String(10))  # receipt | payment
+    description: Mapped[str] = mapped_column(String(500), default="")
+    amount: Mapped[Decimal] = mapped_column(Numeric(20, 4))
+    currency: Mapped[str] = mapped_column(String(3))
+    method: Mapped[TPMethod] = mapped_column(_enum(TPMethod, "tp_method"), default=TPMethod.NOT_SET)
+    # Optional arm's length range from a benchmarking study and the tested result.
+    range_low: Mapped[Decimal | None] = mapped_column(Numeric(20, 6))
+    range_high: Mapped[Decimal | None] = mapped_column(Numeric(20, 6))
+    tested_value: Mapped[Decimal | None] = mapped_column(Numeric(20, 6))
+    range_metric: Mapped[str] = mapped_column(String(80), default="")
+    benchmark_document_ids: Mapped[list[str]] = mapped_column(JSONType, default=list)
+    evidence: Mapped[list[dict[str, Any]]] = mapped_column(JSONType, default=list)
+    is_demo: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = _created()
+
+    party: Mapped[RelatedParty] = relationship(lazy="joined")
 
 
 class AuditEvent(Base):

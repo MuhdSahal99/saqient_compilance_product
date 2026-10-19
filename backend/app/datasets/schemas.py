@@ -205,6 +205,21 @@ SCHEMAS: dict[DatasetKind, CanonicalSchema] = {
         ),
         require_any=(("invoice_number",), ("invoice_uuid",)),
     ),
+    DatasetKind.WHT_PAYMENTS: CanonicalSchema(
+        DatasetKind.WHT_PAYMENTS,
+        (
+            _f("payment_id", "text", True, "payment", "payment no", "voucher", "reference"),
+            _f("payment_date", "date", True, "date", "paid on", "value date"),
+            _f("payee_name", "text", True, "payee", "vendor", "beneficiary", "supplier"),
+            _f("payee_country", "text", False, "country", "residence", "payee residence"),
+            _f("payment_type", "text", True, "type", "nature", "category", "income type"),
+            _f("gross_amount", "amount", True, "gross", "amount", "payment amount"),
+            _f("wht_amount", "amount", False, "wht", "withholding", "tax withheld"),
+            _f("treaty_rate", "amount", False, "treaty", "reduced rate"),
+            _f("treaty_certificate", "text", False, "certificate", "residency certificate"),
+            _CURRENCY,
+        ),
+    ),
 }
 
 

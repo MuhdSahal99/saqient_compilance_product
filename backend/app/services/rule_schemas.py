@@ -16,7 +16,7 @@ import json
 from decimal import Decimal
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
 
 MAX_JSON_BYTES = 64 * 1024
 
@@ -143,6 +143,27 @@ class Obligation(_M):
     period_basis: Literal["fiscal", "calendar"] = "calendar"
 
 
+class RateBand(_M):
+    """Income from ``lower`` up to ``upper`` (open-ended if null) is taxed at ``rate`` (0–1)."""
+
+    lower: Decimal = Field(ge=0)
+    upper: Decimal | None = None
+    rate: Decimal = Field(ge=0, le=1)
+
+
+def _bands(v: list[RateBand]) -> list[RateBand]:
+    prev: Decimal | None = Decimal(0)
+    for b in v:
+        if prev is None or b.lower != prev:
+            raise ValueError("bands must start at 0 and be contiguous (lower = previous upper)")
+        if b.upper is not None and b.upper <= b.lower:
+            raise ValueError("each band's upper must be above its lower")
+        prev = b.upper
+    if prev is not None:
+        raise ValueError("the last band must be open-ended (upper null)")
+    return v
+
+
 GoLiveWave.model_rebuild()
 BoxLayout.model_rebuild()
 
@@ -154,6 +175,16 @@ FAMILIES: dict[str, TypeAdapter[Any]] = {
     "box_layout": TypeAdapter(BoxLayout),
     "obligations": TypeAdapter(list[Obligation]),
     "codes": TypeAdapter(list[Annotated[str, Field(max_length=80)]]),
+    # Withholding rate per payment type code (a share between 0 and 1).
+    "wht_rates": TypeAdapter(
+        dict[
+            Annotated[str, Field(pattern=r"^[a-z0-9_]{1,60}$")],
+            Annotated[Decimal, Field(ge=0, le=1)],
+        ]
+    ),
+    "rate_bands": TypeAdapter(
+        Annotated[list[RateBand], Field(min_length=1, max_length=20), AfterValidator(_bands)]
+    ),
     "required_fields": TypeAdapter(
         dict[Annotated[str, Field(pattern=r"^([A-Z]{2}|\*)$")], list[Code]]
     ),

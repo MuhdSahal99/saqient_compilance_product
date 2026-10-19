@@ -1,0 +1,42 @@
+{
+  "formula": "loss_transfer",
+  "prefix": "syn.ct",
+  "rules": "synthetic: minimum common ownership 0.80 (inclusive)",
+  "cases": [
+    {
+      "name": "ownership exactly at the minimum, amount equal to the balance",
+      "inputs": [
+        {"key": "amount", "amount": "150000"},
+        {"key": "available_balance", "amount": "150000"},
+        {"key": "common_ownership", "amount": "0.80"},
+        {"key": "same_business_continuity", "value": "true"},
+        {"key": "both_resident", "value": "true"}
+      ],
+      "expected": {"test:ownership": "met", "test:available": "met", "conditions": "met"}
+    },
+    {
+      "name": "ownership below and amount above the balance",
+      "inputs": [
+        {"key": "amount", "amount": "150000.01"},
+        {"key": "available_balance", "amount": "150000"},
+        {"key": "common_ownership", "amount": "0.7999"},
+        {"key": "same_business_continuity", "value": "true"}
+      ],
+      "expected": {
+        "test:ownership": "not_met",
+        "test:available": "not_met",
+        "test:both_resident": "not_determinable",
+        "conditions": "not_met"
+      }
+    },
+    {
+      "name": "zero amount is refused",
+      "inputs": [
+        {"key": "amount", "amount": "0"},
+        {"key": "available_balance", "amount": "10"},
+        {"key": "common_ownership", "amount": "1"}
+      ],
+      "error": "The amount to transfer must be above zero."
+    }
+  ]
+}

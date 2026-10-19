@@ -25,6 +25,8 @@ import { DatasetDetailPage } from "@/pages/DatasetDetailPage";
 import { RulePacksPage, RulePackVersionPage } from "@/pages/RulePacksPage";
 import { EInvoicesPage } from "@/pages/EInvoicesPage";
 import { TaxCalendarPage } from "@/pages/TaxCalendarPage";
+import { WorkpapersPage } from "@/pages/WorkpapersPage";
+import { WorkpaperDetailPage } from "@/pages/WorkpaperDetailPage";
 import { AcceptInvitePage, ForgotPasswordPage, ResetPasswordPage } from "@/pages/PublicAuthPages";
 
 function RequireAuth() {
@@ -81,6 +83,8 @@ export const routes = [
               { path: "/datasets", element: <DatasetsPage /> },
               { path: "/datasets/:datasetId", element: <DatasetDetailPage /> },
               { path: "/einvoices", element: <EInvoicesPage /> },
+              { path: "/workpapers", element: <WorkpapersPage /> },
+              { path: "/workpapers/:workpaperId", element: <WorkpaperDetailPage /> },
               { path: "/rule-packs", element: <RulePacksPage /> },
               { path: "/rule-packs/versions/:versionId", element: <RulePackVersionPage /> },
               { path: "/findings", element: <FindingsPage /> },

@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import {
   Activity,
   Building,
+  CalculatorIcon,
   CalendarClock,
   Check,
   ChevronsUpDown,
@@ -53,6 +54,7 @@ type NavKey =
   | "entities"
   | "datasets"
   | "einvoices"
+  | "directTax"
   | "rulePacks"
   | "findings"
   | "tasks"
@@ -79,6 +81,7 @@ const NAV_GROUPS: { key: string; items: { to: string; key: NavKey; icon: typeof 
     items: [
       { to: "/datasets", key: "datasets", icon: Table2 },
       { to: "/einvoices", key: "einvoices", icon: FileCode },
+      { to: "/workpapers", key: "directTax", icon: CalculatorIcon },
       { to: "/entities", key: "entities", icon: Building },
       { to: "/rule-packs", key: "rulePacks", icon: Scale },
     ],

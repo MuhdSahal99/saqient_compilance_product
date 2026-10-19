@@ -1,0 +1,28 @@
+{
+  "formula": "tax_group_test",
+  "prefix": "syn.ct",
+  "rules": "synthetic: minimum parent ownership 0.90 (inclusive)",
+  "cases": [
+    {
+      "name": "one member meets, one is under the minimum",
+      "inputs": [
+        {"key": "sub_a", "category": "member", "amount": "0.95"},
+        {"key": "sub_a_same_year_end", "value": "true"},
+        {"key": "sub_b", "category": "member", "amount": "0.8999"},
+        {"key": "sub_b_same_year_end", "value": "true"}
+      ],
+      "expected": {
+        "test:sub_a:ownership": "met",
+        "test:sub_a:year_end": "met",
+        "test:sub_b:ownership": "not_met",
+        "conditions": "not_met"
+      }
+    },
+    {
+      "name": "year end not asserted",
+      "inputs": [{"key": "sub_a", "category": "member", "amount": "0.90"}],
+      "expected": {"test:sub_a:ownership": "met", "test:sub_a:year_end": "not_determinable", "conditions": "not_determinable"}
+    },
+    {"name": "no members", "inputs": [], "error": "Add at least one member."}
+  ]
+}

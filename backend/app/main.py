@@ -23,7 +23,10 @@ from app.api import (
     reviews,
     rule_packs,
     tax_calendar,
+    tax_losses,
     tax_setup,
+    transfer_pricing,
+    workpapers,
     workspace,
 )
 from app.config import get_settings
@@ -119,8 +122,11 @@ def create_app() -> FastAPI:
         members,
         tax_setup,
         tax_calendar,
+        tax_losses,
         einvoices,
+        transfer_pricing,
         monitors,
+        workpapers,
     ):
         app.include_router(module.router, prefix="/api")
 
