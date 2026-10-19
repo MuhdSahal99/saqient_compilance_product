@@ -137,3 +137,22 @@ remain allowed.
 distinct. Append-only hash chain per organisation (ADR 0006); a trigger
 rejects UPDATE. `services/audit.record` strips keys such as `text`,
 `content`, `password`, `token`, `csrf`, `body`.
+
+## Audit (Phase D)
+
+All tables carry `org_id` and are reached through the engagement.
+
+| Table | Key columns | Notes |
+|---|---|---|
+| `audit_engagements` | entity_id, kind, name, period, phase, status, currency, cy/py_tb_version_id, rule_pack_version_id, rules_prefix | Closed engagements refuse changes. |
+| `engagement_members`, `engagement_budgets`, `time_entries` | engagement_id, user_id, role / phase, hours | Budget vs actual per phase. |
+| `lead_schedules`, `account_mappings` | engagement_id, code, name, section / account_code → lead_code | Feed lead schedule papers and the SUD. |
+| `audit_risks`, `audit_procedures`, `risk_procedures` | ref, assertions, inherent risk, significant, fraud / title, status, requirement_id, review_id | Coverage = risks with procedures. |
+| `audit_samples`, `audit_sample_items` | method, dataset_version_id, amount_column, seed, params, algorithm_version, population hash / row_id, stratum, hits, book/audited value, result | Reproducible from seed. |
+| `audit_confirmations` | type, counterparty, reference, book/confirmed amount, status, dates, conclusion | planned → sent → responded / no_response → closed. |
+| `audit_adjustments`, `adjustment_lines` | ref, status (proposed / recorded / passed), reason / account_code, debit, credit | Must balance; passed ones form the SUD. |
+| `pbc_requests`, `pbc_files` | ref, title, due_date, assignee (client), status / document_version_id | Client uploads via the portal. |
+| `letter_points`, `letter_snapshots` | finding_id, include, recommendation, response / version, content | Snapshots immutable (trigger). |
+
+`tax_workpapers` gains `engagement_id`, `prepared_by_id`, `prepared_at`; `reviews` gains
+`engagement_id`; roles gain `client`; checklist kinds gain `audit_programme`.
