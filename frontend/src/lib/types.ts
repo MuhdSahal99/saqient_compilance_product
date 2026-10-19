@@ -1,4 +1,5 @@
-export type Role = "org_admin" | "reviewer" | "analyst" | "viewer";
+/** `client` is an audit client contact who can only use the request portal. */
+export type Role = "org_admin" | "reviewer" | "analyst" | "viewer" | "client";
 export type VersionStatus = "pending" | "processing" | "ready" | "failed";
 export type JobStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
 export type ReviewStatus = "draft" | "running" | "in_review" | "signed_off";
@@ -20,7 +21,7 @@ export type FindingStatus =
   | "ready_for_rereview"
   | "resolved"
   | "accepted_risk";
-export type ChecklistKind = "synthetic_demo" | "internal_policy" | "external_regulatory";
+export type ChecklistKind = "synthetic_demo" | "internal_policy" | "external_regulatory" | "audit_programme";
 
 export interface Page<T> {
   items: T[];
@@ -765,8 +766,11 @@ export interface TaxCalendarResult {
 
 // ---------------------------------------------------------------- direct tax (Phase C)
 
+/** Tax workpaper kinds created from the direct tax page. */
 export const WORKPAPER_KINDS = ["corporate_tax", "sbr_test", "qfzp_test", "pillar_two", "zakat"] as const;
-export type WorkpaperKind = (typeof WORKPAPER_KINDS)[number];
+/** Audit workpaper kinds; they belong to an engagement and are created from it. */
+export const AUDIT_WORKPAPER_KINDS = ["lead_schedule", "materiality"] as const;
+export type WorkpaperKind = (typeof WORKPAPER_KINDS)[number] | (typeof AUDIT_WORKPAPER_KINDS)[number];
 export type WorkpaperStatus = "draft" | "signed_off";
 
 /** Input categories the backend accepts for each workpaper kind. */
@@ -786,6 +790,8 @@ export const WORKPAPER_CATEGORIES: Record<WorkpaperKind, readonly string[]> = {
     "readiness",
   ],
   zakat: ["input", "zakat_addition", "zakat_deduction"],
+  lead_schedule: ["input", "current_year", "prior_year"],
+  materiality: ["input"],
 };
 
 /** One step of an explainable calculation: label: expression = value. */
@@ -849,6 +855,10 @@ export interface WorkpaperSummary {
   computed_at: string | null;
   is_demo: boolean;
   created_at: string;
+  /** Set on audit workpapers (lead schedule, materiality). */
+  engagement_id?: string | null;
+  prepared_by_name?: string | null;
+  prepared_at?: string | null;
 }
 
 export interface Workpaper extends WorkpaperSummary {

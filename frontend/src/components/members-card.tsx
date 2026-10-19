@@ -17,9 +17,9 @@ import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/ca
 import { FieldError, Input, Label, Select } from "@/components/ui/input";
 import { ConfirmDialog, ErrorState, errorMessage, LoadingState } from "./common";
 
-const ROLES: Role[] = ["org_admin", "reviewer", "analyst", "viewer"];
+const ROLES = ["org_admin", "reviewer", "analyst", "viewer", "client"] as const satisfies readonly Role[];
 
-const inviteSchema = z.object({ email: z.email(), role: z.enum(["org_admin", "reviewer", "analyst", "viewer"]) });
+const inviteSchema = z.object({ email: z.email(), role: z.enum(ROLES) });
 type InviteValues = z.infer<typeof inviteSchema>;
 
 function InviteForm() {

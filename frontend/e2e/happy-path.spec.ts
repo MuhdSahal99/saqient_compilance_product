@@ -194,3 +194,21 @@ test("seeded direct-tax workpaper with steps, rules and exports", async ({ page 
   await expect(page.getByText("39,000.00").or(page.getByText("39000.00")).first()).toBeVisible();
   await expect(page.getByRole("link", { name: /PDF/ }).first()).toBeVisible();
 });
+
+test("seeded audit engagement and the restricted client portal", async ({ page }) => {
+  await login(page, "reviewer@alpha.example");
+  await page.getByRole("navigation").getByRole("link", { name: "Engagements", exact: true }).click();
+  await page.getByRole("link", { name: "FY2025 external audit (synthetic demo)" }).click();
+  await page.getByRole("tab", { name: "Risks and procedures" }).click();
+  await expect(page.getByText("Revenue recorded in the wrong period (synthetic)").first()).toBeVisible();
+  await page.getByRole("tab", { name: "Client requests" }).click();
+  await expect(page.getByText("Year-end bank statement (synthetic)").first()).toBeVisible();
+  await logout(page);
+
+  await page.getByLabel("Email", { exact: true }).fill("client@alpha.example");
+  await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page).toHaveURL(/\/portal/);
+  await expect(page.getByText("Year-end bank statement (synthetic)").first()).toBeVisible();
+  await expect(page.getByRole("navigation").getByRole("link", { name: "Engagements" })).toHaveCount(0);
+});

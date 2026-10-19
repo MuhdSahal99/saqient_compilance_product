@@ -144,3 +144,6 @@ Features listed here are either absent or deliberately labelled in the UI.
   is not yet blocked once the engagement is closed (sign-off still freezes it).
 - Confirmations are tracked, not sent: no email or bank portal integration. Do not store
   bank account numbers or IBANs (the reference field refuses IBAN-like values).
+- The audit UI offers each dataset's latest ready version only for trial balances and
+  samples; older versions are reachable through the API. The main JS chunk now exceeds
+  the 900 kB warning limit because of the added translations.

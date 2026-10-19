@@ -1,6 +1,16 @@
 # Status
 
-Last updated: 2026-10-18 · Phase A is merged into main. Phase B (PR #7) awaits review. Phase C (direct tax) is complete on `feat/phase-c-direct-tax`, stacked on Phase B.
+Last updated: 2026-10-19 · Phase A is merged into main. Phase B (PR #7) and Phase C (PR #8) await review. Phase D (audit) is complete on `feat/phase-d-audit`, stacked on Phase C.
+
+## Phase D — audit
+
+**Done:** D1 engagements (phases, team, budget vs actual hours, time entries); D2 trial balance → lead schedules with prior year and lead schedule workpapers; D3 materiality workpaper (benchmark, overall, performance, clearly trivial, rationale; pack guidance ranges only); D4 risk register per assertion, procedures, `audit_programme` checklists, coverage; D5 reproducible MUS / random / stratified sampling (`sampling-1.0.0`) with projection; D6 engine `deterministic-1.4.0` journal entry tests incl. Benford; D7 prepare + independent sign-off, confirmations, adjustments and SUD; D8 management letter snapshots from confirmed findings, PBC requests and the `client` role limited to `/api/auth/` and `/api/portal/`. UI in en/ar; synthetic seed (engagement + client user); ADR 0012. Migrations 0019–0024.
+
+**Checks executed (2026-10-19):** ruff + format, mypy (103 files), migrations round-tripped and `alembic check` clean, pytest **350 passed, 2 skipped** (golden files for the new formulas, role and tenant 404 tests on every new endpoint); seed on a fresh database; pnpm lint (0 errors, 8 existing warnings), typecheck, Vitest **45 passed**, build (main chunk 949 kB, over the 900 kB warning limit); Playwright **7 passed**.
+
+**Not built:** UML/reliability factors, a client-entity link, unlinking reviews from procedures in the UI (see KNOWN_LIMITATIONS).
+
+**Next:** review of PRs #7 and #8, then the Phase D PR; then Phase E (assurance).
 
 ## Phase C — direct tax
 

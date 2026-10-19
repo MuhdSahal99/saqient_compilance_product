@@ -7,6 +7,7 @@ import * as DialogPrimitive from "@radix-ui/react-dialog";
 import {
   CalculatorIcon,
   Activity,
+  BriefcaseBusiness,
   Building,
   CalendarClock,
   ClipboardCheck,
@@ -43,6 +44,7 @@ const PAGES = [
   { to: "/findings", key: "findings", icon: FileSearch },
   { to: "/tasks", key: "tasks", icon: SquareCheckBig },
   { to: "/tax-calendar", key: "taxCalendar", icon: CalendarClock },
+  { to: "/engagements", key: "engagements", icon: BriefcaseBusiness },
   { to: "/reports", key: "reports", icon: FileText },
   { to: "/activity", key: "activity", icon: Activity },
   { to: "/settings", key: "settings", icon: Settings },

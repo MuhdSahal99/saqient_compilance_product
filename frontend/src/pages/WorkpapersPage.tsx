@@ -7,7 +7,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Calculator, FilePlus2, Loader2, TriangleAlert } from "lucide-react";
 import { api } from "@/lib/api";
-import { WORKPAPER_KINDS, type Workpaper, type WorkpaperKind } from "@/lib/types";
+import { AUDIT_WORKPAPER_KINDS, WORKPAPER_KINDS, type Workpaper } from "@/lib/types";
 import { useAuth } from "@/lib/auth";
 import { useEntities, usePublishedRulePacks, useWorkpapers, workpapersKey } from "@/lib/queries";
 import { formatDate } from "@/lib/utils";
@@ -25,7 +25,7 @@ import { TransferPricingPanel } from "@/components/transfer-pricing";
 const PREFIX_PATTERN = /^[a-z0-9_]+(\.[a-z0-9_]+)*$/;
 
 /** Placeholder text only; the prefix depends on the rule pack the user chose. */
-const PREFIX_PLACEHOLDER: Record<WorkpaperKind, string> = {
+const PREFIX_PLACEHOLDER: Record<(typeof WORKPAPER_KINDS)[number], string> = {
   corporate_tax: "syn.ct",
   sbr_test: "syn.ct",
   qfzp_test: "syn.ct",
@@ -236,7 +236,7 @@ function WorkpaperList({ entityId }: { entityId: string }) {
           <Label htmlFor="wp-filter-kind">{t("workpapers.kind")}</Label>
           <Select id="wp-filter-kind" className="w-56" value={kind} onChange={(e) => setKind(e.target.value)}>
             <option value="">{t("workpapers.allKinds")}</option>
-            {WORKPAPER_KINDS.map((k) => (
+            {[...WORKPAPER_KINDS, ...AUDIT_WORKPAPER_KINDS].map((k) => (
               <option key={k} value={k}>
                 {t(`workpaperKind.${k}`)}
               </option>
