@@ -179,3 +179,4 @@ Features listed here are either absent or deliberately labelled in the UI.
   revaluation, componentisation or partial disposals.
 - AI suggestions were tested with the mock provider only. Opting in does not choose a
   provider; the deployment does.
+- The main JS chunk is now 1,010 kB (translations load eagerly); the packs page is lazy.

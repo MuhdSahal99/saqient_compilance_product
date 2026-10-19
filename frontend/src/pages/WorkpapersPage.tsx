@@ -31,6 +31,7 @@ const PREFIX_PLACEHOLDER: Record<(typeof WORKPAPER_KINDS)[number], string> = {
   qfzp_test: "syn.ct",
   pillar_two: "syn.p2",
   zakat: "syn.zakat",
+  lease_ifrs16: "syn.audit",
 };
 
 const newSchema = z

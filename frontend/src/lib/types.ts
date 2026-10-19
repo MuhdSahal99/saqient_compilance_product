@@ -398,6 +398,7 @@ export const DATASET_KINDS = [
   "employee_master",
   "three_way_match",
   "expense_claims",
+  "fixed_assets",
 ] as const;
 export type DatasetKind = (typeof DATASET_KINDS)[number];
 export type DatasetStatus = "pending" | "parsing" | "needs_mapping" | "processing" | "ready" | "failed";
@@ -561,6 +562,9 @@ export interface AIStatus {
   model: string | null;
   available_features: string[];
   is_mock?: boolean;
+  /** The deployment has a provider configured; the org must still opt in. */
+  deployment_enabled?: boolean;
+  org_opted_in?: boolean;
   note: string;
 }
 
@@ -772,9 +776,9 @@ export interface TaxCalendarResult {
 // ---------------------------------------------------------------- direct tax (Phase C)
 
 /** Tax workpaper kinds created from the direct tax page. */
-export const WORKPAPER_KINDS = ["corporate_tax", "sbr_test", "qfzp_test", "pillar_two", "zakat"] as const;
+export const WORKPAPER_KINDS = ["corporate_tax", "sbr_test", "qfzp_test", "pillar_two", "zakat", "lease_ifrs16"] as const;
 /** Audit workpaper kinds; they belong to an engagement and are created from it. */
-export const AUDIT_WORKPAPER_KINDS = ["lead_schedule", "materiality"] as const;
+export const AUDIT_WORKPAPER_KINDS = ["lead_schedule", "materiality", "fs_draft"] as const;
 export type WorkpaperKind = (typeof WORKPAPER_KINDS)[number] | (typeof AUDIT_WORKPAPER_KINDS)[number];
 export type WorkpaperStatus = "draft" | "signed_off";
 
@@ -797,6 +801,8 @@ export const WORKPAPER_CATEGORIES: Record<WorkpaperKind, readonly string[]> = {
   zakat: ["input", "zakat_addition", "zakat_deduction"],
   lead_schedule: ["input", "current_year", "prior_year"],
   materiality: ["input"],
+  fs_draft: ["input", "current_year", "prior_year", "note"],
+  lease_ifrs16: ["input"],
 };
 
 /** One step of an explainable calculation: label: expression = value. */

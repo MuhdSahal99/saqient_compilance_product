@@ -24,6 +24,7 @@ import {
   Menu,
   PanelLeftClose,
   PanelLeftOpen,
+  Layers,
   Scale,
   Search,
   Plug,
@@ -62,6 +63,7 @@ type NavKey =
   | "einvoices"
   | "directTax"
   | "rulePacks"
+  | "contentPacks"
   | "findings"
   | "tasks"
   | "taxCalendar"
@@ -98,6 +100,7 @@ const NAV_GROUPS: NavGroup[] = [
       { to: "/workpapers", key: "directTax", icon: CalculatorIcon },
       { to: "/entities", key: "entities", icon: Building },
       { to: "/rule-packs", key: "rulePacks", icon: Scale },
+      { to: "/content-packs", key: "contentPacks", icon: Layers },
     ],
   },
   {

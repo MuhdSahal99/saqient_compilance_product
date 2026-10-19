@@ -225,3 +225,15 @@ test("seeded close checklist, control matrix and connectors turned off", async (
   await nav.getByRole("link", { name: "Connectors", exact: true }).click();
   await expect(page.getByText("Not available").first()).toBeVisible();
 });
+
+test("draft content packs with the seeded install and the synthetic disclaimer", async ({ page }) => {
+  await login(page, "admin@alpha.example");
+  await page.getByRole("navigation").getByRole("link", { name: "Content packs", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Content packs" })).toBeVisible();
+  await page.getByText("Listed company disclosure review (synthetic draft)").first().click();
+  await expect(page.getByText("Synthetic demonstration content — not legal guidance.").first()).toBeVisible();
+  await expect(page.getByText("Open questions").first()).toBeVisible();
+  await page.goBack();
+  await page.getByText("AML/CFT programme review (synthetic draft)").first().click();
+  await expect(page.getByText("Installed", { exact: false }).first()).toBeVisible();
+});

@@ -599,7 +599,7 @@ function LeadReportCard({ e }: { e: Engagement }) {
 
 // ---------------------------------------------------------------- audit workpapers
 
-const wpSchema = z.object({ kind: z.enum(["lead_schedule", "materiality"]), title: z.string().trim().min(1).max(300) });
+const wpSchema = z.object({ kind: z.enum(["lead_schedule", "materiality", "fs_draft"]), title: z.string().trim().min(1).max(300) });
 type WpValues = z.infer<typeof wpSchema>;
 
 function WorkpapersCard({ e }: { e: Engagement }) {
@@ -669,6 +669,7 @@ function WorkpapersCard({ e }: { e: Engagement }) {
             <Select id="awp-kind" {...form.register("kind")}>
               <option value="materiality">{t("workpaperKind.materiality")}</option>
               <option value="lead_schedule">{t("workpaperKind.lead_schedule")}</option>
+              <option value="fs_draft">{t("workpaperKind.fs_draft")}</option>
             </Select>
           </Field>
           <Field id="awp-title" label={t("workpapers.titleField")} error={form.formState.errors.title ? t("workpapers.titleRequired") : undefined}>

@@ -48,6 +48,10 @@ const ProcessDetailPage = lazy(() => import("@/pages/ControlDetailPages").then((
 const CertificationDetailPage = lazy(() => import("@/pages/ControlDetailPages").then((m) => ({ default: m.CertificationDetailPage })));
 const ConnectorsPage = lazy(() => import("@/pages/ConnectorsPage").then((m) => ({ default: m.ConnectorsPage })));
 
+/** Phase F sector content packs, loaded on first visit. */
+const ContentPacksPage = lazy(() => import("@/pages/ContentPacksPage").then((m) => ({ default: m.ContentPacksPage })));
+const ContentPackDetailPage = lazy(() => import("@/pages/ContentPacksPage").then((m) => ({ default: m.ContentPackDetailPage })));
+
 function Lazy({ children }: { children: ReactNode }) {
   return <Suspense fallback={<LoadingState />}>{children}</Suspense>;
 }
@@ -110,6 +114,8 @@ export const routes = [
               { path: "/workpapers/:workpaperId", element: <WorkpaperDetailPage /> },
               { path: "/rule-packs", element: <RulePacksPage /> },
               { path: "/rule-packs/versions/:versionId", element: <RulePackVersionPage /> },
+              { path: "/content-packs", element: <Lazy><ContentPacksPage /></Lazy> },
+              { path: "/content-packs/:packId", element: <Lazy><ContentPackDetailPage /></Lazy> },
               { path: "/findings", element: <FindingsPage /> },
               { path: "/tasks", element: <TasksPage /> },
               { path: "/tax-calendar", element: <TaxCalendarPage /> },

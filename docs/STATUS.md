@@ -1,6 +1,16 @@
 # Status
 
-Last updated: 2026-10-19 · Phase A is merged into main. Phases B (PR #7), C (PR #8) and D (PR #9) await review. Phase E (assurance) is complete on `feat/phase-e-assurance`, stacked on Phase D.
+Last updated: 2026-10-19 · Phase A is merged into main. Phases B (PR #7), C (PR #8) and D (PR #9) await review. Phase E (PR #10, CI green) awaits review. Phase F (sector packs) is complete on `feat/phase-f-sector-packs`, stacked on Phase E.
+
+## Phase F — sector content packs
+
+**Done:** F1 content pack framework (JSON manifests, validated, installed by org admins as draft checklists and draft rules, SHA-256 recorded); F2 six synthetic draft packs (AML/CFT, IFRS 9, IFRS 17, listed disclosures, IFRS S1/S2, ESR/UBO) with open questions; F3 `fs_draft` workpaper from lead schedules with balance and note cross-checks, `lease_ifrs16` workpaper, engine `deterministic-1.6.0` depreciation recalculation over `fixed_assets`; F4 per-org AI opt-in on top of the deployment flag, re-checked at job time. UI in en/ar; synthetic seed; ADR 0014. Migrations 0032–0034.
+
+**Checks executed (2026-10-19):** ruff + format, mypy (131 files), migrations round-tripped and `alembic check` clean, pytest **391 passed, 2 skipped** (golden files for FS and lease, hand-checked depreciation register, role and tenant 404 tests); seed on a fresh database; pnpm lint (0 errors, 8 existing warnings), typecheck, Vitest **64 passed**, build (main chunk 1,010 kB); Playwright **9 passed**.
+
+**Not executed:** any real AI provider (mock only). **Not built:** finding-key labels for depreciation, FS statement layouts (see KNOWN_LIMITATIONS).
+
+**Next:** review of PRs #7–#10, then the Phase F PR.
 
 ## Phase E — finance assurance
 

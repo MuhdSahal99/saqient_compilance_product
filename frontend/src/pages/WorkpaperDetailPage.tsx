@@ -27,6 +27,12 @@ const SIGNED_AMOUNT = /^-?\d{1,16}(\.\d{1,4})?$/;
 
 /** Audit workpapers also take short text inputs (e.g. the materiality benchmark type and rationale). */
 const isAuditKind = (k: WorkpaperKind) => (AUDIT_WORKPAPER_KINDS as readonly string[]).includes(k);
+/** Kinds whose inputs include short text values (the IFRS 16 lease takes periods, rate and timing). */
+const takesText = (k: WorkpaperKind) => isAuditKind(k) || k === "lease_ifrs16";
+/** Kinds with a per-kind explanation of the input keys the calculation reads. */
+const KIND_INPUT_HINT: Partial<Record<WorkpaperKind, string>> = { fs_draft: "workpapers.kindHint.fs_draft", lease_ifrs16: "workpapers.kindHint.lease_ifrs16" };
+/** Kinds whose inputs can be reloaded from the engagement's mapped trial balance. */
+const RELOADS_LEADS: readonly WorkpaperKind[] = ["lead_schedule", "fs_draft"];
 
 /** Stored evidence back to the reference shape the API accepts, so an edit keeps it. */
 type EvidenceRef =
@@ -82,6 +88,7 @@ function InputDialog({
   const { t } = useTranslation();
   const qc = useQueryClient();
   const categories = WORKPAPER_CATEGORIES[workpaper.kind];
+  const kindHint = KIND_INPUT_HINT[workpaper.kind];
   const defaults = (): InputValues => ({
     line_key: line?.line_key ?? "",
     category: line?.category ?? categories[0] ?? "input",
@@ -128,6 +135,7 @@ function InputDialog({
       <DialogContent>
         <DialogTitle>{line ? t("workpapers.editInput") : t("workpapers.addInput")}</DialogTitle>
         <DialogDescription>{t("workpapers.inputHint")}</DialogDescription>
+        {kindHint && <p className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs leading-relaxed text-slate-600">{t(kindHint)}</p>}
         <form className="mt-5 space-y-4" onSubmit={form.handleSubmit((v) => save.mutate(v))} noValidate>
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
@@ -160,7 +168,7 @@ function InputDialog({
               <Select id="in-mode" {...form.register("mode")}>
                 <option value="amount">{t("workpapers.valueKindAmount")}</option>
                 <option value="flag">{t("workpapers.valueKindFlag")}</option>
-                {isAuditKind(workpaper.kind) && <option value="text">{t("workpapers.valueKindText")}</option>}
+                {takesText(workpaper.kind) && <option value="text">{t("workpapers.valueKindText")}</option>}
               </Select>
             </div>
             {mode === "text" ? (
@@ -377,7 +385,7 @@ export function WorkpaperDetailPage() {
                 {t("workpapers.prefillLosses")}
               </Button>
             )}
-            {draft && can("write") && w.kind === "lead_schedule" && (
+            {draft && can("write") && RELOADS_LEADS.includes(w.kind) && (
               <Button variant="outline" disabled={busy} onClick={() => reloadLeads.mutate()}>
                 {reloadLeads.isPending ? <Loader2 className="animate-spin" aria-hidden /> : <RefreshCw aria-hidden />}
                 {t("workpapers.reloadLeads")}
