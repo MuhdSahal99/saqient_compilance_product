@@ -339,3 +339,34 @@ def load_lead_balances(db: Session, e: AuditEngagement, wp: TaxWorkpaper, actor:
             ]
     db.flush()
     workpapers.compute(db, wp, actor)
+
+
+def materiality(db: Session, e: AuditEngagement) -> dict[str, Any] | None:
+    """Amounts from the latest signed-off materiality workpaper of the engagement."""
+    from app.models import WorkpaperSnapshot
+
+    snap = db.scalar(
+        select(WorkpaperSnapshot)
+        .join(TaxWorkpaper, TaxWorkpaper.id == WorkpaperSnapshot.workpaper_id)
+        .where(
+            TaxWorkpaper.org_id == e.org_id,
+            TaxWorkpaper.engagement_id == e.id,
+            TaxWorkpaper.kind == WorkpaperKind.MATERIALITY,
+        )
+        .order_by(WorkpaperSnapshot.signed_off_at.desc())
+        .limit(1)
+    )
+    if snap is None:
+        return None
+    amounts = {
+        ln["line_key"].removeprefix("calc:"): Decimal(str(ln["amount"]))
+        for ln in snap.content["lines"]
+        if ln.get("source") == "computed" and ln.get("amount") is not None
+    }
+    return {
+        "workpaper_id": str(snap.workpaper_id),
+        "version": snap.version,
+        "overall": amounts.get("overall"),
+        "performance": amounts.get("performance"),
+        "trivial": amounts.get("trivial"),
+    }

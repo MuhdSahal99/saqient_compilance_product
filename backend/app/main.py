@@ -24,6 +24,7 @@ from app.api import (
     monitors,
     reviews,
     rule_packs,
+    sampling,
     tax_calendar,
     tax_losses,
     tax_setup,
@@ -131,6 +132,7 @@ def create_app() -> FastAPI:
         workpapers,
         engagements,
         audit_risks,
+        sampling,
     ):
         app.include_router(module.router, prefix="/api")
 

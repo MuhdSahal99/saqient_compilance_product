@@ -258,6 +258,18 @@ class ProcedureStatus(str, enum.Enum):
     DONE = "done"
 
 
+class SamplingMethod(str, enum.Enum):
+    MONETARY_UNIT = "monetary_unit"
+    RANDOM = "random"
+    STRATIFIED = "stratified"
+
+
+class SampleItemResult(str, enum.Enum):
+    NOT_TESTED = "not_tested"
+    NO_EXCEPTION = "no_exception"
+    EXCEPTION = "exception"
+
+
 class EngagementRole(str, enum.Enum):
     PARTNER = "partner"
     MANAGER = "manager"
@@ -1926,6 +1938,67 @@ class RiskProcedure(Base):
     procedure_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("audit_procedures.id", ondelete="CASCADE"), index=True
     )
+
+
+class AuditSample(Base):
+    """A reproducible sample of dataset rows: method, seed and population hash recorded."""
+
+    __tablename__ = "audit_samples"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    engagement_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("audit_engagements.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(200))
+    method: Mapped[SamplingMethod] = mapped_column(_enum(SamplingMethod, "sampling_method"))
+    dataset_version_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("dataset_versions.id", ondelete="RESTRICT")
+    )
+    amount_column: Mapped[str] = mapped_column(String(60))
+    seed: Mapped[str] = mapped_column(String(64))
+    # Method parameters as entered: size, strata (upper, size), and for MUS interval/start.
+    params: Mapped[dict[str, Any]] = mapped_column(JSONType, default=dict)
+    algorithm_version: Mapped[str] = mapped_column(String(40))
+    population_count: Mapped[int] = mapped_column(Integer)
+    population_value: Mapped[Decimal] = mapped_column(Numeric(20, 4))
+    population_sha256: Mapped[str] = mapped_column(String(64))
+    risk_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("audit_risks.id", ondelete="SET NULL")
+    )
+    conclusion: Mapped[str] = mapped_column(Text, default="")
+    created_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = _created()
+
+    items: Mapped[list[AuditSampleItem]] = relationship(
+        back_populates="sample", order_by="AuditSampleItem.row_id", cascade="all, delete-orphan"
+    )
+
+
+class AuditSampleItem(Base):
+    __tablename__ = "audit_sample_items"
+    __table_args__ = (UniqueConstraint("sample_id", "row_id"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    sample_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("audit_samples.id", ondelete="CASCADE"), index=True
+    )
+    row_id: Mapped[int] = mapped_column(Integer)
+    stratum: Mapped[int | None] = mapped_column(Integer)
+    hits: Mapped[int] = mapped_column(Integer, default=1)
+    book_value: Mapped[Decimal] = mapped_column(Numeric(20, 4))  # absolute value sampled
+    audited_value: Mapped[Decimal | None] = mapped_column(Numeric(20, 4))
+    result: Mapped[SampleItemResult] = mapped_column(
+        _enum(SampleItemResult, "sample_item_result"), default=SampleItemResult.NOT_TESTED
+    )
+    note: Mapped[str] = mapped_column(String(1000), default="")
+    tested_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    tested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    sample: Mapped[AuditSample] = relationship(back_populates="items")
 
 
 class TimeEntry(Base):

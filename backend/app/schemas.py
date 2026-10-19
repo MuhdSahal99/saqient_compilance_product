@@ -36,6 +36,8 @@ from app.models import (
     RPTransactionType,
     RuleValueType,
     RuleVerification,
+    SampleItemResult,
+    SamplingMethod,
     Severity,
     SourceVerification,
     TaskSource,
@@ -1785,3 +1787,98 @@ class CoverageOut(BaseModel):
     uncovered: list[str]  # risk refs with no procedure
     significant_open: list[str]  # significant or fraud risks with no completed procedure
     unlinked_procedures: list[uuid.UUID]  # procedures answering no risk
+
+
+# ---------------------------------------------------------------- sampling (D5)
+
+
+class StratumIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    upper: Decimal | None = Field(default=None, gt=0, max_digits=20, decimal_places=4)
+    size: int | None = Field(default=None, ge=1, le=5000, description="Null tests every item.")
+
+
+class SampleIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=1, max_length=200)
+    method: SamplingMethod
+    dataset_version_id: uuid.UUID
+    amount_column: str = Field(pattern=r"^[a-z_]{1,60}$")
+    size: int | None = Field(default=None, ge=1, le=5000)
+    strata: list[StratumIn] = Field(default_factory=list, max_length=10)
+    seed: str | None = Field(
+        default=None,
+        pattern=r"^[A-Za-z0-9_-]{4,64}$",
+        description="Recorded for reproduction; a random one is generated when omitted.",
+    )
+    risk_id: uuid.UUID | None = None
+
+    @model_validator(mode="after")
+    def _shape(self) -> SampleIn:
+        if self.method is SamplingMethod.STRATIFIED:
+            if not self.strata:
+                raise ValueError("stratified sampling needs strata")
+        elif self.size is None or self.strata:
+            raise ValueError("give a sample size (and no strata) for this method")
+        return self
+
+
+class SampleItemIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    audited_value: Decimal = Field(ge=0, max_digits=20, decimal_places=4)
+    note: str = Field(default="", max_length=1000)
+
+
+class SampleConclusionIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    conclusion: str = Field(min_length=1, max_length=5000)
+
+
+class SampleItemOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    row_id: int
+    stratum: int | None
+    hits: int
+    book_value: Decimal
+    audited_value: Decimal | None
+    result: SampleItemResult
+    note: str
+    tested_at: datetime | None
+
+
+class SampleSummaryOut(BaseModel):
+    id: uuid.UUID
+    name: str
+    method: SamplingMethod
+    dataset_version_id: uuid.UUID
+    amount_column: str
+    seed: str
+    params: dict[str, Any]
+    algorithm_version: str
+    population_count: int
+    population_value: Decimal
+    population_sha256: str
+    risk_id: uuid.UUID | None
+    conclusion: str
+    item_count: int
+    created_at: datetime
+
+
+class ProjectionOut(BaseModel):
+    projected: Decimal
+    known: Decimal
+    untested: int
+    steps: list[dict[str, str]]
+    performance_materiality: Decimal | None
+    exceeds_performance: bool | None
+
+
+class SampleOut(SampleSummaryOut):
+    items: list[SampleItemOut]
+    projection: ProjectionOut
+
+
+class ReproduceOut(BaseModel):
+    reproducible: bool
+    population_unchanged: bool
+    differences: list[int]
