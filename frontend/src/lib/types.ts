@@ -393,6 +393,11 @@ export const DATASET_KINDS = [
   "vat_return",
   "einvoice_rejections",
   "wht_payments",
+  "user_roles",
+  "ap_payments",
+  "employee_master",
+  "three_way_match",
+  "expense_claims",
 ] as const;
 export type DatasetKind = (typeof DATASET_KINDS)[number];
 export type DatasetStatus = "pending" | "parsing" | "needs_mapping" | "processing" | "ready" | "failed";

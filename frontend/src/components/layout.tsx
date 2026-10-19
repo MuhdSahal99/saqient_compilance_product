@@ -6,6 +6,7 @@ import {
   Activity,
   BriefcaseBusiness,
   Building,
+  CalendarCheck,
   CalculatorIcon,
   CalendarClock,
   Check,
@@ -15,6 +16,7 @@ import {
   FileSearch,
   FileText,
   FolderOpen,
+  GitCompareArrows,
   Inbox,
   LayoutDashboard,
   ListChecks,
@@ -24,7 +26,9 @@ import {
   PanelLeftOpen,
   Scale,
   Search,
+  Plug,
   Settings,
+  ShieldCheck,
   SquareCheckBig,
   Table2,
   X,
@@ -62,6 +66,10 @@ type NavKey =
   | "tasks"
   | "taxCalendar"
   | "engagements"
+  | "reconciliations"
+  | "close"
+  | "controls"
+  | "connectors"
   | "portal"
   | "reports"
   | "activity"
@@ -97,6 +105,14 @@ const NAV_GROUPS: NavGroup[] = [
     items: [{ to: "/engagements", key: "engagements", icon: BriefcaseBusiness }],
   },
   {
+    key: "assurance",
+    items: [
+      { to: "/reconciliations", key: "reconciliations", icon: GitCompareArrows },
+      { to: "/close", key: "close", icon: CalendarCheck },
+      { to: "/controls", key: "controls", icon: ShieldCheck },
+    ],
+  },
+  {
     key: "followUp",
     items: [
       { to: "/findings", key: "findings", icon: FileSearch },
@@ -109,6 +125,7 @@ const NAV_GROUPS: NavGroup[] = [
     key: "admin",
     items: [
       { to: "/activity", key: "activity", icon: Activity },
+      { to: "/connectors", key: "connectors", icon: Plug },
       { to: "/settings", key: "settings", icon: Settings },
     ],
   },
