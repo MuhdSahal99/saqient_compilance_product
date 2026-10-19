@@ -11,10 +11,12 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
 from app.api import (
+    account_recs,
     ai,
     audit_completion,
     audit_risks,
     auth,
+    bank_recs,
     checklists,
     datasets,
     documents,
@@ -139,6 +141,8 @@ def create_app() -> FastAPI:
         audit_completion,
         pbc,
         letters,
+        bank_recs,
+        account_recs,
     ):
         app.include_router(module.router, prefix="/api")
 

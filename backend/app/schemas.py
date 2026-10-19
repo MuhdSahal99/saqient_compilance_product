@@ -4,7 +4,7 @@ import re
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Any, Generic, Literal, TypeVar
+from typing import Annotated, Any, Generic, Literal, TypeVar
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 
@@ -13,6 +13,7 @@ from app.models import (
     AIAssessment,
     AISuggestionStatus,
     Assertion,
+    AssuranceStatus,
     ChecklistKind,
     ChecklistState,
     CheckOutcome,
@@ -34,6 +35,8 @@ from app.models import (
     PbcStatus,
     PeriodFrequency,
     ProcedureStatus,
+    ReconMethod,
+    ReconSide,
     RelatedPartyRelation,
     ReviewStatus,
     RiskLevel,
@@ -2082,3 +2085,304 @@ class LetterVersionOut(BaseModel):
 class LetterOut(BaseModel):
     points: list[LetterPointOut]
     versions: list[LetterVersionOut]
+
+
+# ---------------------------------------------------------------- continuous assurance (E)
+
+
+class SignOffOut(BaseModel):
+    status: AssuranceStatus
+    version: int
+    prepared_by_name: str | None
+    prepared_at: datetime | None
+    signed_off_by_name: str | None
+    signed_off_at: datetime | None
+    reopen_reason: str
+
+
+class AssuranceVersionOut(BaseModel):
+    version: int
+    signed_by_name: str | None
+    signed_at: datetime
+    sha256: str
+
+
+def _no_account_number(label: str) -> str:
+    if IBAN_LIKE.search(label.replace(" ", "")):
+        raise ValueError("use a label, not an IBAN or account number")
+    return label
+
+
+class BankRecBase(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=1, max_length=200)
+    account_label: str = Field(
+        min_length=1,
+        max_length=100,
+        description="A name for the bank account. Do not enter account numbers or IBANs.",
+    )
+    gl_accounts: list[Annotated[str, Field(min_length=1, max_length=80)]] = Field(
+        min_length=1, max_length=50, description="GL account codes of this bank account."
+    )
+    bank_closing_balance: Decimal | None = Field(
+        default=None,
+        max_digits=20,
+        decimal_places=4,
+        description="Statement closing balance; when omitted the last statement balance is used.",
+    )
+    book_opening_balance: Decimal = Field(default=Decimal(0), max_digits=20, decimal_places=4)
+
+    @model_validator(mode="after")
+    def _label(self) -> BankRecBase:
+        _no_account_number(self.account_label)
+        if len(set(self.gl_accounts)) != len(self.gl_accounts):
+            raise ValueError("list each GL account once")
+        return self
+
+
+class BankRecIn(BankRecBase):
+    entity_id: uuid.UUID
+    period_start: date
+    period_end: date
+    statement_version_id: uuid.UUID
+    ledger_version_id: uuid.UUID
+    rule_pack_version_id: uuid.UUID
+    rules_prefix: str = Field(max_length=80, pattern=PREFIX_PATTERN)
+
+    @model_validator(mode="after")
+    def _period(self) -> BankRecIn:
+        if self.period_end < self.period_start:
+            raise ValueError("period_end must not be before period_start")
+        return self
+
+
+class BankRecUpdateIn(BankRecBase):
+    pass
+
+
+class ManualMatchIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    bank_row_ids: list[int] = Field(min_length=1, max_length=200)
+    book_row_ids: list[int] = Field(min_length=1, max_length=200)
+    reason: str = Field(min_length=3, max_length=2000)
+
+
+class ReconItemOut(BaseModel):
+    side: ReconSide
+    row_id: int
+    date: date
+    amount: Decimal
+    reference: str
+    description: str
+    match_id: uuid.UUID | None
+    method: ReconMethod | None
+    age_days: int | None
+    bucket: str | None
+
+
+class ReconMatchOut(BaseModel):
+    id: uuid.UUID
+    method: ReconMethod
+    reason: str
+    bank_row_ids: list[int]
+    book_row_ids: list[int]
+    bank_total: Decimal
+    book_total: Decimal
+    difference: Decimal
+    created_by_name: str | None
+    created_at: datetime
+
+
+class AgeingOut(BaseModel):
+    side: ReconSide
+    bucket: str
+    count: int
+    total: Decimal
+
+
+class BankRecSummaryOut(BaseModel):
+    bank_closing_balance: Decimal | None
+    bank_closing_source: Literal["entered", "statement", "unknown"]
+    book_opening_balance: Decimal
+    book_movement: Decimal
+    book_closing_balance: Decimal
+    unmatched_bank_total: Decimal
+    unmatched_book_total: Decimal
+    adjusted_bank: Decimal | None
+    adjusted_book: Decimal
+    difference: Decimal | None
+    bank_items: int
+    book_items: int
+    matched_bank_items: int
+    matched_book_items: int
+    ageing: list[AgeingOut]
+    steps: list[dict[str, str]]
+
+
+class BankRecListOut(BaseModel):
+    id: uuid.UUID
+    entity_id: uuid.UUID
+    entity_name: str
+    name: str
+    account_label: str
+    period_start: date
+    period_end: date
+    currency: str
+    status: AssuranceStatus
+    version: int
+    is_demo: bool
+    created_at: datetime
+
+
+class BankRecOut(BankRecListOut):
+    statement_version_id: uuid.UUID
+    ledger_version_id: uuid.UUID
+    gl_accounts: list[str]
+    rule_pack_version_id: uuid.UUID
+    rules_prefix: str
+    bank_closing_balance: Decimal | None
+    book_opening_balance: Decimal
+    matcher_version: str
+    matched_at: datetime | None
+    warnings: list[str]
+    parameters: dict[str, Any]
+    sign_off: SignOffOut
+    summary: BankRecSummaryOut
+    items: list[ReconItemOut]
+    matches: list[ReconMatchOut]
+    versions: list[AssuranceVersionOut]
+
+
+class SupportItemIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    description: str = Field(min_length=1, max_length=500)
+    amount: Decimal = Field(max_digits=20, decimal_places=4)
+    document_id: uuid.UUID | None = None
+    note: str = Field(default="", max_length=2000)
+
+
+class AccountRecIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    entity_id: uuid.UUID
+    tb_version_id: uuid.UUID
+    as_of: date
+    account_codes: list[Annotated[str, Field(min_length=1, max_length=80)]] = Field(
+        min_length=1, max_length=200, description="One reconciliation is created per account."
+    )
+    rule_pack_version_id: uuid.UUID
+    rules_prefix: str = Field(max_length=80, pattern=PREFIX_PATTERN)
+    owner_id: uuid.UUID | None = None
+
+
+class AccountRecUpdateIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    items: list[SupportItemIn] = Field(max_length=200)
+    explanation: str = Field(default="", max_length=5000)
+    owner_id: uuid.UUID | None = None
+
+
+class SupportItemOut(BaseModel):
+    description: str
+    amount: Decimal
+    document_id: uuid.UUID | None
+    document_title: str | None
+    note: str
+
+
+class VarianceOut(BaseModel):
+    variance: Decimal
+    threshold_abs: Decimal
+    threshold_pct: Decimal
+    exceeds: bool
+    explanation_required: bool
+    steps: list[dict[str, str]]
+
+
+class AccountRecListOut(BaseModel):
+    id: uuid.UUID
+    entity_id: uuid.UUID
+    entity_name: str
+    as_of: date
+    account_code: str
+    account_name: str
+    currency: str
+    tb_balance: Decimal
+    supported: Decimal
+    variance: Decimal
+    exceeds: bool
+    owner_name: str | None
+    status: AssuranceStatus
+    version: int
+    is_demo: bool
+
+
+class AccountRecOut(AccountRecListOut):
+    tb_version_id: uuid.UUID
+    tb_row_ids: list[int]
+    rule_pack_version_id: uuid.UUID
+    rules_prefix: str
+    explanation: str
+    owner_id: uuid.UUID | None
+    items: list[SupportItemOut]
+    check: VarianceOut
+    warnings: list[str]
+    sign_off: SignOffOut
+    versions: list[AssuranceVersionOut]
+
+
+class IntercompanyIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=1, max_length=200)
+    as_of: date
+    entity_a_id: uuid.UUID
+    tb_a_version_id: uuid.UUID
+    accounts_a: list[Annotated[str, Field(min_length=1, max_length=80)]] = Field(
+        min_length=1, max_length=50
+    )
+    entity_b_id: uuid.UUID
+    tb_b_version_id: uuid.UUID
+    accounts_b: list[Annotated[str, Field(min_length=1, max_length=80)]] = Field(
+        min_length=1, max_length=50
+    )
+    rule_pack_version_id: uuid.UUID
+    rules_prefix: str = Field(max_length=80, pattern=PREFIX_PATTERN)
+
+    @model_validator(mode="after")
+    def _two(self) -> IntercompanyIn:
+        if self.entity_a_id == self.entity_b_id:
+            raise ValueError("choose two different entities")
+        return self
+
+
+class ExplanationIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    explanation: str = Field(default="", max_length=5000)
+
+
+class IntercompanySideOut(BaseModel):
+    entity_id: uuid.UUID
+    entity_name: str
+    tb_version_id: uuid.UUID
+    accounts: list[str]
+    balance: Decimal
+    row_ids: list[int]
+
+
+class IntercompanyOut(BaseModel):
+    id: uuid.UUID
+    name: str
+    as_of: date
+    currency: str
+    side_a: IntercompanySideOut
+    side_b: IntercompanySideOut
+    difference: Decimal
+    threshold: Decimal
+    exceeds: bool
+    explanation: str
+    steps: list[dict[str, str]]
+    rule_pack_version_id: uuid.UUID
+    rules_prefix: str
+    warnings: list[str]
+    is_demo: bool
+    sign_off: SignOffOut
+    versions: list[AssuranceVersionOut]

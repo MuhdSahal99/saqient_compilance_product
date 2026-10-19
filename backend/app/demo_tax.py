@@ -126,6 +126,25 @@ def audit_rules(p: str = "syn.audit") -> list[dict[str, Any]]:
     ]
 
 
+def recon_rules(p: str = "syn.recon") -> list[dict[str, Any]]:
+    """Synthetic reconciliation parameters (Phase E)."""
+    return [
+        row(f"{p}.amount_tolerance", "decimal", "0.00", "Matching amount tolerance", "currency"),
+        row(f"{p}.date_window_days", "integer", 3, "Matching date window", "days"),
+        row(f"{p}.ageing_buckets", "json", [30, 60, 90], "Ageing buckets (days)"),
+        row(f"{p}.variance_abs", "decimal", "1000", "Variance needing explanation", "currency"),
+        row(f"{p}.variance_pct", "decimal", "0.05", "Variance needing explanation (share)"),
+        row(f"{p}.intercompany_abs", "decimal", "100", "Intercompany difference limit", "currency"),
+    ]
+
+
 def rules() -> list[dict[str, Any]]:
-    """All synthetic direct-tax and audit rules."""
-    return [*ct_rules(), *p2_rules(), *zakat_rules(), *wht_rules(), *audit_rules()]
+    """All synthetic direct-tax, audit and assurance rules."""
+    return [
+        *ct_rules(),
+        *p2_rules(),
+        *zakat_rules(),
+        *wht_rules(),
+        *audit_rules(),
+        *recon_rules(),
+    ]

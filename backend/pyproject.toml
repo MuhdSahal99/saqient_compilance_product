@@ -68,6 +68,7 @@ ignore = ["S101", "B008", "UP042", "UP046", "UP047"]
 "app/services/reports.py" = ["E501"]
 "app/services/workpaper_reports.py" = ["E501"]
 "app/services/letters.py" = ["E501"]
+"app/services/assurance.py" = ["E501"]
 "app/demo_content.py" = ["E501"]
 "tests/**/*.py" = ["E501", "S105", "S106", "S108"]
 

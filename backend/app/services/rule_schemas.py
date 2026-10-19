@@ -173,6 +173,12 @@ def _bands(v: list[RateBand]) -> list[RateBand]:
     return v
 
 
+def _ascending(v: list[int]) -> list[int]:
+    if any(b <= a for a, b in zip(v, v[1:], strict=False)):
+        raise ValueError("bounds must increase")
+    return v
+
+
 class ShareRange(_M):
     low: Decimal = Field(ge=0, le=1)
     high: Decimal = Field(ge=0, le=1)
@@ -227,6 +233,14 @@ FAMILIES: dict[str, TypeAdapter[Any]] = {
     ),
     "holidays": TypeAdapter(Annotated[list[date], Field(max_length=400)]),
     "benford_mad_bands": TypeAdapter(BenfordBands),
+    # Inclusive upper bounds in days, ascending (e.g. [30, 60, 90] → 0-30, 31-60, 61-90, 91+).
+    "ageing_buckets": TypeAdapter(
+        Annotated[
+            list[Annotated[int, Field(ge=1, le=3650)]],
+            Field(min_length=1, max_length=10),
+            AfterValidator(_ascending),
+        ]
+    ),
     "required_fields": TypeAdapter(
         dict[Annotated[str, Field(pattern=r"^([A-Z]{2}|\*)$")], list[Code]]
     ),
