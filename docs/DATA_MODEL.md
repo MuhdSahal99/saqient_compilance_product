@@ -176,3 +176,12 @@ All tables carry `org_id`. Sign-off objects share `status`, `prepared_by/at`,
 
 New dataset kinds: `user_roles`, `ap_payments`, `employee_master`, `three_way_match`,
 `expense_claims`. New job kind: `connector_sync`.
+
+## Sector packs (Phase F)
+
+| Table | Key columns | Notes |
+|---|---|---|
+| `content_pack_installs` | org_id, pack_id, pack_version (unique triple), manifest_sha256, checklist_version_ids, rule_pack_version_id, installed_by_id | Installs draft checklists and a draft rule pack. |
+
+`organizations` gains `ai_opt_in` and `ai_opt_in_at`. Workpaper kinds gain `fs_draft`
+(engagement) and `lease_ifrs16` (entity). New dataset kind: `fixed_assets`.

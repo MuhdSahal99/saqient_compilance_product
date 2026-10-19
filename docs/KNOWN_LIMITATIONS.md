@@ -163,3 +163,19 @@ Features listed here are either absent or deliberately labelled in the UI.
   account structure.
 - The main JS chunk is now 995 kB because every en/ar string loads eagerly; the new
   screens themselves are lazy chunks. Splitting translations per route is not done.
+
+## Sector packs (Phase F)
+
+- The six shipped packs are synthetic drafts with generic requirements and open
+  questions. They name no regulator, statute or article and are not a source of any
+  external requirement; teams must replace them with verified sources.
+- The FS draft groups lead schedules by section only. It has no statement layouts, cash
+  flow, equity movement or IFRS disclosure checklist; notes are totals the preparer
+  enters.
+- The lease calculation assumes equal payments per period and no modifications,
+  remeasurement, variable payments or currency effects.
+- Depreciation recalculation counts whole months (acquisition month in full), supports
+  straight line and reducing balance only, and does not handle impairment,
+  revaluation, componentisation or partial disposals.
+- AI suggestions were tested with the mock provider only. Opting in does not choose a
+  provider; the deployment does.

@@ -19,6 +19,7 @@ from app.demo_assurance import seed_assurance
 from app.demo_audit import seed_audit
 from app.demo_direct_tax import seed_direct_tax
 from app.demo_finance import seed_finance
+from app.demo_sector import seed_sector
 from app.demo_vat import seed_vat
 from app.models import (
     Base,
@@ -219,10 +220,11 @@ def seed() -> None:
             seed_vat(db, factory, org, admin, reviewer, role_users[Role.ANALYST])
             seed_direct_tax(db, org, admin, reviewer, role_users[Role.ANALYST])
             db.commit()
-            seed_audit(
+            engagement = seed_audit(
                 db, org, admin, reviewer, role_users[Role.ANALYST], role_users.get(Role.CLIENT)
             )
             seed_assurance(db, org, admin, reviewer, role_users[Role.ANALYST])
+            seed_sector(db, org, admin, role_users[Role.ANALYST], engagement)
         print("Seeded synthetic demo data. Demo password:", DEMO_PASSWORD)  # demo-only value
 
 

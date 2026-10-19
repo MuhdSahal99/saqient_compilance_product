@@ -98,6 +98,12 @@ signed off through `services/assurance.py` into immutable snapshots. Engine
 holds read-only adapters (Zoho Books, Odoo) behind a registry; syncs run as
 `connector_sync` jobs and feed the dataset pipeline. See ADR 0013.
 
+Phase F adds content packs (`app/packs/`, JSON manifests installed as drafts by
+`services/content_packs.py`), the `fs_draft` and `lease_ifrs16` calculations
+(`app/calc/fs.py`), engine `deterministic-1.6.0` depreciation recalculation
+(`app/engine/fa_checks.py`) and a per-organisation AI opt-in on top of the deployment
+flag. See ADR 0014.
+
 ## Reports
 
 Sign-off freezes a JSON snapshot (`report_snapshots`, version n). HTML, PDF
