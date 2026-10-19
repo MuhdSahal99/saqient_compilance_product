@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createBrowserRouter, Navigate, Outlet, RouterProvider, useLocation } from "react-router-dom";
 import { Toaster } from "sonner";
@@ -27,7 +28,12 @@ import { EInvoicesPage } from "@/pages/EInvoicesPage";
 import { TaxCalendarPage } from "@/pages/TaxCalendarPage";
 import { WorkpapersPage } from "@/pages/WorkpapersPage";
 import { WorkpaperDetailPage } from "@/pages/WorkpaperDetailPage";
+import { EngagementsPage } from "@/pages/EngagementsPage";
+import { PortalPage } from "@/pages/PortalPage";
 import { AcceptInvitePage, ForgotPasswordPage, ResetPasswordPage } from "@/pages/PublicAuthPages";
+
+/** The engagement workspace is large; load it on first visit to keep the main bundle small. */
+const EngagementDetailPage = lazy(() => import("@/pages/EngagementDetailPage").then((m) => ({ default: m.EngagementDetailPage })));
 
 function RequireAuth() {
   const { me, loading } = useAuth();
@@ -90,6 +96,16 @@ export const routes = [
               { path: "/findings", element: <FindingsPage /> },
               { path: "/tasks", element: <TasksPage /> },
               { path: "/tax-calendar", element: <TaxCalendarPage /> },
+              { path: "/engagements", element: <EngagementsPage /> },
+              {
+                path: "/engagements/:engagementId",
+                element: (
+                  <Suspense fallback={<LoadingState />}>
+                    <EngagementDetailPage />
+                  </Suspense>
+                ),
+              },
+              { path: "/portal", element: <PortalPage /> },
               { path: "/reports", element: <ReportsPage /> },
               { path: "/activity", element: <ActivityPage /> },
               { path: "/settings", element: <SettingsPage /> },

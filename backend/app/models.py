@@ -78,6 +78,8 @@ class Role(str, enum.Enum):
     REVIEWER = "reviewer"
     ANALYST = "analyst"
     VIEWER = "viewer"
+    # Audit client contact: reaches only the request portal (/api/portal/*).
+    CLIENT = "client"
 
 
 class VersionStatus(str, enum.Enum):
@@ -91,6 +93,7 @@ class ChecklistKind(str, enum.Enum):
     SYNTHETIC_DEMO = "synthetic_demo"
     INTERNAL_POLICY = "internal_policy"
     EXTERNAL_REGULATORY = "external_regulatory"
+    AUDIT_PROGRAMME = "audit_programme"
 
 
 class ChecklistState(str, enum.Enum):
@@ -147,6 +150,12 @@ class WorkpaperKind(str, enum.Enum):
     QFZP_TEST = "qfzp_test"
     PILLAR_TWO = "pillar_two"
     ZAKAT = "zakat"
+    # Audit workpapers (Phase D) belong to an engagement.
+    LEAD_SCHEDULE = "lead_schedule"
+    MATERIALITY = "materiality"
+
+
+AUDIT_WORKPAPER_KINDS = frozenset({WorkpaperKind.LEAD_SCHEDULE, WorkpaperKind.MATERIALITY})
 
 
 class WorkpaperStatus(str, enum.Enum):
@@ -195,6 +204,108 @@ class LossEntryKind(str, enum.Enum):
     TRANSFERRED_IN = "transferred_in"
     TRANSFERRED_OUT = "transferred_out"
     FORFEITED = "forfeited"
+
+
+class EngagementKind(str, enum.Enum):
+    EXTERNAL_AUDIT = "external_audit"
+    INTERNAL_AUDIT = "internal_audit"
+
+
+class EngagementPhase(str, enum.Enum):
+    PLANNING = "planning"
+    FIELDWORK = "fieldwork"
+    COMPLETION = "completion"
+    REPORTING = "reporting"
+
+
+class EngagementStatus(str, enum.Enum):
+    """The current phase, or closed. Moves forward one step; a step back needs a reason."""
+
+    PLANNING = "planning"
+    FIELDWORK = "fieldwork"
+    COMPLETION = "completion"
+    REPORTING = "reporting"
+    CLOSED = "closed"
+
+
+class FsSection(str, enum.Enum):
+    ASSET = "asset"
+    LIABILITY = "liability"
+    EQUITY = "equity"
+    INCOME = "income"
+    EXPENSE = "expense"
+
+
+class Assertion(str, enum.Enum):
+    EXISTENCE = "existence"
+    OCCURRENCE = "occurrence"
+    COMPLETENESS = "completeness"
+    ACCURACY = "accuracy"
+    VALUATION = "valuation"
+    CUT_OFF = "cut_off"
+    CLASSIFICATION = "classification"
+    RIGHTS_OBLIGATIONS = "rights_obligations"
+    PRESENTATION = "presentation"
+
+
+class RiskLevel(str, enum.Enum):
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+
+
+class ProcedureStatus(str, enum.Enum):
+    NOT_STARTED = "not_started"
+    IN_PROGRESS = "in_progress"
+    DONE = "done"
+
+
+class SamplingMethod(str, enum.Enum):
+    MONETARY_UNIT = "monetary_unit"
+    RANDOM = "random"
+    STRATIFIED = "stratified"
+
+
+class SampleItemResult(str, enum.Enum):
+    NOT_TESTED = "not_tested"
+    NO_EXCEPTION = "no_exception"
+    EXCEPTION = "exception"
+
+
+class ConfirmationType(str, enum.Enum):
+    BANK = "bank"
+    RECEIVABLE = "receivable"
+    PAYABLE = "payable"
+    LEGAL = "legal"
+    OTHER = "other"
+
+
+class ConfirmationStatus(str, enum.Enum):
+    PLANNED = "planned"
+    SENT = "sent"
+    RESPONDED = "responded"
+    NO_RESPONSE = "no_response"
+    CLOSED = "closed"
+
+
+class AdjustmentStatus(str, enum.Enum):
+    PROPOSED = "proposed"
+    RECORDED = "recorded"  # booked by the client
+    PASSED = "passed"  # not booked; on the summary of unadjusted differences
+
+
+class PbcStatus(str, enum.Enum):
+    REQUESTED = "requested"
+    SUBMITTED = "submitted"
+    ACCEPTED = "accepted"
+    REJECTED = "rejected"
+
+
+class EngagementRole(str, enum.Enum):
+    PARTNER = "partner"
+    MANAGER = "manager"
+    SENIOR = "senior"
+    STAFF = "staff"
 
 
 class TaskStatus(str, enum.Enum):
@@ -1189,6 +1300,10 @@ class Review(Base):
     tax_period_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("tax_periods.id", ondelete="RESTRICT"), index=True
     )
+    # An audit programme or journal entry review run for an engagement (Phase D).
+    engagement_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("audit_engagements.id", ondelete="RESTRICT"), index=True
+    )
     status: Mapped[ReviewStatus] = mapped_column(
         _enum(ReviewStatus, "review_status"), default=ReviewStatus.DRAFT
     )
@@ -1464,6 +1579,15 @@ class TaxWorkpaper(Base):
     )
     # Rule keys hang off this prefix, e.g. 'ae.ct'.
     rules_prefix: Mapped[str] = mapped_column(String(80))
+    # Audit workpapers: the engagement, and the preparer step before reviewer sign-off.
+    engagement_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("audit_engagements.id", ondelete="RESTRICT"), index=True
+    )
+    prepared_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    prepared_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    prepared_by: Mapped[User | None] = relationship(foreign_keys=[prepared_by_id], lazy="joined")
     status: Mapped[WorkpaperStatus] = mapped_column(
         _enum(WorkpaperStatus, "workpaper_status"), default=WorkpaperStatus.DRAFT
     )
@@ -1660,6 +1784,451 @@ class RelatedPartyTransaction(Base):
     created_at: Mapped[datetime] = _created()
 
     party: Mapped[RelatedParty] = relationship(lazy="joined")
+
+
+# ---------------------------------------------------------------- audit engagements
+
+
+class AuditEngagement(Base):
+    """An external or internal audit of one entity and period (Phase D)."""
+
+    __tablename__ = "audit_engagements"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    entity_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("legal_entities.id", ondelete="RESTRICT"), index=True
+    )
+    kind: Mapped[EngagementKind] = mapped_column(_enum(EngagementKind, "engagement_kind"))
+    name: Mapped[str] = mapped_column(String(300))
+    period_start: Mapped[date] = mapped_column(Date)
+    period_end: Mapped[date] = mapped_column(Date)
+    currency: Mapped[str] = mapped_column(String(3))
+    status: Mapped[EngagementStatus] = mapped_column(
+        _enum(EngagementStatus, "engagement_status"), default=EngagementStatus.PLANNING
+    )
+    # Trial balances for lead schedules (D2) and the audit rule pack (thresholds, rounding).
+    cy_tb_version_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("dataset_versions.id", ondelete="SET NULL")
+    )
+    py_tb_version_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("dataset_versions.id", ondelete="SET NULL")
+    )
+    rule_pack_version_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("rule_pack_versions.id", ondelete="RESTRICT")
+    )
+    rules_prefix: Mapped[str | None] = mapped_column(String(80))
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    is_demo: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = _created()
+
+    entity: Mapped[LegalEntity] = relationship(lazy="joined")
+    members: Mapped[list[EngagementMember]] = relationship(
+        back_populates="engagement", cascade="all, delete-orphan"
+    )
+    budgets: Mapped[list[EngagementBudget]] = relationship(
+        back_populates="engagement", cascade="all, delete-orphan"
+    )
+
+
+class EngagementMember(Base):
+    __tablename__ = "engagement_members"
+    __table_args__ = (UniqueConstraint("engagement_id", "user_id"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    engagement_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("audit_engagements.id", ondelete="CASCADE"), index=True
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), index=True
+    )
+    role: Mapped[EngagementRole] = mapped_column(_enum(EngagementRole, "engagement_role"))
+    created_at: Mapped[datetime] = _created()
+
+    engagement: Mapped[AuditEngagement] = relationship(back_populates="members")
+    user: Mapped[User] = relationship(lazy="joined")
+
+
+class EngagementBudget(Base):
+    """Budgeted hours for one phase of an engagement."""
+
+    __tablename__ = "engagement_budgets"
+    __table_args__ = (UniqueConstraint("engagement_id", "phase"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    engagement_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("audit_engagements.id", ondelete="CASCADE"), index=True
+    )
+    phase: Mapped[EngagementPhase] = mapped_column(_enum(EngagementPhase, "engagement_phase"))
+    hours: Mapped[Decimal] = mapped_column(Numeric(10, 2))
+
+    engagement: Mapped[AuditEngagement] = relationship(back_populates="budgets")
+
+
+class LeadSchedule(Base):
+    """A financial statement lead schedule (e.g. 'A Cash and bank') of an engagement."""
+
+    __tablename__ = "lead_schedules"
+    __table_args__ = (UniqueConstraint("engagement_id", "code"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    engagement_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("audit_engagements.id", ondelete="CASCADE"), index=True
+    )
+    code: Mapped[str] = mapped_column(String(20))  # stored upper case
+    name: Mapped[str] = mapped_column(String(200))
+    section: Mapped[FsSection] = mapped_column(_enum(FsSection, "fs_section"))
+    ordinal: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class AccountMapping(Base):
+    """Trial balance account → lead schedule, for one engagement."""
+
+    __tablename__ = "account_mappings"
+    __table_args__ = (UniqueConstraint("engagement_id", "account_code"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    engagement_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("audit_engagements.id", ondelete="CASCADE"), index=True
+    )
+    account_code: Mapped[str] = mapped_column(String(80))
+    lead_schedule_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("lead_schedules.id", ondelete="RESTRICT"), index=True
+    )
+
+
+class AuditRisk(Base):
+    """A risk of material misstatement for a financial statement area and assertions."""
+
+    __tablename__ = "audit_risks"
+    __table_args__ = (UniqueConstraint("engagement_id", "ref"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    engagement_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("audit_engagements.id", ondelete="CASCADE"), index=True
+    )
+    ref: Mapped[str] = mapped_column(String(20))  # e.g. R1
+    title: Mapped[str] = mapped_column(String(300))
+    description: Mapped[str] = mapped_column(Text, default="")
+    lead_code: Mapped[str | None] = mapped_column(String(20))  # FS area, if mapped
+    assertions: Mapped[list[str]] = mapped_column(JSONType, default=list)
+    inherent_risk: Mapped[RiskLevel] = mapped_column(_enum(RiskLevel, "risk_level"))
+    significant: Mapped[bool] = mapped_column(Boolean, default=False)
+    fraud: Mapped[bool] = mapped_column(Boolean, default=False)
+    response: Mapped[str] = mapped_column(Text, default="")
+    created_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = _created()
+
+
+class AuditProcedure(Base):
+    """A planned audit procedure, optionally from an audit programme requirement."""
+
+    __tablename__ = "audit_procedures"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    engagement_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("audit_engagements.id", ondelete="CASCADE"), index=True
+    )
+    title: Mapped[str] = mapped_column(String(300))
+    description: Mapped[str] = mapped_column(Text, default="")
+    requirement_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("requirements.id", ondelete="RESTRICT"), index=True
+    )
+    review_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("reviews.id", ondelete="SET NULL")
+    )
+    assignee_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    status: Mapped[ProcedureStatus] = mapped_column(
+        _enum(ProcedureStatus, "procedure_status"), default=ProcedureStatus.NOT_STARTED
+    )
+    conclusion: Mapped[str] = mapped_column(Text, default="")
+    completed_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = _created()
+
+    requirement: Mapped[Requirement | None] = relationship(lazy="joined")
+    assignee: Mapped[User | None] = relationship(foreign_keys=[assignee_id], lazy="joined")
+
+
+class RiskProcedure(Base):
+    __tablename__ = "risk_procedures"
+    __table_args__ = (UniqueConstraint("risk_id", "procedure_id"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    risk_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("audit_risks.id", ondelete="CASCADE"), index=True
+    )
+    procedure_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("audit_procedures.id", ondelete="CASCADE"), index=True
+    )
+
+
+class AuditSample(Base):
+    """A reproducible sample of dataset rows: method, seed and population hash recorded."""
+
+    __tablename__ = "audit_samples"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    engagement_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("audit_engagements.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(200))
+    method: Mapped[SamplingMethod] = mapped_column(_enum(SamplingMethod, "sampling_method"))
+    dataset_version_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("dataset_versions.id", ondelete="RESTRICT")
+    )
+    amount_column: Mapped[str] = mapped_column(String(60))
+    seed: Mapped[str] = mapped_column(String(64))
+    # Method parameters as entered: size, strata (upper, size), and for MUS interval/start.
+    params: Mapped[dict[str, Any]] = mapped_column(JSONType, default=dict)
+    algorithm_version: Mapped[str] = mapped_column(String(40))
+    population_count: Mapped[int] = mapped_column(Integer)
+    population_value: Mapped[Decimal] = mapped_column(Numeric(20, 4))
+    population_sha256: Mapped[str] = mapped_column(String(64))
+    risk_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("audit_risks.id", ondelete="SET NULL")
+    )
+    conclusion: Mapped[str] = mapped_column(Text, default="")
+    created_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = _created()
+
+    items: Mapped[list[AuditSampleItem]] = relationship(
+        back_populates="sample", order_by="AuditSampleItem.row_id", cascade="all, delete-orphan"
+    )
+
+
+class AuditSampleItem(Base):
+    __tablename__ = "audit_sample_items"
+    __table_args__ = (UniqueConstraint("sample_id", "row_id"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    sample_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("audit_samples.id", ondelete="CASCADE"), index=True
+    )
+    row_id: Mapped[int] = mapped_column(Integer)
+    stratum: Mapped[int | None] = mapped_column(Integer)
+    hits: Mapped[int] = mapped_column(Integer, default=1)
+    book_value: Mapped[Decimal] = mapped_column(Numeric(20, 4))  # absolute value sampled
+    audited_value: Mapped[Decimal | None] = mapped_column(Numeric(20, 4))
+    result: Mapped[SampleItemResult] = mapped_column(
+        _enum(SampleItemResult, "sample_item_result"), default=SampleItemResult.NOT_TESTED
+    )
+    note: Mapped[str] = mapped_column(String(1000), default="")
+    tested_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    tested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    sample: Mapped[AuditSample] = relationship(back_populates="items")
+
+
+class AuditConfirmation(Base):
+    """An external confirmation request (bank, receivable, payable, legal, other)."""
+
+    __tablename__ = "audit_confirmations"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    engagement_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("audit_engagements.id", ondelete="CASCADE"), index=True
+    )
+    type: Mapped[ConfirmationType] = mapped_column(_enum(ConfirmationType, "confirmation_type"))
+    counterparty: Mapped[str] = mapped_column(String(200))
+    # An internal reference; bank account numbers are not stored here.
+    reference: Mapped[str] = mapped_column(String(100), default="")
+    book_amount: Mapped[Decimal] = mapped_column(Numeric(20, 4))
+    currency: Mapped[str] = mapped_column(String(3))
+    status: Mapped[ConfirmationStatus] = mapped_column(
+        _enum(ConfirmationStatus, "confirmation_status"), default=ConfirmationStatus.PLANNED
+    )
+    sent_on: Mapped[date | None] = mapped_column(Date)
+    responded_on: Mapped[date | None] = mapped_column(Date)
+    confirmed_amount: Mapped[Decimal | None] = mapped_column(Numeric(20, 4))
+    response_document_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("documents.id", ondelete="SET NULL")
+    )
+    conclusion: Mapped[str] = mapped_column(Text, default="")
+    created_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = _created()
+
+
+class AuditAdjustment(Base):
+    """A proposed audit adjustment; recorded by the client or passed (unadjusted)."""
+
+    __tablename__ = "audit_adjustments"
+    __table_args__ = (UniqueConstraint("engagement_id", "ref"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    engagement_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("audit_engagements.id", ondelete="CASCADE"), index=True
+    )
+    ref: Mapped[str] = mapped_column(String(20))
+    description: Mapped[str] = mapped_column(Text)
+    status: Mapped[AdjustmentStatus] = mapped_column(
+        _enum(AdjustmentStatus, "adjustment_status"), default=AdjustmentStatus.PROPOSED
+    )
+    reason: Mapped[str] = mapped_column(Text, default="")
+    finding_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("findings.id", ondelete="SET NULL")
+    )
+    decided_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = _created()
+
+    lines: Mapped[list[AdjustmentLine]] = relationship(
+        back_populates="adjustment", order_by="AdjustmentLine.ordinal", cascade="all, delete-orphan"
+    )
+
+
+class AdjustmentLine(Base):
+    __tablename__ = "audit_adjustment_lines"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    adjustment_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("audit_adjustments.id", ondelete="CASCADE"), index=True
+    )
+    ordinal: Mapped[int] = mapped_column(Integer)
+    account_code: Mapped[str] = mapped_column(String(80))
+    debit: Mapped[Decimal] = mapped_column(Numeric(20, 4), default=Decimal(0))
+    credit: Mapped[Decimal] = mapped_column(Numeric(20, 4), default=Decimal(0))
+
+    adjustment: Mapped[AuditAdjustment] = relationship(back_populates="lines")
+
+
+class PbcRequest(Base):
+    """A 'prepared by client' request; the assigned client user answers it in the portal."""
+
+    __tablename__ = "pbc_requests"
+    __table_args__ = (UniqueConstraint("engagement_id", "ref"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    engagement_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("audit_engagements.id", ondelete="CASCADE"), index=True
+    )
+    ref: Mapped[str] = mapped_column(String(20))
+    title: Mapped[str] = mapped_column(String(300))
+    description: Mapped[str] = mapped_column(Text, default="")
+    due_date: Mapped[date | None] = mapped_column(Date)
+    status: Mapped[PbcStatus] = mapped_column(
+        _enum(PbcStatus, "pbc_status"), default=PbcStatus.REQUESTED
+    )
+    assignee_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), index=True
+    )
+    client_note: Mapped[str] = mapped_column(Text, default="")
+    review_note: Mapped[str] = mapped_column(Text, default="")
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    reviewed_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = _created()
+
+    assignee: Mapped[User | None] = relationship(foreign_keys=[assignee_id], lazy="joined")
+    files: Mapped[list[PbcFile]] = relationship(
+        back_populates="request", order_by="PbcFile.created_at", cascade="all, delete-orphan"
+    )
+
+
+class PbcFile(Base):
+    __tablename__ = "pbc_files"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    request_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("pbc_requests.id", ondelete="CASCADE"), index=True
+    )
+    document_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("documents.id", ondelete="RESTRICT")
+    )
+    uploaded_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = _created()
+
+    request: Mapped[PbcRequest] = relationship(back_populates="files")
+    document: Mapped[Document] = relationship(lazy="joined")
+
+
+class LetterPoint(Base):
+    """A management letter point drawn from one confirmed finding of the engagement."""
+
+    __tablename__ = "letter_points"
+    __table_args__ = (UniqueConstraint("engagement_id", "finding_id"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    engagement_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("audit_engagements.id", ondelete="CASCADE"), index=True
+    )
+    finding_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("findings.id", ondelete="RESTRICT")
+    )
+    ordinal: Mapped[int] = mapped_column(Integer, default=0)
+    include: Mapped[bool] = mapped_column(Boolean, default=True)
+    recommendation: Mapped[str] = mapped_column(Text, default="")
+    management_response: Mapped[str] = mapped_column(Text, default="")
+    response_owner: Mapped[str] = mapped_column(String(200), default="")
+    response_due: Mapped[date | None] = mapped_column(Date)
+
+    finding: Mapped[Finding] = relationship(lazy="joined")
+
+
+class LetterSnapshot(Base):
+    """An issued management letter version (immutable; a database trigger rejects UPDATE)."""
+
+    __tablename__ = "letter_snapshots"
+    __table_args__ = (UniqueConstraint("engagement_id", "version"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    engagement_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("audit_engagements.id", ondelete="CASCADE"), index=True
+    )
+    version: Mapped[int] = mapped_column(Integer)
+    content: Mapped[dict[str, Any]] = mapped_column(JSONType)
+    issued_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    issued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = _created()
+
+
+class TimeEntry(Base):
+    """Hours one team member worked on one phase on one day."""
+
+    __tablename__ = "engagement_time_entries"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    engagement_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("audit_engagements.id", ondelete="CASCADE"), index=True
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), index=True
+    )
+    phase: Mapped[EngagementPhase] = mapped_column(_enum(EngagementPhase, "engagement_phase"))
+    work_date: Mapped[date] = mapped_column(Date)
+    hours: Mapped[Decimal] = mapped_column(Numeric(6, 2))
+    note: Mapped[str] = mapped_column(String(500), default="")
+    created_at: Mapped[datetime] = _created()
+
+    user: Mapped[User] = relationship(lazy="joined")
 
 
 class AuditEvent(Base):

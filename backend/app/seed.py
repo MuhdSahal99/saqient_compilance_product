@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from app import demo_content as dc
 from app.config import get_settings
 from app.db import get_sessionmaker
+from app.demo_audit import seed_audit
 from app.demo_direct_tax import seed_direct_tax
 from app.demo_finance import seed_finance
 from app.demo_vat import seed_vat
@@ -52,6 +53,7 @@ ORGS = [
             ("reviewer@alpha.example", "Demo Reviewer (Alpha)", Role.REVIEWER),
             ("analyst@alpha.example", "Demo Analyst (Alpha)", Role.ANALYST),
             ("viewer@alpha.example", "Demo Viewer (Alpha)", Role.VIEWER),
+            ("client@alpha.example", "Demo Client (Alpha)", Role.CLIENT),
         ],
     ),
     (
@@ -215,6 +217,10 @@ def seed() -> None:
             seed_finance(db, factory, org, admin, reviewer, role_users[Role.ANALYST])
             seed_vat(db, factory, org, admin, reviewer, role_users[Role.ANALYST])
             seed_direct_tax(db, org, admin, reviewer, role_users[Role.ANALYST])
+            db.commit()
+            seed_audit(
+                db, org, admin, reviewer, role_users[Role.ANALYST], role_users.get(Role.CLIENT)
+            )
         print("Seeded synthetic demo data. Demo password:", DEMO_PASSWORD)  # demo-only value
 
 

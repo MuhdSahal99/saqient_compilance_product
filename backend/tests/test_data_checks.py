@@ -595,7 +595,7 @@ def test_engine_versions() -> None:
         "flag_if": "gt",
         "value": {"value": "1"},
     }
-    assert ENGINE_VERSION == "deterministic-1.3.0"
+    assert ENGINE_VERSION == "deterministic-1.4.0"
     with pytest.raises(ValidationError):
         parse_check(threshold, "deterministic-1.0.0")
     # 1.1.0 still parses its own data checks, but not the 1.2.0 ones.
@@ -615,6 +615,12 @@ def test_engine_versions() -> None:
     parse_check(wht)
     with pytest.raises(ValidationError):
         parse_check(wht, "deterministic-1.2.0")
+    assert parse_check(wht, "deterministic-1.3.0") == parse_check(wht)
+    # 1.4.0 adds journal entry tests; 1.3.0 does not accept them.
+    je = {"type": "journal_entry_test", "test": "weekend", "rules_prefix": "syn.audit"}
+    parse_check(je)
+    with pytest.raises(ValidationError):
+        parse_check(je, "deterministic-1.3.0")
     with pytest.raises(ValueError, match="Unknown engine version"):
         parse_check(threshold, "deterministic-9.9.9")
     text = {"type": "required_text", "phrases": ["retention"]}

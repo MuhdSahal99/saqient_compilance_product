@@ -5,10 +5,10 @@ import { useTranslation } from "react-i18next";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { BookDown, BookUp, Calculator, FileStack, Loader2, Pencil, Plus, RotateCcw, Signature, Trash2 } from "lucide-react";
+import { BookDown, BookUp, Calculator, FileStack, Loader2, Pencil, Plus, RefreshCw, RotateCcw, Signature, Trash2, UserCheck } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api";
-import { WORKPAPER_CATEGORIES, type LossPosting, type Workpaper, type WorkpaperLine } from "@/lib/types";
+import { AUDIT_WORKPAPER_KINDS, WORKPAPER_CATEGORIES, type LossPosting, type Workpaper, type WorkpaperKind, type WorkpaperLine } from "@/lib/types";
 import { useAuth } from "@/lib/auth";
 import { lossRegisterKey, useWorkpaper, workpaperKey, workpapersKey } from "@/lib/queries";
 import { formatDate } from "@/lib/utils";
@@ -24,6 +24,9 @@ import { WorkpaperStatusBadge } from "./WorkpapersPage";
 
 const LINE_KEY = /^[a-z][a-z0-9_]{0,79}$/;
 const SIGNED_AMOUNT = /^-?\d{1,16}(\.\d{1,4})?$/;
+
+/** Audit workpapers also take short text inputs (e.g. the materiality benchmark type and rationale). */
+const isAuditKind = (k: WorkpaperKind) => (AUDIT_WORKPAPER_KINDS as readonly string[]).includes(k);
 
 /** Stored evidence back to the reference shape the API accepts, so an edit keeps it. */
 type EvidenceRef =
@@ -53,13 +56,15 @@ const inputSchema = z
     line_key: z.string().trim().regex(LINE_KEY),
     category: z.string().min(1),
     label: z.string().trim().min(1).max(300),
-    mode: z.enum(["amount", "flag"]),
+    mode: z.enum(["amount", "flag", "text"]),
     amount: z.string().trim(),
     flag: z.enum(["true", "false"]),
+    text: z.string().trim().max(200),
     note: z.string().max(4000),
   })
   .superRefine((v, ctx) => {
     if (v.mode === "amount" && !SIGNED_AMOUNT.test(v.amount)) ctx.addIssue({ code: "custom", path: ["amount"], message: "amount" });
+    if (v.mode === "text" && !v.text) ctx.addIssue({ code: "custom", path: ["text"], message: "text" });
   });
 type InputValues = z.infer<typeof inputSchema>;
 
@@ -81,9 +86,10 @@ function InputDialog({
     line_key: line?.line_key ?? "",
     category: line?.category ?? categories[0] ?? "input",
     label: line?.label ?? "",
-    mode: line && line.amount == null ? "flag" : "amount",
+    mode: line && line.amount == null ? (line.value === "true" || line.value === "false" ? "flag" : "text") : "amount",
     amount: line?.amount ?? "",
     flag: line?.value === "true" ? "true" : "false",
+    text: line && line.value !== "true" && line.value !== "false" ? (line.value ?? "") : "",
     note: line?.note ?? "",
   });
   const form = useForm<InputValues>({ resolver: zodResolver(inputSchema), defaultValues: defaults() });
@@ -99,7 +105,7 @@ function InputDialog({
           category: v.category,
           label: v.label,
           amount: v.mode === "amount" ? v.amount : null,
-          value: v.mode === "flag" ? v.flag : null,
+          value: v.mode === "flag" ? v.flag : v.mode === "text" ? v.text : null,
           note: v.note,
           evidence: line ? evidenceRefs(line.evidence) : [],
         },
@@ -154,9 +160,16 @@ function InputDialog({
               <Select id="in-mode" {...form.register("mode")}>
                 <option value="amount">{t("workpapers.valueKindAmount")}</option>
                 <option value="flag">{t("workpapers.valueKindFlag")}</option>
+                {isAuditKind(workpaper.kind) && <option value="text">{t("workpapers.valueKindText")}</option>}
               </Select>
             </div>
-            {mode === "amount" ? (
+            {mode === "text" ? (
+              <div className="space-y-1.5">
+                <Label htmlFor="in-text">{t("workpapers.textValue")}</Label>
+                <Input id="in-text" maxLength={200} aria-invalid={!!err.text} {...form.register("text")} />
+                <FieldError message={err.text ? t("workpapers.textRequired") : undefined} />
+              </div>
+            ) : mode === "amount" ? (
               <div className="space-y-1.5">
                 <Label htmlFor="in-amount">{t("losses.amount")}</Label>
                 <Input id="in-amount" dir="ltr" inputMode="decimal" aria-invalid={!!err.amount} {...form.register("amount")} />
@@ -304,6 +317,16 @@ export function WorkpaperDetailPage() {
     onSuccess: onWp(t("workpapers.prefilled")),
     onError: onErr,
   });
+  const prepare = useMutation({
+    mutationFn: () => api<Workpaper>(`/workpapers/${workpaperId}/prepare`, { method: "POST" }),
+    onSuccess: onWp(t("workpapers.prepared")),
+    onError: onErr,
+  });
+  const reloadLeads = useMutation({
+    mutationFn: () => api<Workpaper>(`/workpapers/${workpaperId}/reload-leads`, { method: "POST" }),
+    onSuccess: onWp(t("workpapers.leadsReloaded")),
+    onError: onErr,
+  });
   const post = useMutation({
     mutationFn: () => api<LossPosting>(`/workpapers/${workpaperId}/post-losses`, { method: "POST" }),
     onSuccess: (r) => {
@@ -327,7 +350,11 @@ export function WorkpaperDetailPage() {
   const computed = w.lines.filter((l) => l.source === "computed");
   const sections = Array.from(new Set(computed.map((l) => l.section)));
   const isCt = w.kind === "corporate_tax";
-  const busy = compute.isPending || signOff.isPending || prefill.isPending || post.isPending;
+  const audit = isAuditKind(w.kind);
+  const busy = compute.isPending || signOff.isPending || prefill.isPending || post.isPending || prepare.isPending || reloadLeads.isPending;
+  const parentCrumb = w.engagement_id
+    ? { label: t("nav.engagements"), to: `/engagements/${w.engagement_id}?tab=tb` }
+    : { label: t("nav.directTax"), to: "/workpapers" };
 
   return (
     <>
@@ -341,7 +368,7 @@ export function WorkpaperDetailPage() {
             {w.is_demo && <SyntheticBadge />}
           </span>
         }
-        crumbs={[{ label: t("nav.overview"), to: "/" }, { label: t("nav.directTax"), to: "/workpapers" }, { label: w.title }]}
+        crumbs={[{ label: t("nav.overview"), to: "/" }, parentCrumb, { label: w.title }]}
         actions={
           <>
             {draft && can("write") && isCt && (
@@ -350,14 +377,26 @@ export function WorkpaperDetailPage() {
                 {t("workpapers.prefillLosses")}
               </Button>
             )}
+            {draft && can("write") && w.kind === "lead_schedule" && (
+              <Button variant="outline" disabled={busy} onClick={() => reloadLeads.mutate()}>
+                {reloadLeads.isPending ? <Loader2 className="animate-spin" aria-hidden /> : <RefreshCw aria-hidden />}
+                {t("workpapers.reloadLeads")}
+              </Button>
+            )}
             {draft && can("write") && (
               <Button variant="accent" disabled={busy} onClick={() => compute.mutate()}>
                 {compute.isPending ? <Loader2 className="animate-spin" aria-hidden /> : <Calculator aria-hidden />}
                 {t("workpapers.compute")}
               </Button>
             )}
+            {draft && can("write") && audit && !w.prepared_at && (
+              <Button variant="outline" disabled={busy || !w.computed_at} onClick={() => prepare.mutate()}>
+                {prepare.isPending ? <Loader2 className="animate-spin" aria-hidden /> : <UserCheck aria-hidden />}
+                {t("workpapers.markPrepared")}
+              </Button>
+            )}
             {draft && can("decide") && (
-              <Button variant="default" disabled={busy || !w.computed_at} onClick={() => setConfirmSignOff(true)}>
+              <Button variant="default" disabled={busy || !w.computed_at || (audit && !w.prepared_at)} onClick={() => setConfirmSignOff(true)}>
                 <Signature aria-hidden />
                 {t("workpapers.signOff")}
               </Button>
@@ -393,6 +432,11 @@ export function WorkpaperDetailPage() {
               </code>
             </Meta>
             <Meta label={t("workpapers.computedAt")}>{w.computed_at ? formatDate(w.computed_at, i18n.language, true) : t("workpapers.notComputed")}</Meta>
+            {audit && (
+              <Meta label={t("workpapers.preparedBy")}>
+                {w.prepared_at ? `${w.prepared_by_name ?? "—"} · ${formatDate(w.prepared_at, i18n.language, true)}` : t("workpapers.notPrepared")}
+              </Meta>
+            )}
             <Meta label={t("workpapers.calcVersion")}>
               <code dir="ltr" className="font-mono text-xs">
                 {w.calc_version ?? "—"}

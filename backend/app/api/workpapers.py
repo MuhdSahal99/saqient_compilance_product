@@ -44,6 +44,9 @@ def _summary(wp: TaxWorkpaper) -> dict[str, Any]:
         "computed_at": wp.computed_at,
         "is_demo": wp.is_demo,
         "created_at": wp.created_at,
+        "engagement_id": wp.engagement_id,
+        "prepared_by_name": wp.prepared_by.full_name if wp.prepared_by else None,
+        "prepared_at": wp.prepared_at,
     }
 
 
@@ -211,6 +214,25 @@ def compute(workpaper_id: uuid.UUID, db: DB, ctx: Writer) -> WorkpaperOut:
     wp = _get(db, ctx, workpaper_id)
     try:
         svc.compute(db, wp, ctx.user)
+    except svc.WorkpaperError as exc:
+        raise _bad(exc) from exc
+    db.commit()
+    return workpaper_out(db, wp)
+
+
+@router.post(
+    "/workpapers/{workpaper_id}/prepare",
+    response_model=WorkpaperOut,
+    summary="Mark an audit workpaper prepared",
+    description=(
+        "The preparer marks a computed audit workpaper ready for review. A later input "
+        "change clears it; sign-off then needs a different reviewer."
+    ),
+)
+def prepare(workpaper_id: uuid.UUID, db: DB, ctx: Writer) -> WorkpaperOut:
+    wp = _get(db, ctx, workpaper_id)
+    try:
+        svc.prepare(db, wp, ctx.user)
     except svc.WorkpaperError as exc:
         raise _bad(exc) from exc
     db.commit()

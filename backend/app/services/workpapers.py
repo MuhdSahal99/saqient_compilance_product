@@ -22,6 +22,8 @@ from sqlalchemy.orm import Session
 
 from app import calc
 from app.models import (
+    AUDIT_WORKPAPER_KINDS,
+    AuditEngagement,
     ChecklistState,
     DatasetVersion,
     Document,
@@ -96,9 +98,19 @@ def _published(db: Session, org_id: uuid.UUID, version_id: uuid.UUID) -> RulePac
     return v
 
 
-def create(db: Session, entity: LegalEntity, body: WorkpaperIn, actor: User) -> TaxWorkpaper:
+def create(
+    db: Session,
+    entity: LegalEntity,
+    body: WorkpaperIn,
+    actor: User,
+    engagement: AuditEngagement | None = None,
+) -> TaxWorkpaper:
     if body.kind.value not in calc.FORMULAS:
         raise WorkpaperError(f"Workpapers of kind '{body.kind.value}' are not available yet.")
+    if (body.kind in AUDIT_WORKPAPER_KINDS) != (engagement is not None):
+        raise WorkpaperError(
+            "Audit workpapers are created from their engagement; tax workpapers are not."
+        )
     if body.period_end < body.period_start:
         raise WorkpaperError("The period must end after it starts.")
     if (body.period_end - body.period_start).days > MAX_PERIOD_DAYS:
@@ -114,6 +126,7 @@ def create(db: Session, entity: LegalEntity, body: WorkpaperIn, actor: User) -> 
         currency=body.currency or entity.functional_currency,
         rule_pack_version_id=version.id,
         rules_prefix=body.rules_prefix,
+        engagement_id=engagement.id if engagement else None,
         status=WorkpaperStatus.DRAFT,
         warnings=[],
         created_by_id=actor.id,
@@ -204,6 +217,8 @@ def _invalidate(db: Session, wp: TaxWorkpaper) -> None:
     wp.result_hash = None
     wp.calc_version = None
     wp.warnings = []
+    wp.prepared_by = None
+    wp.prepared_at = None
 
 
 def _check_category(wp: TaxWorkpaper, category: str) -> None:
@@ -447,6 +462,7 @@ def content(wp: TaxWorkpaper) -> dict[str, Any]:
         "currency": wp.currency,
         "rule_pack_version_id": str(wp.rule_pack_version_id),
         "rules_prefix": wp.rules_prefix,
+        "engagement_id": str(wp.engagement_id) if wp.engagement_id else None,
         "calc_version": wp.calc_version,
         "computed_at": wp.computed_at.isoformat() if wp.computed_at else None,
         "result_hash": wp.result_hash,
@@ -466,10 +482,36 @@ def snapshots(db: Session, wp: TaxWorkpaper) -> list[WorkpaperSnapshot]:
     )
 
 
+def prepare(db: Session, wp: TaxWorkpaper, actor: User) -> None:
+    """Audit workpapers: the preparer marks the computed paper ready for review."""
+    _require_draft(wp)
+    if wp.kind not in AUDIT_WORKPAPER_KINDS:
+        raise WorkpaperError("Only audit workpapers have a preparer step.")
+    if wp.result_hash is None:
+        raise WorkpaperError("Compute the workpaper before marking it prepared.")
+    wp.prepared_by = actor
+    wp.prepared_at = _now()
+    db.flush()
+    audit.record(
+        db,
+        org_id=wp.org_id,
+        actor_id=actor.id,
+        action="workpaper.prepared",
+        object_type="tax_workpaper",
+        object_id=wp.id,
+        meta={"result_hash": wp.result_hash},
+    )
+
+
 def sign_off(db: Session, wp: TaxWorkpaper, actor: User) -> WorkpaperSnapshot:
     _require_draft(wp)
     if wp.result_hash is None:
         raise WorkpaperError("Compute the workpaper before signing it off.")
+    if wp.kind in AUDIT_WORKPAPER_KINDS:
+        if wp.prepared_by_id is None:
+            raise WorkpaperError("A preparer must mark the workpaper prepared first.")
+        if wp.prepared_by_id == actor.id:
+            raise WorkpaperError("The reviewer must be someone other than the preparer.")
     version = (
         db.scalar(
             select(func.max(WorkpaperSnapshot.version)).where(
@@ -483,7 +525,13 @@ def sign_off(db: Session, wp: TaxWorkpaper, actor: User) -> WorkpaperSnapshot:
         org_id=wp.org_id,
         workpaper_id=wp.id,
         version=version,
-        content={**content(wp), "version": version, "signed_off_by": actor.full_name},
+        content={
+            **content(wp),
+            "version": version,
+            "signed_off_by": actor.full_name,
+            "prepared_by": wp.prepared_by.full_name if wp.prepared_by else None,
+            "prepared_at": wp.prepared_at.isoformat() if wp.prepared_at else None,
+        },
         signed_off_by_id=actor.id,
         signed_off_at=at,
     )
@@ -506,6 +554,8 @@ def reopen(db: Session, wp: TaxWorkpaper, reason: str, actor: User) -> None:
     if wp.status is not WorkpaperStatus.SIGNED_OFF:
         raise WorkpaperConflict("Only a signed-off workpaper can be reopened.")
     wp.status = WorkpaperStatus.DRAFT
+    wp.prepared_by = None
+    wp.prepared_at = None
     db.flush()
     audit.record(
         db,

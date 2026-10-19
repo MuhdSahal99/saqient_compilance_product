@@ -82,6 +82,13 @@ computed lines with steps, rule snapshots and a result hash. Sign-off freezes a
 snapshot that HTML, PDF and CSV exports render from. Engine `deterministic-1.3.0`
 adds the withholding tax check over `wht_payments` datasets. See ADR 0011.
 
+Audit engagements (Phase D) group an entity's trial balances, lead schedules,
+materiality and lead schedule workpapers (prepare, then independent sign-off), risks
+and procedures (programmes are `audit_programme` checklists), reproducible samples,
+confirmations, adjustments with the SUD, PBC requests and an immutable management
+letter. Engine `deterministic-1.4.0` adds journal entry tests over the general ledger.
+`client` users reach only `/api/auth/` and `/api/portal/`. See ADR 0012.
+
 ## Reports
 
 Sign-off freezes a JSON snapshot (`report_snapshots`, version n). HTML, PDF

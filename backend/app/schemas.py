@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
@@ -8,26 +9,40 @@ from typing import Any, Generic, Literal, TypeVar
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 
 from app.models import (
+    AdjustmentStatus,
     AIAssessment,
     AISuggestionStatus,
+    Assertion,
     ChecklistKind,
     ChecklistState,
     CheckOutcome,
+    ConfirmationStatus,
+    ConfirmationType,
     DatasetKind,
     DatasetStatus,
+    EngagementKind,
+    EngagementPhase,
+    EngagementRole,
+    EngagementStatus,
     FindingStatus,
+    FsSection,
     JobStatus,
     LineSource,
     LossEntryKind,
     MonitorCadence,
     MonitorRunStatus,
+    PbcStatus,
     PeriodFrequency,
+    ProcedureStatus,
     RelatedPartyRelation,
     ReviewStatus,
+    RiskLevel,
     Role,
     RPTransactionType,
     RuleValueType,
     RuleVerification,
+    SampleItemResult,
+    SamplingMethod,
     Severity,
     SourceVerification,
     TaskSource,
@@ -1256,6 +1271,9 @@ class WorkpaperSummaryOut(BaseModel):
     computed_at: datetime | None
     is_demo: bool
     created_at: datetime
+    engagement_id: uuid.UUID | None = None
+    prepared_by_name: str | None = None
+    prepared_at: datetime | None = None
 
 
 class WorkpaperOut(WorkpaperSummaryOut):
@@ -1485,3 +1503,582 @@ class TPCheckOut(BaseModel):
     result_hash: str
     lines: list[CalcLineOut]
     warnings: list[str]
+
+
+# ---------------------------------------------------------------- audit engagements (D1)
+
+
+class EngagementIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    entity_id: uuid.UUID
+    kind: EngagementKind
+    name: str = Field(min_length=1, max_length=300)
+    period_start: date
+    period_end: date
+
+    @model_validator(mode="after")
+    def _period(self) -> EngagementIn:
+        if self.period_end < self.period_start:
+            raise ValueError("period_end must not be before period_start")
+        return self
+
+
+class EngagementStatusIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    status: EngagementStatus
+    reason: str = Field(default="", max_length=2000)
+
+
+class EngagementMemberIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    role: EngagementRole
+
+
+class PhaseBudgetIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    phase: EngagementPhase
+    hours: Decimal = Field(ge=0, le=100000, max_digits=10, decimal_places=2)
+
+
+class EngagementBudgetIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    phases: list[PhaseBudgetIn] = Field(max_length=4)
+
+
+class TimeEntryIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    phase: EngagementPhase
+    work_date: date
+    hours: Decimal = Field(gt=0, le=24, max_digits=6, decimal_places=2)
+    note: str = Field(default="", max_length=500)
+
+
+class TimeEntryOut(BaseModel):
+    id: uuid.UUID
+    user_id: uuid.UUID
+    user_name: str
+    phase: EngagementPhase
+    work_date: date
+    hours: Decimal
+    note: str
+
+
+class EngagementMemberOut(BaseModel):
+    user_id: uuid.UUID
+    full_name: str
+    email: str
+    role: EngagementRole
+    actual_hours: Decimal
+
+
+class PhaseHoursOut(BaseModel):
+    phase: EngagementPhase
+    budget_hours: Decimal
+    actual_hours: Decimal
+    variance_hours: Decimal  # budget - actual; negative is an overrun
+    used_share: Decimal | None  # actual / budget, null when no budget
+
+
+class EngagementSummaryOut(BaseModel):
+    id: uuid.UUID
+    entity_id: uuid.UUID
+    entity_name: str
+    kind: EngagementKind
+    name: str
+    period_start: date
+    period_end: date
+    currency: str
+    status: EngagementStatus
+    is_demo: bool
+    created_at: datetime
+
+
+class EngagementOut(EngagementSummaryOut):
+    closed_at: datetime | None
+    cy_tb_version_id: uuid.UUID | None
+    py_tb_version_id: uuid.UUID | None
+    rule_pack_version_id: uuid.UUID | None
+    rules_prefix: str | None
+    members: list[EngagementMemberOut]
+    phases: list[PhaseHoursOut]
+    budget_hours: Decimal
+    actual_hours: Decimal
+
+
+# ---------------------------------------------------------------- lead schedules (D2)
+
+
+class EngagementSetupIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    cy_tb_version_id: uuid.UUID | None = None
+    py_tb_version_id: uuid.UUID | None = None
+    rule_pack_version_id: uuid.UUID | None = None
+    rules_prefix: str | None = Field(default=None, max_length=80, pattern=PREFIX_PATTERN)
+
+    @model_validator(mode="after")
+    def _pack(self) -> EngagementSetupIn:
+        if (self.rule_pack_version_id is None) != (self.rules_prefix is None):
+            raise ValueError("give both rule_pack_version_id and rules_prefix, or neither")
+        return self
+
+
+LEAD_CODE = r"^[A-Za-z0-9]{1,20}$"
+
+
+class LeadScheduleIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    code: str = Field(pattern=LEAD_CODE)
+    name: str = Field(min_length=1, max_length=200)
+    section: FsSection
+
+
+class LeadSchedulesIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    schedules: list[LeadScheduleIn] = Field(max_length=200)
+
+
+class AccountMappingIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    account_code: str = Field(min_length=1, max_length=80)
+    lead_code: str = Field(pattern=LEAD_CODE)
+
+
+class AccountMappingsIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    mappings: list[AccountMappingIn] = Field(max_length=5000)
+
+
+class TbVersionRef(BaseModel):
+    id: uuid.UUID
+    dataset_name: str
+    version_number: int
+
+
+class LeadAccountOut(BaseModel):
+    account_code: str
+    account_name: str | None
+    cy: Decimal
+    py: Decimal
+    movement: Decimal
+    change_share: Decimal | None
+    cy_row_ids: list[int]
+    py_row_ids: list[int]
+
+
+class LeadLineOut(BaseModel):
+    code: str
+    name: str
+    section: FsSection
+    cy: Decimal
+    py: Decimal
+    movement: Decimal
+    change_share: Decimal | None
+    accounts: list[LeadAccountOut]
+
+
+class LeadReportOut(BaseModel):
+    currency: str
+    current: TbVersionRef | None
+    prior: TbVersionRef | None
+    schedules: list[LeadLineOut]
+    unmapped: list[LeadAccountOut]
+    missing_accounts: list[str]  # mapped but in neither trial balance
+    cy_net: Decimal  # a balanced trial balance nets to zero
+    py_net: Decimal
+
+
+class LeadScheduleOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    code: str
+    name: str
+    section: FsSection
+
+
+class AccountMappingOut(BaseModel):
+    account_code: str
+    lead_code: str
+
+
+class AuditWorkpaperIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    kind: Literal["lead_schedule", "materiality"]
+    title: str = Field(min_length=1, max_length=300)
+
+
+# ---------------------------------------------------------------- risks and programmes (D4)
+
+
+class RiskIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    ref: str = Field(pattern=r"^[A-Za-z0-9._-]{1,20}$")
+    title: str = Field(min_length=1, max_length=300)
+    description: str = Field(default="", max_length=5000)
+    lead_code: str | None = Field(default=None, pattern=LEAD_CODE)
+    assertions: list[Assertion] = Field(min_length=1, max_length=9)
+    inherent_risk: RiskLevel
+    significant: bool = False
+    fraud: bool = False
+    response: str = Field(default="", max_length=5000)
+
+    @model_validator(mode="after")
+    def _unique(self) -> RiskIn:
+        if len(set(self.assertions)) != len(self.assertions):
+            raise ValueError("list each assertion once")
+        return self
+
+
+class RiskOut(BaseModel):
+    id: uuid.UUID
+    ref: str
+    title: str
+    description: str
+    lead_code: str | None
+    assertions: list[Assertion]
+    inherent_risk: RiskLevel
+    significant: bool
+    fraud: bool
+    response: str
+    procedure_ids: list[uuid.UUID]
+
+
+class ProcedureIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    title: str = Field(min_length=1, max_length=300)
+    description: str = Field(default="", max_length=5000)
+    requirement_id: uuid.UUID | None = None
+    assignee_id: uuid.UUID | None = None
+    review_id: uuid.UUID | None = None
+    risk_ids: list[uuid.UUID] = Field(default_factory=list, max_length=50)
+
+
+class ProcedureStatusIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    status: ProcedureStatus
+    conclusion: str = Field(default="", max_length=5000)
+
+
+class ProcedureOut(BaseModel):
+    id: uuid.UUID
+    title: str
+    description: str
+    requirement_id: uuid.UUID | None
+    requirement_code: str | None
+    review_id: uuid.UUID | None
+    assignee_id: uuid.UUID | None
+    assignee_name: str | None
+    status: ProcedureStatus
+    conclusion: str
+    completed_at: datetime | None
+    risk_ids: list[uuid.UUID]
+
+
+class ProgrammeIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    checklist_version_id: uuid.UUID
+
+
+class RiskCoverageOut(BaseModel):
+    risk_id: uuid.UUID
+    ref: str
+    title: str
+    significant: bool
+    fraud: bool
+    procedures: int
+    done: int
+
+
+class CoverageOut(BaseModel):
+    risks: list[RiskCoverageOut]
+    uncovered: list[str]  # risk refs with no procedure
+    significant_open: list[str]  # significant or fraud risks with no completed procedure
+    unlinked_procedures: list[uuid.UUID]  # procedures answering no risk
+
+
+# ---------------------------------------------------------------- sampling (D5)
+
+
+class StratumIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    upper: Decimal | None = Field(default=None, gt=0, max_digits=20, decimal_places=4)
+    size: int | None = Field(default=None, ge=1, le=5000, description="Null tests every item.")
+
+
+class SampleIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=1, max_length=200)
+    method: SamplingMethod
+    dataset_version_id: uuid.UUID
+    amount_column: str = Field(pattern=r"^[a-z_]{1,60}$")
+    size: int | None = Field(default=None, ge=1, le=5000)
+    strata: list[StratumIn] = Field(default_factory=list, max_length=10)
+    seed: str | None = Field(
+        default=None,
+        pattern=r"^[A-Za-z0-9_-]{4,64}$",
+        description="Recorded for reproduction; a random one is generated when omitted.",
+    )
+    risk_id: uuid.UUID | None = None
+
+    @model_validator(mode="after")
+    def _shape(self) -> SampleIn:
+        if self.method is SamplingMethod.STRATIFIED:
+            if not self.strata:
+                raise ValueError("stratified sampling needs strata")
+        elif self.size is None or self.strata:
+            raise ValueError("give a sample size (and no strata) for this method")
+        return self
+
+
+class SampleItemIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    audited_value: Decimal = Field(ge=0, max_digits=20, decimal_places=4)
+    note: str = Field(default="", max_length=1000)
+
+
+class SampleConclusionIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    conclusion: str = Field(min_length=1, max_length=5000)
+
+
+class SampleItemOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    row_id: int
+    stratum: int | None
+    hits: int
+    book_value: Decimal
+    audited_value: Decimal | None
+    result: SampleItemResult
+    note: str
+    tested_at: datetime | None
+
+
+class SampleSummaryOut(BaseModel):
+    id: uuid.UUID
+    name: str
+    method: SamplingMethod
+    dataset_version_id: uuid.UUID
+    amount_column: str
+    seed: str
+    params: dict[str, Any]
+    algorithm_version: str
+    population_count: int
+    population_value: Decimal
+    population_sha256: str
+    risk_id: uuid.UUID | None
+    conclusion: str
+    item_count: int
+    created_at: datetime
+
+
+class ProjectionOut(BaseModel):
+    projected: Decimal
+    known: Decimal
+    untested: int
+    steps: list[dict[str, str]]
+    performance_materiality: Decimal | None
+    exceeds_performance: bool | None
+
+
+class SampleOut(SampleSummaryOut):
+    items: list[SampleItemOut]
+    projection: ProjectionOut
+
+
+class ReproduceOut(BaseModel):
+    reproducible: bool
+    population_unchanged: bool
+    differences: list[int]
+
+
+# ------------------------------------------------------- confirmations and adjustments (D7)
+
+IBAN_LIKE = re.compile(r"[A-Za-z]{2}[0-9]{2}[A-Za-z0-9]{10,30}")
+
+
+class ConfirmationIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    type: ConfirmationType
+    counterparty: str = Field(min_length=1, max_length=200)
+    reference: str = Field(
+        default="",
+        max_length=100,
+        description="An internal reference. Do not enter bank account numbers or IBANs.",
+    )
+    book_amount: Decimal = Field(max_digits=20, decimal_places=4)
+
+    @model_validator(mode="after")
+    def _no_iban(self) -> ConfirmationIn:
+        if IBAN_LIKE.fullmatch(self.reference.replace(" ", "")):
+            raise ValueError("do not enter an IBAN or bank account number as the reference")
+        return self
+
+
+class ConfirmationUpdateIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    status: ConfirmationStatus
+    sent_on: date | None = None
+    responded_on: date | None = None
+    confirmed_amount: Decimal | None = Field(default=None, max_digits=20, decimal_places=4)
+    response_document_id: uuid.UUID | None = None
+    conclusion: str = Field(default="", max_length=5000)
+
+
+class ConfirmationOut(BaseModel):
+    id: uuid.UUID
+    type: ConfirmationType
+    counterparty: str
+    reference: str
+    book_amount: Decimal
+    currency: str
+    status: ConfirmationStatus
+    sent_on: date | None
+    responded_on: date | None
+    confirmed_amount: Decimal | None
+    difference: Decimal | None  # book − confirmed
+    response_document_id: uuid.UUID | None
+    conclusion: str
+
+
+class AdjustmentLineIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    account_code: str = Field(min_length=1, max_length=80)
+    debit: Decimal = Field(default=Decimal(0), ge=0, max_digits=20, decimal_places=4)
+    credit: Decimal = Field(default=Decimal(0), ge=0, max_digits=20, decimal_places=4)
+
+    @model_validator(mode="after")
+    def _one_side(self) -> AdjustmentLineIn:
+        if (self.debit > 0) == (self.credit > 0):
+            raise ValueError("each line has either a debit or a credit")
+        return self
+
+
+class AdjustmentIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    ref: str = Field(pattern=r"^[A-Za-z0-9._-]{1,20}$")
+    description: str = Field(min_length=1, max_length=5000)
+    finding_id: uuid.UUID | None = None
+    lines: list[AdjustmentLineIn] = Field(min_length=2, max_length=50)
+
+
+class AdjustmentDecisionIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    status: AdjustmentStatus
+    reason: str = Field(default="", max_length=5000)
+
+
+class AdjustmentLineOut(BaseModel):
+    account_code: str
+    debit: Decimal
+    credit: Decimal
+    lead_code: str | None
+    section: FsSection | None
+
+
+class AdjustmentOut(BaseModel):
+    id: uuid.UUID
+    ref: str
+    description: str
+    status: AdjustmentStatus
+    reason: str
+    finding_id: uuid.UUID | None
+    lines: list[AdjustmentLineOut]
+    profit_effect: Decimal  # positive increases profit
+    net_assets_effect: Decimal
+    unmapped_accounts: list[str]
+
+
+class SudOut(BaseModel):
+    """Summary of unadjusted differences: passed adjustments against materiality."""
+
+    adjustments: list[AdjustmentOut]
+    profit_effect: Decimal
+    net_assets_effect: Decimal
+    materiality: dict[str, Any] | None
+    clearly_trivial: list[str]  # refs at or below the clearly trivial threshold
+    total_vs_overall: str  # below | at_or_above | not_determinable
+    steps: list[dict[str, str]]
+
+
+# ---------------------------------------------------------------- PBC portal and letter (D8)
+
+
+class PbcRequestIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    ref: str = Field(pattern=r"^[A-Za-z0-9._-]{1,20}$")
+    title: str = Field(min_length=1, max_length=300)
+    description: str = Field(default="", max_length=5000)
+    due_date: date | None = None
+    assignee_id: uuid.UUID | None = Field(default=None, description="A user with the client role.")
+
+
+class PbcReviewIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    status: Literal["accepted", "rejected"]
+    note: str = Field(default="", max_length=5000)
+
+
+class PbcSubmitIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    note: str = Field(default="", max_length=5000)
+
+
+class PbcFileOut(BaseModel):
+    document_id: uuid.UUID
+    title: str
+    uploaded_at: datetime
+
+
+class PbcRequestOut(BaseModel):
+    """What both staff and the assigned client see; no engagement internals."""
+
+    id: uuid.UUID
+    ref: str
+    title: str
+    description: str
+    due_date: date | None
+    status: PbcStatus
+    client_note: str
+    review_note: str
+    submitted_at: datetime | None
+    files: list[PbcFileOut]
+
+
+class PbcStaffOut(PbcRequestOut):
+    assignee_id: uuid.UUID | None
+    assignee_name: str | None
+    overdue: bool
+
+
+class LetterPointIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    include: bool = True
+    recommendation: str = Field(default="", max_length=5000)
+    management_response: str = Field(default="", max_length=5000)
+    response_owner: str = Field(default="", max_length=200)
+    response_due: date | None = None
+
+
+class LetterPointOut(BaseModel):
+    id: uuid.UUID
+    finding_id: uuid.UUID
+    finding_title: str
+    finding_status: FindingStatus
+    severity: Severity
+    observation: str
+    include: bool
+    recommendation: str
+    management_response: str
+    response_owner: str
+    response_due: date | None
+    evidence_refs: list[str]
+
+
+class LetterVersionOut(BaseModel):
+    version: int
+    issued_by_name: str | None
+    issued_at: datetime
+    points: int
+
+
+class LetterOut(BaseModel):
+    points: list[LetterPointOut]
+    versions: list[LetterVersionOut]
