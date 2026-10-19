@@ -1,0 +1,150 @@
+{
+  "id": "esg-s1-s2",
+  "version": "0.1.0",
+  "title": "Sustainability: IFRS S1/S2 readiness review (synthetic draft)",
+  "sector": "sustainability",
+  "jurisdiction": "generic",
+  "status": "draft",
+  "synthetic": true,
+  "disclaimer": "Synthetic demonstration content — not legal guidance.",
+  "description": "Generic readiness questions for general sustainability and climate-related disclosures. Paragraph references are deliberately omitted.",
+  "dataset_kinds": [],
+  "open_questions": [
+    "Which reporting period and boundary apply to the first sustainability report?",
+    "Which greenhouse gas measurement approach and emission factors will be used?"
+  ],
+  "checklists": [
+    {
+      "name": "Sustainability and climate disclosures (synthetic)",
+      "description": "Synthetic demonstration content — not legal guidance.",
+      "requirements": [
+        {
+          "code": "ESG-01",
+          "title": "Governance over sustainability risks is described",
+          "severity": "medium",
+          "check_config": {
+            "type": "phrase_groups",
+            "groups": [
+              [
+                "governance"
+              ],
+              [
+                "sustainability",
+                "climate"
+              ]
+            ]
+          },
+          "category": "governance",
+          "description": "",
+          "human_instructions": "Synthetic review question. Confirm against the organisation's verified sources before relying on it."
+        },
+        {
+          "code": "ESG-02",
+          "title": "Strategy and material risks and opportunities are described",
+          "severity": "medium",
+          "check_config": {
+            "type": "phrase_groups",
+            "groups": [
+              [
+                "risks and opportunities"
+              ],
+              [
+                "strategy"
+              ]
+            ]
+          },
+          "category": "strategy",
+          "description": "",
+          "human_instructions": "Synthetic review question. Confirm against the organisation's verified sources before relying on it."
+        },
+        {
+          "code": "ESG-03",
+          "title": "Risk management process is described",
+          "severity": "medium",
+          "check_config": {
+            "type": "required_text",
+            "phrases": [
+              "risk management"
+            ],
+            "match": "any"
+          },
+          "category": "risk",
+          "description": "",
+          "human_instructions": "Synthetic review question. Confirm against the organisation's verified sources before relying on it."
+        },
+        {
+          "code": "ESG-04",
+          "title": "Scope 1 and Scope 2 emissions are reported",
+          "severity": "high",
+          "check_config": {
+            "type": "required_text",
+            "phrases": [
+              "scope 1",
+              "scope 2"
+            ],
+            "match": "all"
+          },
+          "category": "metrics",
+          "description": "",
+          "human_instructions": "Synthetic review question. Confirm against the organisation's verified sources before relying on it."
+        },
+        {
+          "code": "ESG-05",
+          "title": "Scope 3 approach is stated",
+          "severity": "medium",
+          "check_config": {
+            "type": "required_text",
+            "phrases": [
+              "scope 3"
+            ],
+            "match": "any"
+          },
+          "category": "metrics",
+          "description": "",
+          "human_instructions": "Synthetic review question. Confirm against the organisation's verified sources before relying on it."
+        },
+        {
+          "code": "ESG-06",
+          "title": "Climate scenario analysis is described",
+          "severity": "medium",
+          "check_config": {
+            "type": "required_text",
+            "phrases": [
+              "scenario analysis"
+            ],
+            "match": "any"
+          },
+          "category": "strategy",
+          "description": "",
+          "human_instructions": "Synthetic review question. Confirm against the organisation's verified sources before relying on it."
+        },
+        {
+          "code": "ESG-07",
+          "title": "Targets and progress are reported",
+          "severity": "low",
+          "check_config": {
+            "type": "required_text",
+            "phrases": [
+              "target"
+            ],
+            "match": "any"
+          },
+          "category": "metrics",
+          "description": "",
+          "human_instructions": "Synthetic review question. Confirm against the organisation's verified sources before relying on it."
+        },
+        {
+          "code": "ESG-08",
+          "title": "Connected information with financial statements is explained",
+          "severity": "low",
+          "check_config": {
+            "type": "manual"
+          },
+          "category": "connectivity",
+          "description": "",
+          "human_instructions": "Synthetic review question. Confirm against the organisation's verified sources before relying on it."
+        }
+      ]
+    }
+  ]
+}

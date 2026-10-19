@@ -1,0 +1,135 @@
+{
+  "id": "ifrs17",
+  "version": "0.1.0",
+  "title": "Insurance: IFRS 17 measurement review (synthetic draft)",
+  "sector": "insurance",
+  "jurisdiction": "generic",
+  "status": "draft",
+  "synthetic": true,
+  "disclaimer": "Synthetic demonstration content — not legal guidance.",
+  "description": "Generic review questions on insurance contract measurement and disclosure. Paragraph references are deliberately omitted.",
+  "dataset_kinds": [
+    "trial_balance"
+  ],
+  "open_questions": [
+    "Which measurement models apply to which portfolios?",
+    "How is the risk adjustment confidence level determined?"
+  ],
+  "checklists": [
+    {
+      "name": "IFRS 17 measurement and disclosure (synthetic)",
+      "description": "Synthetic demonstration content — not legal guidance.",
+      "requirements": [
+        {
+          "code": "IF17-01",
+          "title": "Portfolios and groups of contracts are defined",
+          "severity": "high",
+          "check_config": {
+            "type": "phrase_groups",
+            "groups": [
+              [
+                "portfolio"
+              ],
+              [
+                "group of contracts",
+                "groups of contracts",
+                "cohort"
+              ]
+            ]
+          },
+          "category": "scope",
+          "description": "",
+          "human_instructions": "Synthetic review question. Confirm against the organisation's verified sources before relying on it."
+        },
+        {
+          "code": "IF17-02",
+          "title": "Measurement model per portfolio is stated",
+          "severity": "high",
+          "check_config": {
+            "type": "required_text",
+            "phrases": [
+              "general measurement model",
+              "premium allocation approach",
+              "variable fee approach"
+            ],
+            "match": "any"
+          },
+          "category": "measurement",
+          "description": "",
+          "human_instructions": "Synthetic review question. Confirm against the organisation's verified sources before relying on it."
+        },
+        {
+          "code": "IF17-03",
+          "title": "Contractual service margin release is explained",
+          "severity": "high",
+          "check_config": {
+            "type": "required_text",
+            "phrases": [
+              "contractual service margin"
+            ],
+            "match": "any"
+          },
+          "category": "measurement",
+          "description": "",
+          "human_instructions": "Synthetic review question. Confirm against the organisation's verified sources before relying on it."
+        },
+        {
+          "code": "IF17-04",
+          "title": "Risk adjustment method is explained",
+          "severity": "medium",
+          "check_config": {
+            "type": "required_text",
+            "phrases": [
+              "risk adjustment"
+            ],
+            "match": "any"
+          },
+          "category": "measurement",
+          "description": "",
+          "human_instructions": "Synthetic review question. Confirm against the organisation's verified sources before relying on it."
+        },
+        {
+          "code": "IF17-05",
+          "title": "Discount rate approach is explained",
+          "severity": "medium",
+          "check_config": {
+            "type": "required_text",
+            "phrases": [
+              "discount rate"
+            ],
+            "match": "any"
+          },
+          "category": "measurement",
+          "description": "",
+          "human_instructions": "Synthetic review question. Confirm against the organisation's verified sources before relying on it."
+        },
+        {
+          "code": "IF17-06",
+          "title": "Onerous contract assessment is described",
+          "severity": "medium",
+          "check_config": {
+            "type": "required_text",
+            "phrases": [
+              "onerous"
+            ],
+            "match": "any"
+          },
+          "category": "measurement",
+          "description": "",
+          "human_instructions": "Synthetic review question. Confirm against the organisation's verified sources before relying on it."
+        },
+        {
+          "code": "IF17-07",
+          "title": "Insurance revenue and service result are reconciled",
+          "severity": "medium",
+          "check_config": {
+            "type": "manual"
+          },
+          "category": "disclosure",
+          "description": "",
+          "human_instructions": "Synthetic review question. Confirm against the organisation's verified sources before relying on it."
+        }
+      ]
+    }
+  ]
+}

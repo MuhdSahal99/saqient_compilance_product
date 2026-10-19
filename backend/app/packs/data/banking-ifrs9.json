@@ -1,0 +1,158 @@
+{
+  "id": "banking-ifrs9",
+  "version": "0.1.0",
+  "title": "Banking: IFRS 9 expected credit loss review (synthetic draft)",
+  "sector": "banking",
+  "jurisdiction": "generic",
+  "status": "draft",
+  "synthetic": true,
+  "disclaimer": "Synthetic demonstration content — not legal guidance.",
+  "description": "Generic review questions on an expected credit loss methodology and its disclosures. Paragraph references are deliberately omitted.",
+  "dataset_kinds": [
+    "trial_balance",
+    "general_ledger"
+  ],
+  "open_questions": [
+    "Which staging criteria and significant-increase-in-credit-risk indicators has the entity documented?",
+    "Which forward-looking scenarios and weights were approved, and by whom?"
+  ],
+  "checklists": [
+    {
+      "name": "IFRS 9 ECL methodology (synthetic)",
+      "description": "Synthetic demonstration content — not legal guidance.",
+      "requirements": [
+        {
+          "code": "IF9-01",
+          "title": "Staging criteria are documented",
+          "severity": "high",
+          "check_config": {
+            "type": "phrase_groups",
+            "groups": [
+              [
+                "stage 1",
+                "stage one"
+              ],
+              [
+                "stage 2",
+                "stage two"
+              ],
+              [
+                "stage 3",
+                "stage three",
+                "credit-impaired"
+              ]
+            ]
+          },
+          "category": "methodology",
+          "description": "",
+          "human_instructions": "Synthetic review question. Confirm against the organisation's verified sources before relying on it."
+        },
+        {
+          "code": "IF9-02",
+          "title": "Significant increase in credit risk is defined",
+          "severity": "high",
+          "check_config": {
+            "type": "required_text",
+            "phrases": [
+              "significant increase in credit risk"
+            ],
+            "match": "any"
+          },
+          "category": "methodology",
+          "description": "",
+          "human_instructions": "Synthetic review question. Confirm against the organisation's verified sources before relying on it."
+        },
+        {
+          "code": "IF9-03",
+          "title": "Forward-looking scenarios and weights are described",
+          "severity": "high",
+          "check_config": {
+            "type": "phrase_groups",
+            "groups": [
+              [
+                "scenario"
+              ],
+              [
+                "weight",
+                "probability"
+              ]
+            ]
+          },
+          "category": "methodology",
+          "description": "",
+          "human_instructions": "Synthetic review question. Confirm against the organisation's verified sources before relying on it."
+        },
+        {
+          "code": "IF9-04",
+          "title": "PD, LGD and EAD inputs are explained",
+          "severity": "medium",
+          "check_config": {
+            "type": "required_text",
+            "phrases": [
+              "probability of default",
+              "loss given default",
+              "exposure at default"
+            ],
+            "match": "all"
+          },
+          "category": "inputs",
+          "description": "",
+          "human_instructions": "Synthetic review question. Confirm against the organisation's verified sources before relying on it."
+        },
+        {
+          "code": "IF9-05",
+          "title": "Management overlays are explained and approved",
+          "severity": "medium",
+          "check_config": {
+            "type": "required_text",
+            "phrases": [
+              "overlay"
+            ],
+            "match": "any"
+          },
+          "category": "governance",
+          "description": "",
+          "human_instructions": "Synthetic review question. Confirm against the organisation's verified sources before relying on it."
+        },
+        {
+          "code": "IF9-06",
+          "title": "Write-off policy is stated",
+          "severity": "medium",
+          "check_config": {
+            "type": "required_text",
+            "phrases": [
+              "write-off",
+              "written off"
+            ],
+            "match": "any"
+          },
+          "category": "policy",
+          "description": "",
+          "human_instructions": "Synthetic review question. Confirm against the organisation's verified sources before relying on it."
+        },
+        {
+          "code": "IF9-07",
+          "title": "ECL movement reconciliation is presented",
+          "severity": "medium",
+          "check_config": {
+            "type": "manual"
+          },
+          "category": "disclosure",
+          "description": "",
+          "human_instructions": "Synthetic review question. Confirm against the organisation's verified sources before relying on it."
+        },
+        {
+          "code": "IF9-08",
+          "title": "Model validation is evidenced",
+          "severity": "medium",
+          "check_config": {
+            "type": "manual"
+          },
+          "category": "assurance",
+          "description": "",
+          "human_instructions": "Synthetic review question. Confirm against the organisation's verified sources before relying on it."
+        }
+      ]
+    }
+  ]
+}

@@ -2925,3 +2925,26 @@ class ConnectorSync(Base):
     )
     created_at: Mapped[datetime] = _created()
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+# ---------------------------------------------------------------- content packs (Phase F1)
+
+
+class ContentPackInstall(Base):
+    """One installation of a pack version into an organisation, as draft content."""
+
+    __tablename__ = "content_pack_installs"
+    __table_args__ = (UniqueConstraint("org_id", "pack_id", "pack_version"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    pack_id: Mapped[str] = mapped_column(String(60))
+    pack_version: Mapped[str] = mapped_column(String(20))
+    manifest_sha256: Mapped[str] = mapped_column(String(64))
+    checklist_version_ids: Mapped[list[str]] = mapped_column(JSONType, default=list)
+    rule_pack_version_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("rule_pack_versions.id", ondelete="SET NULL")
+    )
+    installed_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = _created()

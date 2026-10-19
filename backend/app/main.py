@@ -20,6 +20,7 @@ from app.api import (
     checklists,
     close_flux,
     connectors,
+    content_packs,
     controls,
     datasets,
     documents,
@@ -149,6 +150,7 @@ def create_app() -> FastAPI:
         close_flux,
         controls,
         connectors,
+        content_packs,
     ):
         app.include_router(module.router, prefix="/api")
 

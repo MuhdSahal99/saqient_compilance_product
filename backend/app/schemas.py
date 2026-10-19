@@ -2780,3 +2780,47 @@ class ConnectorStatusOut(BaseModel):
 
 class AuthorizeOut(BaseModel):
     url: str
+
+
+# ---------------------------------------------------------------- content packs (Phase F1)
+
+
+class PackRequirementOut(BaseModel):
+    code: str
+    title: str
+    category: str
+    severity: Severity
+    check_type: str
+
+
+class PackChecklistOut(BaseModel):
+    name: str
+    requirements: list[PackRequirementOut]
+
+
+class PackInstallOut(BaseModel):
+    id: uuid.UUID
+    pack_version: str
+    manifest_sha256: str
+    checklist_version_ids: list[uuid.UUID]
+    rule_pack_version_id: uuid.UUID | None
+    installed_by_name: str | None
+    created_at: datetime
+
+
+class ContentPackOut(BaseModel):
+    id: str
+    version: str
+    title: str
+    sector: str
+    jurisdiction: str
+    status: str
+    synthetic: bool
+    disclaimer: str
+    description: str
+    dataset_kinds: list[DatasetKind]
+    open_questions: list[str]
+    manifest_sha256: str
+    checklists: list[PackChecklistOut]
+    rule_count: int
+    installs: list[PackInstallOut]
