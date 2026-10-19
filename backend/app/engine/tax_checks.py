@@ -63,6 +63,7 @@ def evaluate(config: Any, ctx: DataContext, meta: dict[str, Any]) -> DataEvaluat
 from app.engine.einvoice_checks import EINVOICE_CHECK_TYPES  # noqa: E402
 from app.engine.je_checks import JE_CHECK_TYPES  # noqa: E402
 from app.engine.master_data_checks import MASTER_CHECK_TYPES  # noqa: E402
+from app.engine.sod_checks import SOD_CHECK_TYPES  # noqa: E402
 from app.engine.vat_checks import VAT_CHECK_TYPES  # noqa: E402
 from app.engine.wht_checks import WHT_CHECK_TYPES  # noqa: E402
 
@@ -72,4 +73,5 @@ TAX_CHECK_TYPES: tuple[type, ...] = (
     *VAT_CHECK_TYPES,
     *WHT_CHECK_TYPES,
     *JE_CHECK_TYPES,
+    *SOD_CHECK_TYPES,
 )

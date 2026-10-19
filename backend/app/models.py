@@ -135,6 +135,7 @@ class DatasetKind(str, enum.Enum):
     VAT_RETURN = "vat_return"
     EINVOICE_REJECTIONS = "einvoice_rejections"
     WHT_PAYMENTS = "wht_payments"
+    USER_ROLES = "user_roles"
 
 
 class TaxType(str, enum.Enum):

@@ -140,6 +140,33 @@ def recon_rules(p: str = "syn.recon") -> list[dict[str, Any]]:
     ]
 
 
+SOD_CONFLICTS = [
+    {
+        "id": "SOD-01",
+        "a": ["vendor_maintain"],
+        "b": ["payment_release", "payment_run"],
+        "description": "Maintain vendors and release payments (synthetic)",
+    },
+    {
+        "id": "SOD-02",
+        "a": ["journal_post"],
+        "b": ["journal_approve"],
+        "description": "Post and approve journals (synthetic)",
+    },
+    {
+        "id": "SOD-03",
+        "a": ["AP Clerk"],
+        "b": ["Treasury Approver"],
+        "description": "AP clerk role with treasury approver role (synthetic)",
+    },
+]
+
+
+def sod_rules(p: str = "syn.sod") -> list[dict[str, Any]]:
+    """Synthetic segregation-of-duties conflict matrix (Phase E)."""
+    return [row(f"{p}.sod_conflicts", "json", SOD_CONFLICTS, "Conflict matrix")]
+
+
 def rules() -> list[dict[str, Any]]:
     """All synthetic direct-tax, audit and assurance rules."""
     return [
@@ -149,4 +176,5 @@ def rules() -> list[dict[str, Any]]:
         *wht_rules(),
         *audit_rules(),
         *recon_rules(),
+        *sod_rules(),
     ]

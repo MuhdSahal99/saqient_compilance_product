@@ -595,7 +595,7 @@ def test_engine_versions() -> None:
         "flag_if": "gt",
         "value": {"value": "1"},
     }
-    assert ENGINE_VERSION == "deterministic-1.4.0"
+    assert ENGINE_VERSION == "deterministic-1.5.0"
     with pytest.raises(ValidationError):
         parse_check(threshold, "deterministic-1.0.0")
     # 1.1.0 still parses its own data checks, but not the 1.2.0 ones.
@@ -621,6 +621,12 @@ def test_engine_versions() -> None:
     parse_check(je)
     with pytest.raises(ValidationError):
         parse_check(je, "deterministic-1.3.0")
+    # 1.5.0 adds segregation of duties; 1.4.0 does not accept it.
+    assert parse_check(je, "deterministic-1.4.0") == parse_check(je)
+    sod = {"type": "sod_conflict", "conflicts_rule": "syn.sod.sod_conflicts"}
+    parse_check(sod)
+    with pytest.raises(ValidationError):
+        parse_check(sod, "deterministic-1.4.0")
     with pytest.raises(ValueError, match="Unknown engine version"):
         parse_check(threshold, "deterministic-9.9.9")
     text = {"type": "required_text", "phrases": ["retention"]}

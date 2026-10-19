@@ -190,6 +190,32 @@ class ShareRange(_M):
         return self
 
 
+SodCode = Annotated[str, Field(min_length=1, max_length=120)]
+
+
+class SodConflict(_M):
+    """Two sets of role or permission codes that one user should not hold together."""
+
+    id: str = Field(pattern=r"^[A-Za-z0-9._-]{1,40}$")
+    a: list[SodCode] = Field(min_length=1, max_length=100)
+    b: list[SodCode] = Field(min_length=1, max_length=100)
+    description: str = Field(min_length=1, max_length=500)
+
+    @model_validator(mode="after")
+    def _disjoint(self) -> SodConflict:
+        a = {" ".join(x.split()).casefold() for x in self.a}
+        if a & {" ".join(x.split()).casefold() for x in self.b}:
+            raise ValueError("a code cannot be on both sides of a conflict")
+        return self
+
+
+def _unique_ids(v: list[SodConflict]) -> list[SodConflict]:
+    ids = [c.id for c in v]
+    if len(ids) != len(set(ids)):
+        raise ValueError("conflict ids must be unique")
+    return v
+
+
 class BenfordBands(_M):
     """Mean absolute deviation upper bounds; above ``marginal`` is nonconformity."""
 
@@ -239,6 +265,11 @@ FAMILIES: dict[str, TypeAdapter[Any]] = {
             list[Annotated[int, Field(ge=1, le=3650)]],
             Field(min_length=1, max_length=10),
             AfterValidator(_ascending),
+        ]
+    ),
+    "sod_conflicts": TypeAdapter(
+        Annotated[
+            list[SodConflict], Field(min_length=1, max_length=500), AfterValidator(_unique_ids)
         ]
     ),
     "required_fields": TypeAdapter(

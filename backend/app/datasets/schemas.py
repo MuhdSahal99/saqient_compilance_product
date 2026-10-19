@@ -220,6 +220,18 @@ SCHEMAS: dict[DatasetKind, CanonicalSchema] = {
             _CURRENCY,
         ),
     ),
+    DatasetKind.USER_ROLES: CanonicalSchema(
+        DatasetKind.USER_ROLES,
+        (
+            _f("user_id", "text", True, "user", "username", "user name id", "login", "user code"),
+            _f("user_name", "text", False, "name", "full name", "employee name"),
+            _f("role", "text", False, "role name", "responsibility", "security role", "profile"),
+            _f("permission", "text", False, "privilege", "function", "transaction", "tcode"),
+            _f("system", "text", False, "application", "module", "company"),
+            _f("status", "text", False, "user status", "active", "lock status"),
+        ),
+        require_any=(("role",), ("permission",)),
+    ),
 }
 
 
