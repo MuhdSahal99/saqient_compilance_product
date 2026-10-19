@@ -1,0 +1,56 @@
+{
+  "formula": "sbr_test",
+  "prefix": "syn.ct",
+  "rules": "synthetic: revenue limit 2000000 (inclusive), last period end 2026-12-31",
+  "cases": [
+    {
+      "name": "all conditions met, revenue exactly at the limit",
+      "period_end": "2025-12-31",
+      "inputs": [
+        {"key": "revenue", "amount": "2000000"},
+        {"key": "revenue_prior_1", "amount": "1900000"},
+        {"key": "is_qfzp", "value": "false"},
+        {"key": "is_mne_group_member", "value": "no"}
+      ],
+      "expected": {
+        "test:revenue": "met",
+        "test:revenue_prior_1": "met",
+        "test:period_end": "met",
+        "test:is_qfzp": "met",
+        "test:is_mne_group_member": "met",
+        "conditions": "met"
+      }
+    },
+    {
+      "name": "an earlier period over the limit and a late period end",
+      "period_end": "2027-06-30",
+      "inputs": [
+        {"key": "revenue", "amount": "1500000"},
+        {"key": "revenue_prior_1", "amount": "2000000.01"},
+        {"key": "is_qfzp", "value": "false"},
+        {"key": "is_mne_group_member", "value": "false"}
+      ],
+      "expected": {
+        "test:revenue": "met",
+        "test:revenue_prior_1": "not_met",
+        "test:period_end": "not_met",
+        "conditions": "not_met"
+      }
+    },
+    {
+      "name": "an assertion not entered",
+      "period_end": "2025-12-31",
+      "inputs": [
+        {"key": "revenue", "amount": "100"},
+        {"key": "is_qfzp", "value": "false"}
+      ],
+      "expected": {"test:is_mne_group_member": "not_determinable", "conditions": "not_determinable"}
+    },
+    {
+      "name": "revenue is required",
+      "period_end": "2025-12-31",
+      "inputs": [{"key": "is_qfzp", "value": "false"}],
+      "error": "Enter the input 'revenue' for this period."
+    }
+  ]
+}

@@ -19,7 +19,8 @@ FastAPI (uvicorn) ── PostgreSQL 16  (all state, tenant rows carry org_id)
 - **API** (`backend/app`): FastAPI + Pydantic v2, SQLAlchemy 2 (psycopg 3),
   Alembic migrations.
 - **Worker**: Celery 5 with Redis broker. One task, `saqient.run_job(job_id,
-  org_id)`, dispatches on `jobs.kind` (`extract`, `review_run`, `ai_suggest`)
+  org_id)`, dispatches on `jobs.kind` (`extract`, `review_run`, `ai_suggest`,
+  `dataset_parse`, `dataset_build`, `connector_sync`)
   through `services/jobs.py`. Handlers re-verify tenant ownership, are
   idempotent, have soft/hard time limits, and attempts are bounded by
   `jobs.max_attempts`.
@@ -74,6 +75,34 @@ blocked input VAT). All jurisdiction values come from rule packs; one requiremen
 raise several findings (`finding_key`). E-invoice XML is parsed with defusedxml and a
 locked-down lxml parser. Sampling monitors and the tax calendar run on Celery beat.
 See ADRs 0009 and 0010.
+
+Phase C adds `app/calc/`, which holds pure, versioned Decimal formulas (`calc-1.0.0`)
+for the CT bridge, SBR and QFZP tests, loss transfers, tax group tests, transfer
+pricing thresholds, Pillar Two and zakat. Workpapers store inputs with evidence and
+computed lines with steps, rule snapshots and a result hash. Sign-off freezes a
+snapshot that HTML, PDF and CSV exports render from. Engine `deterministic-1.3.0`
+adds the withholding tax check over `wht_payments` datasets. See ADR 0011.
+
+Audit engagements (Phase D) group an entity's trial balances, lead schedules,
+materiality and lead schedule workpapers (prepare, then independent sign-off), risks
+and procedures (programmes are `audit_programme` checklists), reproducible samples,
+confirmations, adjustments with the SUD, PBC requests and an immutable management
+letter. Engine `deterministic-1.4.0` adds journal entry tests over the general ledger.
+`client` users reach only `/api/auth/` and `/api/portal/`. See ADR 0012.
+
+Phase E adds finance assurance: bank, account and intercompany reconciliations
+(`app/assurance/matching.py`, `recon-1.0.0`), close checklists as tasks, flux reviews,
+a risk-control matrix with tests, deficiencies and management certification, all
+signed off through `services/assurance.py` into immutable snapshots. Engine
+`deterministic-1.5.0` adds segregation of duties and AP analytics. `app/connectors/`
+holds read-only adapters (Zoho Books, Odoo) behind a registry; syncs run as
+`connector_sync` jobs and feed the dataset pipeline. See ADR 0013.
+
+Phase F adds content packs (`app/packs/`, JSON manifests installed as drafts by
+`services/content_packs.py`), the `fs_draft` and `lease_ifrs16` calculations
+(`app/calc/fs.py`), engine `deterministic-1.6.0` depreciation recalculation
+(`app/engine/fa_checks.py`) and a per-organisation AI opt-in on top of the deployment
+flag. See ADR 0014.
 
 ## Reports
 

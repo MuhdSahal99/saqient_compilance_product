@@ -38,7 +38,20 @@ def now() -> datetime:
     return datetime.now(UTC)
 
 
+# The client role (audit client contacts) may only reach sign-in and the request portal.
+CLIENT_PATHS = ("/api/auth/", "/api/portal/")
+
+
 def current_context(request: Request, db: DB) -> Context:
+    ctx = _session_context(request, db)
+    if ctx.role is Role.CLIENT and not request.url.path.startswith(CLIENT_PATHS):
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, "This account can only use the client request portal."
+        )
+    return ctx
+
+
+def _session_context(request: Request, db: DB) -> Context:
     settings = get_settings()
     token = request.cookies.get(SESSION_COOKIE)
     if not token:
@@ -93,6 +106,7 @@ def require_role(*roles: Role) -> Callable[[Context], Context]:
 
 
 Writer = Annotated[Context, Depends(require_role(*WRITE_ROLES))]
+PortalCtx = Annotated[Context, Depends(require_role(Role.CLIENT))]
 Decider = Annotated[Context, Depends(require_role(*DECIDE_ROLES))]
 Admin = Annotated[Context, Depends(require_role(Role.ORG_ADMIN))]
 

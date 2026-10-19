@@ -1,0 +1,145 @@
+{
+  "id": "esr-ubo",
+  "version": "0.1.0",
+  "title": "Economic substance and beneficial ownership review (synthetic draft)",
+  "sector": "corporate",
+  "jurisdiction": "generic",
+  "status": "draft",
+  "synthetic": true,
+  "disclaimer": "Synthetic demonstration content — not legal guidance.",
+  "description": "Generic review questions for economic substance and ultimate beneficial ownership records. No law, threshold or deadline is encoded.",
+  "dataset_kinds": [],
+  "open_questions": [
+    "Which verified sources define relevant activities and the substance tests for the entity?",
+    "Which ownership or control threshold identifies a beneficial owner, per verified source?"
+  ],
+  "checklists": [
+    {
+      "name": "Economic substance records (synthetic)",
+      "description": "Synthetic demonstration content — not legal guidance.",
+      "requirements": [
+        {
+          "code": "ESR-01",
+          "title": "Relevant activities carried on are identified",
+          "severity": "high",
+          "check_config": {
+            "type": "required_text",
+            "phrases": [
+              "relevant activit"
+            ],
+            "match": "any"
+          },
+          "category": "scope",
+          "description": "",
+          "human_instructions": "Synthetic review question. Confirm against the organisation's verified sources before relying on it."
+        },
+        {
+          "code": "ESR-02",
+          "title": "Core income-generating activities are described",
+          "severity": "high",
+          "check_config": {
+            "type": "required_text",
+            "phrases": [
+              "core income"
+            ],
+            "match": "any"
+          },
+          "category": "substance",
+          "description": "",
+          "human_instructions": "Synthetic review question. Confirm against the organisation's verified sources before relying on it."
+        },
+        {
+          "code": "ESR-03",
+          "title": "Directed and managed in the jurisdiction is evidenced",
+          "severity": "medium",
+          "check_config": {
+            "type": "phrase_groups",
+            "groups": [
+              [
+                "board meeting",
+                "meetings"
+              ],
+              [
+                "minutes"
+              ]
+            ]
+          },
+          "category": "substance",
+          "description": "",
+          "human_instructions": "Synthetic review question. Confirm against the organisation's verified sources before relying on it."
+        },
+        {
+          "code": "ESR-04",
+          "title": "Adequate employees, expenditure and premises are evidenced",
+          "severity": "medium",
+          "check_config": {
+            "type": "manual"
+          },
+          "category": "substance",
+          "description": "",
+          "human_instructions": "Synthetic review question. Confirm against the organisation's verified sources before relying on it."
+        }
+      ]
+    },
+    {
+      "name": "Beneficial ownership register (synthetic)",
+      "description": "Synthetic demonstration content — not legal guidance.",
+      "requirements": [
+        {
+          "code": "UBO-01",
+          "title": "Register lists each beneficial owner",
+          "severity": "high",
+          "check_config": {
+            "type": "required_text",
+            "phrases": [
+              "beneficial owner"
+            ],
+            "match": "any"
+          },
+          "category": "register",
+          "description": "",
+          "human_instructions": "Synthetic review question. Confirm against the organisation's verified sources before relying on it."
+        },
+        {
+          "code": "UBO-02",
+          "title": "Nature of ownership or control is recorded",
+          "severity": "medium",
+          "check_config": {
+            "type": "phrase_groups",
+            "groups": [
+              [
+                "ownership",
+                "control"
+              ]
+            ]
+          },
+          "category": "register",
+          "description": "",
+          "human_instructions": "Synthetic review question. Confirm against the organisation's verified sources before relying on it."
+        },
+        {
+          "code": "UBO-03",
+          "title": "Date of becoming a beneficial owner is recorded",
+          "severity": "medium",
+          "check_config": {
+            "type": "manual"
+          },
+          "category": "register",
+          "description": "",
+          "human_instructions": "Synthetic review question. Confirm against the organisation's verified sources before relying on it."
+        },
+        {
+          "code": "UBO-04",
+          "title": "Register is reviewed and updated on changes",
+          "severity": "medium",
+          "check_config": {
+            "type": "manual"
+          },
+          "category": "governance",
+          "description": "",
+          "human_instructions": "Synthetic review question. Confirm against the organisation's verified sources before relying on it."
+        }
+      ]
+    }
+  ]
+}

@@ -105,6 +105,36 @@ def create_version(
     actor: User,
     allow_duplicate: bool,
 ) -> tuple[DatasetVersion, Job]:
+    version = store_version(
+        db,
+        dataset=dataset,
+        filename=filename,
+        declared_mime=declared_mime,
+        data=data,
+        actor=actor,
+        allow_duplicate=allow_duplicate,
+    )
+    job = Job(
+        org_id=dataset.org_id,
+        kind=JobKind.DATASET_PARSE,
+        target_id=version.id,
+        max_attempts=get_settings().job_max_attempts,
+    )
+    db.add(job)
+    return version, job
+
+
+def store_version(
+    db: Session,
+    *,
+    dataset: Dataset,
+    filename: str,
+    declared_mime: str,
+    data: bytes,
+    actor: User,
+    allow_duplicate: bool,
+) -> DatasetVersion:
+    """Validate and store the raw file as the next version (status pending)."""
     settings = get_settings()
     if len(data) > settings.dataset_max_upload_bytes:
         raise DatasetFileError(
@@ -140,13 +170,6 @@ def create_version(
     )
     db.add(version)
     db.flush()
-    job = Job(
-        org_id=dataset.org_id,
-        kind=JobKind.DATASET_PARSE,
-        target_id=version.id,
-        max_attempts=settings.job_max_attempts,
-    )
-    db.add(job)
     audit.record(
         db,
         org_id=dataset.org_id,
@@ -156,7 +179,7 @@ def create_version(
         object_id=dataset.id,
         meta={"version": next_no, "format": fmt, "size_bytes": len(data), "sha256": sha256},
     )
-    return version, job
+    return version
 
 
 def _load_version(db: Session, job: Job) -> DatasetVersion:
@@ -252,6 +275,23 @@ def build_version(db: Session, job: Job, checkpoint: Checkpoint) -> None:
     v = _load_version(db, job)
     checkpoint(10)
     _build(db, v, _read_raw(v))
+
+
+def build_from_canonical_csv(db: Session, v: DatasetVersion, data: bytes, actor: User) -> None:
+    """Build a version whose CSV headers are already canonical names (connector syncs)."""
+    try:
+        table = read_table(data, "csv", get_settings().dataset_max_rows)
+    except DatasetFileError as exc:
+        raise PermanentJobError(str(exc)) from exc
+    v.source_columns = list(table.frame.columns)
+    v.source_row_count = table.frame.height
+    validate_mapping(v.dataset.kind, {c: c for c in v.source_columns}, v.source_columns)
+    v.column_mapping = {c: c for c in v.source_columns}
+    v.parse_options = {"date_format": "%Y-%m-%d", "decimal_separator": "."}
+    v.mapping_confirmed_by_id = actor.id
+    v.mapping_confirmed_at = datetime.now(UTC)
+    v.status = DatasetStatus.PROCESSING
+    _build(db, v, table)
 
 
 def _build(db: Session, v: DatasetVersion, table: RawTable) -> None:

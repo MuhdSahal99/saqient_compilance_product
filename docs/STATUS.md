@@ -1,6 +1,46 @@
 # Status
 
-Last updated: 2026-10-18 · Phase A is merged into main. Phase B (e-invoicing and VAT) is complete on `feat/phase-b-einvoice-vat`, awaiting review.
+Last updated: 2026-10-19 · Phase A is merged into main. Phases B (PR #7), C (PR #8) and D (PR #9) await review. Phase E (PR #10, CI green) awaits review. Phase F (sector packs) is complete on `feat/phase-f-sector-packs`, stacked on Phase E.
+
+## Phase F — sector content packs
+
+**Done:** F1 content pack framework (JSON manifests, validated, installed by org admins as draft checklists and draft rules, SHA-256 recorded); F2 six synthetic draft packs (AML/CFT, IFRS 9, IFRS 17, listed disclosures, IFRS S1/S2, ESR/UBO) with open questions; F3 `fs_draft` workpaper from lead schedules with balance and note cross-checks, `lease_ifrs16` workpaper, engine `deterministic-1.6.0` depreciation recalculation over `fixed_assets`; F4 per-org AI opt-in on top of the deployment flag, re-checked at job time. UI in en/ar; synthetic seed; ADR 0014. Migrations 0032–0034.
+
+**Checks executed (2026-10-19):** ruff + format, mypy (131 files), migrations round-tripped and `alembic check` clean, pytest **391 passed, 2 skipped** (golden files for FS and lease, hand-checked depreciation register, role and tenant 404 tests); seed on a fresh database; pnpm lint (0 errors, 8 existing warnings), typecheck, Vitest **64 passed**, build (main chunk 1,010 kB); Playwright **9 passed**.
+
+**Not executed:** any real AI provider (mock only). **Not built:** finding-key labels for depreciation, FS statement layouts (see KNOWN_LIMITATIONS).
+
+**Next:** review of PRs #7–#10, then the Phase F PR.
+
+## Phase E — finance assurance
+
+**Done:** E1 bank reconciliation with deterministic auto-match (`recon-1.0.0`), manual match, proof and ageing; E2 account and intercompany reconciliations with variance thresholds, close checklists as tasks, flux reviews needing explanations; E3 risk-control matrix, design/operating tests on evidence, deficiency classification and remediation tasks, management certification; E4 engine `deterministic-1.5.0` segregation of duties over `user_roles`; E5 AP and expense analytics (duplicates, vendor-employee IBAN match masked, missing TRN, dormant vendors, three-way match, expense policy); E6 read-only connectors (Zoho Books OAuth + PKCE, Odoo API key) with encrypted secrets and idempotent syncs, off by default. All sign-offs independent with immutable snapshots and HTML/PDF/CSV. UI in en/ar (lazy routes); synthetic seed; ADR 0013. Migrations 0025–0031.
+
+**Checks executed (2026-10-19):** ruff + format, mypy (125 files), every migration round-tripped and `alembic check` clean, pytest **373 passed, 2 skipped** (role and tenant 404 tests on every new endpoint, hand-checked matching, SoD and AP cases, connectors against httpx MockTransport only); seed on a fresh database; pnpm lint (0 errors, 8 existing warnings), typecheck, Vitest **55 passed**, build (main chunk 995 kB, translations); Playwright **8 passed**.
+
+**Not executed:** any live Zoho or Odoo account. **Not built:** UI to edit bank rec balances or delete risks/controls (API exists), incremental connector cursors (see KNOWN_LIMITATIONS).
+
+**Next:** review of PRs #7–#9, then the Phase E PR; Phase F (sector packs) per /mnt/project-files/phase-f/PLAN.md.
+
+## Phase D — audit
+
+**Done:** D1 engagements (phases, team, budget vs actual hours, time entries); D2 trial balance → lead schedules with prior year and lead schedule workpapers; D3 materiality workpaper (benchmark, overall, performance, clearly trivial, rationale; pack guidance ranges only); D4 risk register per assertion, procedures, `audit_programme` checklists, coverage; D5 reproducible MUS / random / stratified sampling (`sampling-1.0.0`) with projection; D6 engine `deterministic-1.4.0` journal entry tests incl. Benford; D7 prepare + independent sign-off, confirmations, adjustments and SUD; D8 management letter snapshots from confirmed findings, PBC requests and the `client` role limited to `/api/auth/` and `/api/portal/`. UI in en/ar; synthetic seed (engagement + client user); ADR 0012. Migrations 0019–0024.
+
+**Checks executed (2026-10-19):** ruff + format, mypy (103 files), migrations round-tripped and `alembic check` clean, pytest **350 passed, 2 skipped** (golden files for the new formulas, role and tenant 404 tests on every new endpoint); seed on a fresh database; pnpm lint (0 errors, 8 existing warnings), typecheck, Vitest **45 passed**, build (main chunk 949 kB, over the 900 kB warning limit); Playwright **7 passed**.
+
+**Not built:** UML/reliability factors, a client-entity link, unlinking reviews from procedures in the UI (see KNOWN_LIMITATIONS).
+
+**Next:** review of PRs #7 and #8, then the Phase D PR; then Phase E (assurance).
+
+## Phase C — direct tax
+
+**Done:** `app/calc` explainable formulas (`calc-1.0.0`) with workpapers: inputs with evidence (source blocks, dataset rows, trial balance import), computed lines with steps, rule snapshots and a result hash, sign-off snapshots, reopen to v n+1, HTML/PDF/CSV exports. C1 CT bridge (add-backs, entertainment share, interest limitation with carry-forward, exempt income, related-party, loss cap, rate bands); C2 SBR and QFZP tests; C3 loss register, posting from signed-off papers, loss transfers and dated tax group memberships with a group test; C4 related-party register, documentation thresholds, arm's length ranges, disclosure CSV; C5 Pillar Two (scope, ETR, SBIE, simplified top-up, safe harbours, readiness); C6 zakat base and engine `deterministic-1.3.0` WHT check over a new `wht_payments` dataset kind. UI in en/ar; synthetic seed; ADR 0011. Migrations 0015–0018.
+
+**Checks executed (2026-10-18):** ruff + format, mypy (87 files), migrations upgrade/downgrade/upgrade and `alembic check` clean, pytest **322 passed, 2 skipped** (golden files for all 8 formulas, role and tenant 404 tests on every new endpoint); pnpm lint (0 errors, 8 existing warnings), typecheck, Vitest **37 passed**, build; Playwright **6 passed** against uvicorn + `vite preview` with the seed.
+
+**Not executed / not built:** UI for evidence attachment, trial balance import, loss transfers and tax group memberships (API only, tested); WHT demo seed. No real rates (see KNOWN_LIMITATIONS, TODO questions there).
+
+**Next:** review of PR #7, then the Phase C PR; then Phase D (audit).
 
 ## Phase B — e-invoicing and VAT
 

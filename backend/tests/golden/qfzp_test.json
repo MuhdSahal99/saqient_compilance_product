@@ -1,0 +1,50 @@
+{
+  "formula": "qfzp_test",
+  "prefix": "syn.ct",
+  "rules": "synthetic: de minimis share 0.04, amount 4000000 (lower of the two)",
+  "cases": [
+    {
+      "name": "share limit binds and is met",
+      "inputs": [
+        {"key": "qualifying_income", "amount": "50000000"},
+        {"key": "non_qualifying_income", "amount": "1500000"},
+        {"key": "adequate_substance", "value": "true"},
+        {"key": "audited_financial_statements", "value": "yes"},
+        {"key": "transfer_pricing_compliant", "value": "true"},
+        {"key": "elected_out", "value": "false"}
+      ],
+      "worked": ["limit = min(0.04 x 51500000 = 2060000, 4000000) = 2060000; 1500000 <= 2060000"],
+      "expected": {
+        "de_minimis_limit": "2060000.00",
+        "test:de_minimis": "met",
+        "conditions": "met"
+      }
+    },
+    {
+      "name": "amount limit binds and is exceeded",
+      "inputs": [
+        {"key": "qualifying_income", "amount": "200000000"},
+        {"key": "non_qualifying_income", "amount": "4500000"},
+        {"key": "adequate_substance", "value": "true"},
+        {"key": "audited_financial_statements", "value": "true"},
+        {"key": "transfer_pricing_compliant", "value": "true"},
+        {"key": "elected_out", "value": "false"}
+      ],
+      "worked": ["limit = min(0.04 x 204500000 = 8180000, 4000000) = 4000000; 4500000 > 4000000"],
+      "expected": {"de_minimis_limit": "4000000", "test:de_minimis": "not_met", "conditions": "not_met"}
+    },
+    {
+      "name": "elected out fails; a missing assertion alone would be not determinable",
+      "inputs": [
+        {"key": "qualifying_income", "amount": "1000"},
+        {"key": "non_qualifying_income", "amount": "0"},
+        {"key": "elected_out", "value": "true"}
+      ],
+      "expected": {
+        "test:adequate_substance": "not_determinable",
+        "test:elected_out": "not_met",
+        "conditions": "not_met"
+      }
+    }
+  ]
+}

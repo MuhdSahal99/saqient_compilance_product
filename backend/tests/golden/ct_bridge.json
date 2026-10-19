@@ -1,0 +1,97 @@
+{
+  "formula": "corporate_tax",
+  "prefix": "syn.ct",
+  "rules": "app/demo_tax.py ct_rules() (synthetic): bands 0-400000 at 0, above at 0.12; entertainment share 0.40; interest share 0.25, de minimis 200000; loss cap 0.70; 2 decimals half_up",
+  "cases": [
+    {
+      "name": "add-backs, entertainment, exempt income, related party, interest limited, losses used in full",
+      "inputs": [
+        {"key": "accounting_profit", "amount": "1000000"},
+        {"key": "fines", "category": "non_deductible", "amount": "20000"},
+        {"key": "client_entertainment", "category": "entertainment", "amount": "30000"},
+        {"key": "dividends", "category": "exempt_income", "amount": "50000"},
+        {"key": "tp_adjustment", "category": "related_party", "amount": "12000"},
+        {"key": "net_interest_expense", "amount": "400000"},
+        {"key": "depreciation_amortisation", "amount": "100000"},
+        {"key": "losses_brought_forward", "amount": "300000"}
+      ],
+      "worked": [
+        "entertainment disallowed = 30000 x (1 - 0.40) = 18000",
+        "adjusted = 1000000 + 20000 + 18000 + 12000 - 50000 = 1000000",
+        "tax EBITDA = 1000000 + 400000 + 100000 = 1500000",
+        "capacity = max(200000, 0.25 x 1500000) = 375000; disallowed = 400000 - 375000 = 25000",
+        "before losses = 1000000 + 25000 = 1025000; cap = 0.70 x 1025000 = 717500, so all 300000 used",
+        "taxable income = 725000; tax = (725000 - 400000) x 0.12 = 39000"
+      ],
+      "expected": {
+        "entertainment_disallowed": "18000.00",
+        "adjusted_profit": "1000000",
+        "tax_ebitda": "1500000",
+        "interest_capacity": "375000.00",
+        "interest_disallowed": "25000.00",
+        "interest_brought_forward_used": "0",
+        "interest_carried_forward": "25000.00",
+        "taxable_income_before_losses": "1025000.00",
+        "losses_used": "300000.00",
+        "losses_carried_forward": "0.00",
+        "taxable_income": "725000.00",
+        "tax": "39000.00"
+      }
+    },
+    {
+      "name": "brought-forward interest used, loss cap binds, rounding of the cap",
+      "inputs": [
+        {"key": "accounting_profit", "amount": "500000"},
+        {"key": "team_event", "category": "entertainment", "amount": "1234.57"},
+        {"key": "net_interest_expense", "amount": "50000"},
+        {"key": "interest_brought_forward", "amount": "80000"},
+        {"key": "losses_brought_forward", "amount": "1000000"}
+      ],
+      "worked": [
+        "entertainment disallowed = 1234.57 x 0.60 = 740.742 -> 740.74",
+        "adjusted = 500740.74; EBITDA = 550740.74; capacity = max(200000, 137685.185) = 200000",
+        "no disallowance; spare 150000, so all 80000 brought forward is used",
+        "before losses = 500740.74 - 80000 = 420740.74",
+        "loss cap = 0.70 x 420740.74 = 294518.518 -> 294518.52 used; carried 705481.48",
+        "taxable income = 126222.22, inside the zero band, so tax 0"
+      ],
+      "expected": {
+        "entertainment_disallowed": "740.74",
+        "adjusted_profit": "500740.74",
+        "interest_capacity": "200000.00",
+        "interest_disallowed": "0",
+        "interest_brought_forward_used": "80000",
+        "interest_carried_forward": "0",
+        "taxable_income_before_losses": "420740.74",
+        "losses_used": "294518.52",
+        "losses_carried_forward": "705481.48",
+        "taxable_income": "126222.22",
+        "tax": "0.00"
+      }
+    },
+    {
+      "name": "loss period adds to losses carried forward",
+      "inputs": [
+        {"key": "accounting_profit", "amount": "-200000"},
+        {"key": "losses_brought_forward", "amount": "100000"}
+      ],
+      "worked": [
+        "adjusted = -200000; no interest; before losses = -200000",
+        "losses used = min(100000, 0.70 x 0) = 0; carried = 100000 + 200000 = 300000",
+        "taxable income = -200000 (a loss); tax 0"
+      ],
+      "expected": {
+        "taxable_income_before_losses": "-200000",
+        "losses_used": "0.00",
+        "losses_carried_forward": "300000.00",
+        "taxable_income": "-200000",
+        "tax": "0.00"
+      }
+    },
+    {
+      "name": "accounting profit is required",
+      "inputs": [{"key": "net_interest_expense", "amount": "10"}],
+      "error": "Enter the input 'accounting_profit'."
+    }
+  ]
+}

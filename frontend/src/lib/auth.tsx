@@ -21,6 +21,7 @@ const ROLE_PERMS: Record<Role, Permission[]> = {
   reviewer: ["write", "decide"],
   analyst: ["write"],
   viewer: [],
+  client: [],
 };
 
 /**

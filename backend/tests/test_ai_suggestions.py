@@ -8,7 +8,7 @@ from sqlalchemy import select
 
 from app.ai import MOCK_PREFIX, AIProviderError, Completion
 from app.config import get_settings
-from app.models import AuditEvent, Role, SourceBlock
+from app.models import AuditEvent, Organization, Role, SourceBlock
 from app.services import ai_suggestions
 from tests.conftest import ApiClient, Tenant, login
 from tests.test_reviews import findings, start_review
@@ -17,10 +17,13 @@ FIXTURES = Path(__file__).parent / "fixtures" / "prompt_injection"
 
 
 @pytest.fixture
-def mock_ai(monkeypatch: pytest.MonkeyPatch) -> None:
+def mock_ai(monkeypatch: pytest.MonkeyPatch, tenant_a: Tenant, db) -> None:  # type: ignore[no-untyped-def]
     s = get_settings()
     monkeypatch.setattr(s, "ai_enabled", True)
     monkeypatch.setattr(s, "ai_provider", "mock")
+    org = db.get(Organization, tenant_a.org.id)
+    org.ai_opt_in = True  # Phase F4: the org admin opted in
+    db.commit()
 
 
 def _use_provider(monkeypatch: pytest.MonkeyPatch, provider: object) -> None:

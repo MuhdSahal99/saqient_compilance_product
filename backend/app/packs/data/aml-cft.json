@@ -1,0 +1,216 @@
+{
+  "id": "aml-cft",
+  "version": "0.1.0",
+  "title": "AML/CFT programme review (synthetic draft)",
+  "sector": "financial_services",
+  "jurisdiction": "generic",
+  "status": "draft",
+  "synthetic": true,
+  "disclaimer": "Synthetic demonstration content — not legal guidance.",
+  "description": "Generic review questions for an anti-money-laundering and counter-terrorist-financing programme document set. Not mapped to any law or regulator.",
+  "dataset_kinds": [
+    "customer_master",
+    "general_ledger"
+  ],
+  "open_questions": [
+    "Which verified sources define the organisation's AML/CFT obligations?",
+    "Which customer risk factors and review frequencies has the organisation adopted?"
+  ],
+  "checklists": [
+    {
+      "name": "AML/CFT programme documents (synthetic)",
+      "description": "Synthetic demonstration content — not legal guidance.",
+      "requirements": [
+        {
+          "code": "AML-01",
+          "title": "Programme names an accountable compliance officer",
+          "severity": "high",
+          "check_config": {
+            "type": "required_text",
+            "phrases": [
+              "compliance officer",
+              "money laundering reporting officer"
+            ],
+            "match": "any"
+          },
+          "category": "governance",
+          "description": "",
+          "human_instructions": "Synthetic review question. Confirm against the organisation's verified sources before relying on it."
+        },
+        {
+          "code": "AML-02",
+          "title": "Business-wide risk assessment is documented",
+          "severity": "high",
+          "check_config": {
+            "type": "required_text",
+            "phrases": [
+              "risk assessment"
+            ],
+            "match": "any"
+          },
+          "category": "risk",
+          "description": "",
+          "human_instructions": "Synthetic review question. Confirm against the organisation's verified sources before relying on it."
+        },
+        {
+          "code": "AML-03",
+          "title": "Customer due diligence steps are described",
+          "severity": "high",
+          "check_config": {
+            "type": "phrase_groups",
+            "groups": [
+              [
+                "customer due diligence",
+                "know your customer"
+              ],
+              [
+                "identification",
+                "verification"
+              ]
+            ]
+          },
+          "category": "cdd",
+          "description": "",
+          "human_instructions": "Synthetic review question. Confirm against the organisation's verified sources before relying on it."
+        },
+        {
+          "code": "AML-04",
+          "title": "Enhanced due diligence triggers are described",
+          "severity": "medium",
+          "check_config": {
+            "type": "required_text",
+            "phrases": [
+              "enhanced due diligence"
+            ],
+            "match": "any"
+          },
+          "category": "cdd",
+          "description": "",
+          "human_instructions": "Synthetic review question. Confirm against the organisation's verified sources before relying on it."
+        },
+        {
+          "code": "AML-05",
+          "title": "Ongoing monitoring and review frequency are set",
+          "severity": "medium",
+          "check_config": {
+            "type": "phrase_groups",
+            "groups": [
+              [
+                "ongoing monitoring",
+                "transaction monitoring"
+              ],
+              [
+                "review"
+              ]
+            ]
+          },
+          "category": "monitoring",
+          "description": "",
+          "human_instructions": "Synthetic review question. Confirm against the organisation's verified sources before relying on it."
+        },
+        {
+          "code": "AML-06",
+          "title": "Internal suspicious activity escalation is described",
+          "severity": "high",
+          "check_config": {
+            "type": "required_text",
+            "phrases": [
+              "suspicious"
+            ],
+            "match": "any"
+          },
+          "category": "reporting",
+          "description": "",
+          "human_instructions": "Synthetic review question. Confirm against the organisation's verified sources before relying on it."
+        },
+        {
+          "code": "AML-07",
+          "title": "Sanctions screening is described",
+          "severity": "high",
+          "check_config": {
+            "type": "required_text",
+            "phrases": [
+              "sanctions screening",
+              "screening"
+            ],
+            "match": "any"
+          },
+          "category": "sanctions",
+          "description": "",
+          "human_instructions": "Synthetic review question. Confirm against the organisation's verified sources before relying on it."
+        },
+        {
+          "code": "AML-08",
+          "title": "Record keeping period is stated",
+          "severity": "medium",
+          "check_config": {
+            "type": "required_text",
+            "phrases": [
+              "record keeping",
+              "records"
+            ],
+            "match": "any"
+          },
+          "category": "records",
+          "description": "",
+          "human_instructions": "Synthetic review question. Confirm against the organisation's verified sources before relying on it."
+        },
+        {
+          "code": "AML-09",
+          "title": "Staff training is planned and evidenced",
+          "severity": "low",
+          "check_config": {
+            "type": "required_text",
+            "phrases": [
+              "training"
+            ],
+            "match": "any"
+          },
+          "category": "training",
+          "description": "",
+          "human_instructions": "Synthetic review question. Confirm against the organisation's verified sources before relying on it."
+        },
+        {
+          "code": "AML-10",
+          "title": "Independent testing of the programme is planned",
+          "severity": "medium",
+          "check_config": {
+            "type": "manual"
+          },
+          "category": "assurance",
+          "description": "",
+          "human_instructions": "Synthetic review question. Confirm against the organisation's verified sources before relying on it."
+        }
+      ]
+    }
+  ],
+  "rules": {
+    "prefix": "pack.aml",
+    "rules": [
+      {
+        "rule_key": "pack.aml.cdd_review_days",
+        "title": "Customer review interval",
+        "value_type": "integer",
+        "value": "365",
+        "unit": "days",
+        "effective_from": "2020-01-01",
+        "effective_to": null,
+        "source_url": null,
+        "source_note": "Synthetic demonstration content — not legal guidance.",
+        "todo": "Synthetic placeholder. Which verified source sets this value, if any?"
+      },
+      {
+        "rule_key": "pack.aml.ageing_buckets",
+        "title": "Review backlog buckets (days)",
+        "value_type": "json",
+        "value": "[30, 90, 180]",
+        "unit": "",
+        "effective_from": "2020-01-01",
+        "effective_to": null,
+        "source_url": null,
+        "source_note": "Synthetic demonstration content — not legal guidance.",
+        "todo": "Synthetic placeholder. Which verified source sets this value, if any?"
+      }
+    ]
+  }
+}

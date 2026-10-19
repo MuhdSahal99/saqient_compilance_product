@@ -185,3 +185,55 @@ test("seeded e-invoices, e-invoice review and tax calendar", async ({ page }) =>
   await expect(page.getByText("VAT return (synthetic)").first()).toBeVisible();
   await expect(page.getByText("Unverified").first()).toBeVisible();
 });
+
+test("seeded direct-tax workpaper with steps, rules and exports", async ({ page }) => {
+  await login(page, "reviewer@alpha.example");
+  await page.getByRole("navigation").getByRole("link", { name: "Direct tax", exact: true }).click();
+  await page.getByRole("link", { name: "FY2025 corporate tax (synthetic)" }).click();
+  await expect(page.getByText(/Unverified rule/).first()).toBeVisible();
+  await expect(page.getByText("39,000.00").or(page.getByText("39000.00")).first()).toBeVisible();
+  await expect(page.getByRole("link", { name: /PDF/ }).first()).toBeVisible();
+});
+
+test("seeded audit engagement and the restricted client portal", async ({ page }) => {
+  await login(page, "reviewer@alpha.example");
+  await page.getByRole("navigation").getByRole("link", { name: "Engagements", exact: true }).click();
+  await page.getByRole("link", { name: "FY2025 external audit (synthetic demo)" }).click();
+  await page.getByRole("tab", { name: "Risks and procedures" }).click();
+  await expect(page.getByText("Revenue recorded in the wrong period (synthetic)").first()).toBeVisible();
+  await page.getByRole("tab", { name: "Client requests" }).click();
+  await expect(page.getByText("Year-end bank statement (synthetic)").first()).toBeVisible();
+  await logout(page);
+
+  await page.getByLabel("Email", { exact: true }).fill("client@alpha.example");
+  await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page).toHaveURL(/\/portal/);
+  await expect(page.getByText("Year-end bank statement (synthetic)").first()).toBeVisible();
+  await expect(page.getByRole("navigation").getByRole("link", { name: "Engagements" })).toHaveCount(0);
+});
+
+test("seeded close checklist, control matrix and connectors turned off", async ({ page }) => {
+  await login(page, "admin@alpha.example");
+  const nav = page.getByRole("navigation");
+  await nav.getByRole("link", { name: "Close", exact: true }).click();
+  await expect(page.getByText("January 2026 close (synthetic demo)").first()).toBeVisible();
+  await nav.getByRole("link", { name: "Controls", exact: true }).click();
+  await page.getByText("Procure to pay (synthetic demo)").first().click();
+  await expect(page.getByText("P2P-C1").first()).toBeVisible();
+  await expect(page.getByText("P2P-R2").first()).toBeVisible();
+  await nav.getByRole("link", { name: "Connectors", exact: true }).click();
+  await expect(page.getByText("Not available").first()).toBeVisible();
+});
+
+test("draft content packs with the seeded install and the synthetic disclaimer", async ({ page }) => {
+  await login(page, "admin@alpha.example");
+  await page.getByRole("navigation").getByRole("link", { name: "Content packs", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Content packs" })).toBeVisible();
+  await page.getByText("Listed company disclosure review (synthetic draft)").first().click();
+  await expect(page.getByText("Synthetic demonstration content — not legal guidance.").first()).toBeVisible();
+  await expect(page.getByText("Open questions").first()).toBeVisible();
+  await page.goBack();
+  await page.getByText("AML/CFT programme review (synthetic draft)").first().click();
+  await expect(page.getByText("Installed", { exact: false }).first()).toBeVisible();
+});

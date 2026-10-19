@@ -278,7 +278,7 @@ def test_pint_ae_validation_raises_one_finding_per_failure(tenant_a: Tenant, db:
     review = r.json()
     assert review["einvoice_count"] == 6 and review["entity_id"] == str(entity.id)
     run = review["latest_run"]
-    assert run["engine_version"] == "deterministic-1.2.0"
+    assert run["engine_version"] == "deterministic-1.6.0"
     assert any("Unverified" in w for w in run["warnings"])
 
     res = results(analyst, review["id"])["EINV-01"]

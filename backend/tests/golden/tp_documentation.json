@@ -1,0 +1,64 @@
+{
+  "formula": "tp_documentation",
+  "prefix": "syn.ct",
+  "rules": "synthetic: entity revenue 150000000, group revenue 3000000000 (both files), disclosure 30000000; all inclusive",
+  "cases": [
+    {
+      "name": "entity revenue at the threshold; ranges inside and outside",
+      "inputs": [
+        {"key": "entity_revenue", "amount": "150000000"},
+        {"key": "rp_total", "amount": "29999999.99"},
+        {"key": "svc.low", "category": "range", "amount": "0.05"},
+        {"key": "svc.high", "category": "range", "amount": "0.08"},
+        {"key": "svc.tested", "category": "range", "amount": "0.08"},
+        {"key": "loan.low", "category": "range", "amount": "0.04"},
+        {"key": "loan.high", "category": "range", "amount": "0.06"},
+        {"key": "loan.tested", "category": "range", "amount": "0.0399"}
+      ],
+      "expected": {
+        "test:master_file": "required",
+        "test:local_file": "required",
+        "test:disclosure": "not_required",
+        "range:svc": "within",
+        "range:loan": "outside"
+      }
+    },
+    {
+      "name": "small entity in a large group",
+      "inputs": [
+        {"key": "entity_revenue", "amount": "10000000"},
+        {"key": "in_mne_group", "value": "true"},
+        {"key": "group_revenue", "amount": "3000000000"},
+        {"key": "rp_total", "amount": "30000000"}
+      ],
+      "expected": {"test:master_file": "required", "test:local_file": "required", "test:disclosure": "required"}
+    },
+    {
+      "name": "small group, standalone and unknown",
+      "inputs": [
+        {"key": "entity_revenue", "amount": "10000000"},
+        {"key": "in_mne_group", "value": "true"},
+        {"key": "group_revenue", "amount": "2999999999.99"},
+        {"key": "rp_total", "amount": "0"}
+      ],
+      "expected": {"test:master_file": "not_required", "test:local_file": "not_required"}
+    },
+    {
+      "name": "group membership not given",
+      "inputs": [
+        {"key": "entity_revenue", "amount": "10000000"},
+        {"key": "rp_total", "amount": "0"}
+      ],
+      "expected": {"test:master_file": "not_determinable"}
+    },
+    {
+      "name": "standalone entity",
+      "inputs": [
+        {"key": "entity_revenue", "amount": "10000000"},
+        {"key": "in_mne_group", "value": "false"},
+        {"key": "rp_total", "amount": "0"}
+      ],
+      "expected": {"test:master_file": "not_required", "test:local_file": "not_required"}
+    }
+  ]
+}

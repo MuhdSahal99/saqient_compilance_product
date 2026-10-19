@@ -1,4 +1,5 @@
-export type Role = "org_admin" | "reviewer" | "analyst" | "viewer";
+/** `client` is an audit client contact who can only use the request portal. */
+export type Role = "org_admin" | "reviewer" | "analyst" | "viewer" | "client";
 export type VersionStatus = "pending" | "processing" | "ready" | "failed";
 export type JobStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
 export type ReviewStatus = "draft" | "running" | "in_review" | "signed_off";
@@ -20,7 +21,7 @@ export type FindingStatus =
   | "ready_for_rereview"
   | "resolved"
   | "accepted_risk";
-export type ChecklistKind = "synthetic_demo" | "internal_policy" | "external_regulatory";
+export type ChecklistKind = "synthetic_demo" | "internal_policy" | "external_regulatory" | "audit_programme";
 
 export interface Page<T> {
   items: T[];
@@ -391,6 +392,13 @@ export const DATASET_KINDS = [
   "supplier_master",
   "vat_return",
   "einvoice_rejections",
+  "wht_payments",
+  "user_roles",
+  "ap_payments",
+  "employee_master",
+  "three_way_match",
+  "expense_claims",
+  "fixed_assets",
 ] as const;
 export type DatasetKind = (typeof DATASET_KINDS)[number];
 export type DatasetStatus = "pending" | "parsing" | "needs_mapping" | "processing" | "ready" | "failed";
@@ -554,6 +562,9 @@ export interface AIStatus {
   model: string | null;
   available_features: string[];
   is_mock?: boolean;
+  /** The deployment has a provider configured; the org must still opt in. */
+  deployment_enabled?: boolean;
+  org_opted_in?: boolean;
   note: string;
 }
 
@@ -760,4 +771,225 @@ export interface TaxCalendarResult {
   periods_created: number;
   warnings: string[];
   obligations: TaxObligation[];
+}
+
+// ---------------------------------------------------------------- direct tax (Phase C)
+
+/** Tax workpaper kinds created from the direct tax page. */
+export const WORKPAPER_KINDS = ["corporate_tax", "sbr_test", "qfzp_test", "pillar_two", "zakat", "lease_ifrs16"] as const;
+/** Audit workpaper kinds; they belong to an engagement and are created from it. */
+export const AUDIT_WORKPAPER_KINDS = ["lead_schedule", "materiality", "fs_draft"] as const;
+export type WorkpaperKind = (typeof WORKPAPER_KINDS)[number] | (typeof AUDIT_WORKPAPER_KINDS)[number];
+export type WorkpaperStatus = "draft" | "signed_off";
+
+/** Input categories the backend accepts for each workpaper kind. */
+export const WORKPAPER_CATEGORIES: Record<WorkpaperKind, readonly string[]> = {
+  corporate_tax: ["input", "non_deductible", "other_add", "exempt_income", "other_deduct", "related_party", "entertainment"],
+  sbr_test: ["input"],
+  qfzp_test: ["input"],
+  pillar_two: [
+    "input",
+    "globe_income",
+    "covered_taxes",
+    "payroll",
+    "tangible_assets",
+    "cbcr_revenue",
+    "cbcr_pbt",
+    "simplified_taxes",
+    "readiness",
+  ],
+  zakat: ["input", "zakat_addition", "zakat_deduction"],
+  lead_schedule: ["input", "current_year", "prior_year"],
+  materiality: ["input"],
+  fs_draft: ["input", "current_year", "prior_year", "note"],
+  lease_ifrs16: ["input"],
+};
+
+/** One step of an explainable calculation: label: expression = value. */
+export interface CalcStep {
+  label: string;
+  expression: string;
+  value: string;
+}
+
+/** The rule as it was read for a calculation (immutable rule id + pack version). */
+export interface RuleSnapshot {
+  rule_id: string;
+  rule_key: string;
+  value: string | null;
+  value_sha256: string | null;
+  value_type: string;
+  unit: string | null;
+  rule_pack_version_id: string;
+  pack_name: string;
+  pack_version: number;
+  verification_status: "draft" | "verified";
+  effective_from: string;
+  effective_to: string | null;
+}
+
+export interface WorkpaperLine {
+  id: string;
+  source: "manual" | "computed";
+  section: string;
+  line_key: string;
+  category: string;
+  label: string;
+  ordinal: number;
+  /** Decimal, serialised as a string; never parsed to a float. */
+  amount: string | null;
+  value: string | null;
+  formula_id: string | null;
+  explanation: CalcStep[];
+  rule_snapshots: RuleSnapshot[];
+  evidence: Record<string, unknown>[];
+  note: string;
+}
+
+export interface WorkpaperSnapshot {
+  version: number;
+  signed_off_by_name: string | null;
+  signed_off_at: string;
+  result_hash: string | null;
+}
+
+export interface WorkpaperSummary {
+  id: string;
+  entity_id: string;
+  entity_name: string;
+  kind: WorkpaperKind;
+  title: string;
+  period_start: string;
+  period_end: string;
+  currency: string;
+  status: WorkpaperStatus;
+  computed_at: string | null;
+  is_demo: boolean;
+  created_at: string;
+  /** Set on audit workpapers (lead schedule, materiality). */
+  engagement_id?: string | null;
+  prepared_by_name?: string | null;
+  prepared_at?: string | null;
+}
+
+export interface Workpaper extends WorkpaperSummary {
+  rule_pack_version_id: string;
+  rules_prefix: string;
+  calc_version: string | null;
+  result_hash: string | null;
+  warnings: string[];
+  lines: WorkpaperLine[];
+  snapshots: WorkpaperSnapshot[];
+}
+
+export type LossEntryKind = "incurred" | "used" | "transferred_in" | "transferred_out" | "forfeited";
+
+export interface LossEntry {
+  id: string;
+  entity_id: string;
+  kind: LossEntryKind;
+  period_start: string;
+  period_end: string;
+  amount: string;
+  signed_amount: string;
+  currency: string;
+  workpaper_id: string | null;
+  counterparty_entity_id: string | null;
+  counterparty_name: string | null;
+  transfer_id: string | null;
+  explanation: CalcStep[];
+  rule_snapshots: RuleSnapshot[];
+  evidence: Record<string, unknown>[];
+  note: string;
+  created_at: string;
+}
+
+export interface LossRegister {
+  entity_id: string;
+  currency: string;
+  balance: string;
+  entries: LossEntry[];
+}
+
+export interface LossPosting {
+  created: LossEntry[];
+  warnings: string[];
+}
+
+export const RELATED_PARTY_RELATIONS = [
+  "parent",
+  "subsidiary",
+  "sister",
+  "permanent_establishment",
+  "connected_person",
+  "other",
+] as const;
+export type RelatedPartyRelation = (typeof RELATED_PARTY_RELATIONS)[number];
+
+export const RP_TRANSACTION_TYPES = [
+  "goods",
+  "services",
+  "royalties",
+  "financing",
+  "guarantee",
+  "cost_sharing",
+  "asset_transfer",
+  "other",
+] as const;
+export type RPTransactionType = (typeof RP_TRANSACTION_TYPES)[number];
+
+export const TP_METHODS = ["not_set", "cup", "resale_price", "cost_plus", "tnmm", "profit_split", "other"] as const;
+export type TPMethod = (typeof TP_METHODS)[number];
+
+export interface RelatedParty {
+  id: string;
+  entity_id: string;
+  name: string;
+  relation: RelatedPartyRelation;
+  jurisdiction: string;
+  note: string;
+  is_demo: boolean;
+}
+
+export interface RPTransaction {
+  id: string;
+  entity_id: string;
+  related_party_id: string;
+  related_party_name: string;
+  period_start: string;
+  period_end: string;
+  transaction_type: RPTransactionType;
+  direction: "receipt" | "payment";
+  description: string;
+  amount: string;
+  currency: string;
+  method: TPMethod;
+  range_low: string | null;
+  range_high: string | null;
+  tested_value: string | null;
+  range_metric: string;
+  benchmark_documents: Record<string, unknown>[];
+  evidence: Record<string, unknown>[];
+  is_demo: boolean;
+}
+
+export interface CalcLine {
+  key: string;
+  label: string;
+  section: string;
+  formula_id: string;
+  amount: string | null;
+  value: string | null;
+  explanation: CalcStep[];
+  rule_snapshots: RuleSnapshot[];
+}
+
+export interface TPCheckResult {
+  currency: string;
+  rp_total: string;
+  transaction_count: number;
+  calc_version: string;
+  result_hash: string;
+  lines: CalcLine[];
+  warnings: string[];
 }

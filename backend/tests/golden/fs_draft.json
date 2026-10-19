@@ -1,0 +1,63 @@
+{
+  "formula": "fs_draft",
+  "prefix": "syn.audit",
+  "rules": "synthetic: 2 decimals half_up, note tolerance 1",
+  "cases": [
+    {
+      "name": "balanced current year, unbalanced prior year, three notes",
+      "inputs": [
+        {"key": "fs_asset_a_cy", "category": "current_year", "amount": "1000"},
+        {"key": "fs_liability_l_cy", "category": "current_year", "amount": "-400"},
+        {"key": "fs_equity_e_cy", "category": "current_year", "amount": "-300"},
+        {"key": "fs_income_r_cy", "category": "current_year", "amount": "-900"},
+        {"key": "fs_expense_x_cy", "category": "current_year", "amount": "600"},
+        {"key": "fs_asset_a_py", "category": "prior_year", "amount": "800"},
+        {"key": "fs_liability_l_py", "category": "prior_year", "amount": "-300"},
+        {"key": "fs_equity_e_py", "category": "prior_year", "amount": "-300"},
+        {"key": "fs_income_r_py", "category": "prior_year", "amount": "-700"},
+        {"key": "fs_expense_x_py", "category": "prior_year", "amount": "450"},
+        {"key": "note_a", "category": "note", "amount": "1000"},
+        {"key": "note_r", "category": "note", "amount": "899.50"},
+        {"key": "note_x", "category": "note", "amount": "590"},
+        {"key": "note_z", "category": "note", "amount": "5"}
+      ],
+      "worked": [
+        "presented CY: assets 1000, liabilities 400, equity 300, income 900, expenses 600",
+        "profit CY 900 - 600 = 300; check 1000 - 400 - 300 - 300 = 0 → balanced",
+        "profit PY 700 - 450 = 250; check 800 - 300 - 300 - 250 = -50",
+        "note A 1000 - 1000 = 0 agrees; note R 899.50 - 900 = -0.50, |0.50| ≤ 1 agrees",
+        "note X 590 - 600 = -10 differs; note Z has no lead Z"
+      ],
+      "expected": {
+        "face_l_cy": "400",
+        "face_r_cy": "900",
+        "total_assets_cy": "1000",
+        "total_liabilities_cy": "400",
+        "total_equity_cy": "300",
+        "total_income_cy": "900",
+        "total_expenses_cy": "600",
+        "profit_cy": "300",
+        "balance_check_cy": "balanced",
+        "profit_py": "250",
+        "balance_check_py": "difference -50.00",
+        "note_a_check": "agrees",
+        "note_r_check": "agrees",
+        "note_x_check": "differs by -10.00",
+        "note_z_check": "no face line"
+      }
+    },
+    {
+      "name": "one lead in two sections",
+      "inputs": [
+        {"key": "fs_asset_a_cy", "category": "current_year", "amount": "1"},
+        {"key": "fs_expense_a_py", "category": "prior_year", "amount": "1"}
+      ],
+      "error": "appears in two sections"
+    },
+    {
+      "name": "no trial balance lines",
+      "inputs": [{"key": "note_a", "category": "note", "amount": "1"}],
+      "error": "Add trial balance lines"
+    }
+  ]
+}

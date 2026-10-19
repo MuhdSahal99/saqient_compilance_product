@@ -1,4 +1,4 @@
-# Known limitations (through Phase A)
+# Known limitations (through Phase C)
 
 Features listed here are either absent or deliberately labelled in the UI.
 
@@ -102,3 +102,81 @@ Features listed here are either absent or deliberately labelled in the UI.
 - Light theme only.
 - The production bundle is about 1.1 MB minified (330 KB gzip) across four
   chunks; routes are not lazy-loaded yet.
+
+## Direct tax (Phase C)
+- **No real rates or thresholds.** Only a SYNTHETIC direct-tax pack is seeded.
+  Its values are deliberately unlike published ones, and every result shows
+  unverified-rule warnings until an admin verifies real rules with a source.
+- **Formula structure is generic.** The interest limitation, loss cap, SBR, QFZP,
+  transfer pricing thresholds, zakat base and Pillar Two follow a configurable shape.
+  Rules the shape cannot express need a new `CALC_VERSION`.
+  - TODO (question for a tax adviser): the exact interest limitation ordering
+    relative to exempt income and loss relief.
+  - TODO (question for a tax adviser): the zakat treatment of short or long first periods.
+- **Pillar Two is simplified.** ETR is covered taxes ÷ GloBE income, and top-up is
+  (minimum − ETR) × (income − SBIE). It has no deferred tax recast, QDMTT credit
+  ordering, minority interest, or prior-year adjustments. Safe harbour tests use
+  CbCR figures the preparer enters. It is not a GloBE information return.
+- **Assertions are the preparer's.** Substance, continuity, residence, MNE group
+  membership and readiness flags are entered with evidence, not verified by Saqient.
+- **Transfer pricing** has no benchmarking analytics. Studies are linked documents,
+  and ranges and tested results are entered by hand. Amounts must be in the
+  entity's currency. The disclosure CSV is data for a form, not the form itself.
+- **Trial balance import** sums balances of listed accounts. The account mapping is
+  sent with each import and recorded on the line's evidence; it is not stored as
+  entity configuration.
+- **WHT** compares withholding with gross × rate per payment type. It does not handle
+  grossed-up payments, payee exemptions or multiple tax years in one file. Treaty
+  rates are used only when the row has a certificate reference.
+- Nothing is filed with the FTA or ZATCA.
+
+## Audit (Phase D)
+
+- Sampling projects point estimates only. No upper misstatement limit, reliability
+  factors or sample-size calculator; the team sets the size.
+- Materiality guidance ranges in the demo pack are synthetic drafts. No benchmark is
+  recommended by the product.
+- Journal entry tests flag leads; they do not conclude on error or fraud. Holiday and
+  weekend calendars must be entered per pack.
+- Clients are scoped by PBC request assignment only; there is no client-entity link
+  and no client view of the engagement itself.
+- Closing an engagement blocks engagement changes; editing an audit workpaper's inputs
+  is not yet blocked once the engagement is closed (sign-off still freezes it).
+- Confirmations are tracked, not sent: no email or bank portal integration. Do not store
+  bank account numbers or IBANs (the reference field refuses IBAN-like values).
+- The audit UI offers each dataset's latest ready version only for trial balances and
+  samples; older versions are reachable through the API. The main JS chunk now exceeds
+  the 900 kB warning limit because of the added translations.
+
+## Assurance (Phase E)
+
+- Connectors were tested only against mocked HTTP transports. Zoho Books and Odoo field
+  mappings, scopes and data-centre URLs follow public documentation and are
+  **unverified against live accounts**. Each sync pulls a full snapshot (no incremental
+  cursor yet). Rate limiting is per sync, not shared across workers.
+- Three-way match quantities use the amount column type, so they carry a currency code.
+- The synthetic pack's SoD matrix, AP thresholds and expense limits are drafts for the
+  demo only. Mitigating controls for SoD conflicts are recorded as finding decisions.
+- Supplier and employee IBANs in imported datasets are stored in the dataset Parquet
+  as imported (as in Phase A); only findings and evidence mask them.
+- Close periods have no calendar export; flux needs both trial balances in the same
+  account structure.
+- The main JS chunk is now 995 kB because every en/ar string loads eagerly; the new
+  screens themselves are lazy chunks. Splitting translations per route is not done.
+
+## Sector packs (Phase F)
+
+- The six shipped packs are synthetic drafts with generic requirements and open
+  questions. They name no regulator, statute or article and are not a source of any
+  external requirement; teams must replace them with verified sources.
+- The FS draft groups lead schedules by section only. It has no statement layouts, cash
+  flow, equity movement or IFRS disclosure checklist; notes are totals the preparer
+  enters.
+- The lease calculation assumes equal payments per period and no modifications,
+  remeasurement, variable payments or currency effects.
+- Depreciation recalculation counts whole months (acquisition month in full), supports
+  straight line and reducing balance only, and does not handle impairment,
+  revaluation, componentisation or partial disposals.
+- AI suggestions were tested with the mock provider only. Opting in does not choose a
+  provider; the deployment does.
+- The main JS chunk is now 1,010 kB (translations load eagerly); the packs page is lazy.

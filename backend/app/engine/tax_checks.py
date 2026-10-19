@@ -60,8 +60,22 @@ def evaluate(config: Any, ctx: DataContext, meta: dict[str, Any]) -> DataEvaluat
 
 
 # Imported last: the check modules import EntityInfo from here.
+from app.engine.ap_checks import AP_CHECK_TYPES  # noqa: E402
 from app.engine.einvoice_checks import EINVOICE_CHECK_TYPES  # noqa: E402
+from app.engine.fa_checks import FA_CHECK_TYPES  # noqa: E402
+from app.engine.je_checks import JE_CHECK_TYPES  # noqa: E402
 from app.engine.master_data_checks import MASTER_CHECK_TYPES  # noqa: E402
+from app.engine.sod_checks import SOD_CHECK_TYPES  # noqa: E402
 from app.engine.vat_checks import VAT_CHECK_TYPES  # noqa: E402
+from app.engine.wht_checks import WHT_CHECK_TYPES  # noqa: E402
 
-TAX_CHECK_TYPES: tuple[type, ...] = (*EINVOICE_CHECK_TYPES, *MASTER_CHECK_TYPES, *VAT_CHECK_TYPES)
+TAX_CHECK_TYPES: tuple[type, ...] = (
+    *EINVOICE_CHECK_TYPES,
+    *MASTER_CHECK_TYPES,
+    *VAT_CHECK_TYPES,
+    *WHT_CHECK_TYPES,
+    *JE_CHECK_TYPES,
+    *SOD_CHECK_TYPES,
+    *AP_CHECK_TYPES,
+    *FA_CHECK_TYPES,
+)

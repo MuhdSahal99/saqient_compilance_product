@@ -1,0 +1,133 @@
+{
+  "id": "listed-disclosures",
+  "version": "0.1.0",
+  "title": "Listed company disclosure review (synthetic draft)",
+  "sector": "listed_companies",
+  "jurisdiction": "generic",
+  "status": "draft",
+  "synthetic": true,
+  "disclaimer": "Synthetic demonstration content — not legal guidance.",
+  "description": "Generic completeness questions for an annual report of a listed company. No exchange or regulator rules are encoded.",
+  "dataset_kinds": [],
+  "open_questions": [
+    "Which listing rules and governance codes apply, and from which verified sources?"
+  ],
+  "checklists": [
+    {
+      "name": "Annual report disclosures (synthetic)",
+      "description": "Synthetic demonstration content — not legal guidance.",
+      "requirements": [
+        {
+          "code": "LST-01",
+          "title": "Board composition and independence are disclosed",
+          "severity": "medium",
+          "check_config": {
+            "type": "phrase_groups",
+            "groups": [
+              [
+                "board"
+              ],
+              [
+                "independent"
+              ]
+            ]
+          },
+          "category": "governance",
+          "description": "",
+          "human_instructions": "Synthetic review question. Confirm against the organisation's verified sources before relying on it."
+        },
+        {
+          "code": "LST-02",
+          "title": "Related party transactions are disclosed",
+          "severity": "high",
+          "check_config": {
+            "type": "required_text",
+            "phrases": [
+              "related part"
+            ],
+            "match": "any"
+          },
+          "category": "disclosure",
+          "description": "",
+          "human_instructions": "Synthetic review question. Confirm against the organisation's verified sources before relying on it."
+        },
+        {
+          "code": "LST-03",
+          "title": "Principal risks and uncertainties are described",
+          "severity": "medium",
+          "check_config": {
+            "type": "required_text",
+            "phrases": [
+              "principal risks",
+              "risk management"
+            ],
+            "match": "any"
+          },
+          "category": "risk",
+          "description": "",
+          "human_instructions": "Synthetic review question. Confirm against the organisation's verified sources before relying on it."
+        },
+        {
+          "code": "LST-04",
+          "title": "Remuneration of directors is disclosed",
+          "severity": "medium",
+          "check_config": {
+            "type": "required_text",
+            "phrases": [
+              "remuneration"
+            ],
+            "match": "any"
+          },
+          "category": "governance",
+          "description": "",
+          "human_instructions": "Synthetic review question. Confirm against the organisation's verified sources before relying on it."
+        },
+        {
+          "code": "LST-05",
+          "title": "Auditor's report is included",
+          "severity": "high",
+          "check_config": {
+            "type": "required_text",
+            "phrases": [
+              "independent auditor"
+            ],
+            "match": "any"
+          },
+          "category": "assurance",
+          "description": "",
+          "human_instructions": "Synthetic review question. Confirm against the organisation's verified sources before relying on it."
+        },
+        {
+          "code": "LST-06",
+          "title": "Going concern assessment is stated",
+          "severity": "high",
+          "check_config": {
+            "type": "required_text",
+            "phrases": [
+              "going concern"
+            ],
+            "match": "any"
+          },
+          "category": "disclosure",
+          "description": "",
+          "human_instructions": "Synthetic review question. Confirm against the organisation's verified sources before relying on it."
+        },
+        {
+          "code": "LST-07",
+          "title": "Dividend policy is stated",
+          "severity": "low",
+          "check_config": {
+            "type": "required_text",
+            "phrases": [
+              "dividend"
+            ],
+            "match": "any"
+          },
+          "category": "disclosure",
+          "description": "",
+          "human_instructions": "Synthetic review question. Confirm against the organisation's verified sources before relying on it."
+        }
+      ]
+    }
+  ]
+}

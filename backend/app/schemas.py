@@ -1,29 +1,62 @@
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Any, Generic, Literal, TypeVar
+from typing import Annotated, Any, Generic, Literal, TypeVar
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 
 from app.models import (
+    AdjustmentStatus,
     AIAssessment,
     AISuggestionStatus,
+    Assertion,
+    AssuranceStatus,
     ChecklistKind,
     ChecklistState,
     CheckOutcome,
+    ConfirmationStatus,
+    ConfirmationType,
+    ConnectorProvider,
+    ConnectorStatus,
+    ConnectorSyncStatus,
+    ControlAutomation,
+    ControlConclusion,
+    ControlFrequency,
+    ControlNature,
+    ControlTestKind,
+    ControlTestStatus,
     DatasetKind,
     DatasetStatus,
+    DeficiencyClass,
+    DeficiencyStatus,
+    EngagementKind,
+    EngagementPhase,
+    EngagementRole,
+    EngagementStatus,
     FindingStatus,
+    FsSection,
     JobStatus,
+    LineSource,
+    LossEntryKind,
     MonitorCadence,
     MonitorRunStatus,
+    PbcStatus,
     PeriodFrequency,
+    ProcedureStatus,
+    ReconMethod,
+    ReconSide,
+    RelatedPartyRelation,
     ReviewStatus,
+    RiskLevel,
     Role,
+    RPTransactionType,
     RuleValueType,
     RuleVerification,
+    SampleItemResult,
+    SamplingMethod,
     Severity,
     SourceVerification,
     TaskSource,
@@ -31,8 +64,11 @@ from app.models import (
     TaxAccountRole,
     TaxPeriodStatus,
     TaxType,
+    TPMethod,
     VatTreatment,
     VersionStatus,
+    WorkpaperKind,
+    WorkpaperStatus,
 )
 
 T = TypeVar("T")
@@ -571,6 +607,22 @@ class AISuggestionsOut(BaseModel):
     available: bool
     run: AISuggestionRunOut | None
     suggestions: list[AISuggestionOut]
+
+
+class AISettingsOut(BaseModel):
+    deployment_available: bool = Field(
+        description="The deployment has an AI provider configured (off by default)."
+    )
+    provider: str
+    model: str | None
+    is_mock: bool
+    opted_in: bool = Field(description="An org admin turned AI suggestions on for this org.")
+    opted_in_at: datetime | None
+
+
+class AISettingsIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    opted_in: bool
 
 
 class AIDecisionIn(BaseModel):
@@ -1125,3 +1177,1666 @@ class TaskPatch(BaseModel):
     clear_owner: bool = False
     due_date: date | None = None
     note: str | None = Field(default=None, max_length=4000)
+
+
+# ---------------------------------------------------------------- tax workpapers (Phase C)
+
+KEY_PATTERN = r"^[a-z][a-z0-9_]{0,79}$"
+PREFIX_PATTERN = r"^[a-z0-9_]+(\.[a-z0-9_]+)*$"
+
+
+class EvidenceRefIn(BaseModel):
+    """A stored source block, or rows of a dataset version, that support an input."""
+
+    model_config = ConfigDict(extra="forbid")
+    kind: Literal["source_block", "dataset_rows"]
+    source_block_id: uuid.UUID | None = None
+    dataset_version_id: uuid.UUID | None = None
+    row_ids: list[int] = Field(default_factory=list, max_length=500)
+
+    @model_validator(mode="after")
+    def _shape(self) -> EvidenceRefIn:
+        if self.kind == "source_block" and self.source_block_id is None:
+            raise ValueError("source_block evidence needs source_block_id")
+        if self.kind == "dataset_rows" and (self.dataset_version_id is None or not self.row_ids):
+            raise ValueError("dataset_rows evidence needs dataset_version_id and row_ids")
+        return self
+
+
+class WorkpaperIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    entity_id: uuid.UUID
+    kind: WorkpaperKind
+    title: str = Field(min_length=1, max_length=300)
+    period_start: date
+    period_end: date
+    rule_pack_version_id: uuid.UUID
+    rules_prefix: str = Field(
+        min_length=1,
+        max_length=80,
+        pattern=PREFIX_PATTERN,
+        description="Rule key prefix, e.g. 'ae.ct'; the formula reads <prefix>.<rule>.",
+    )
+    currency: str | None = Field(
+        default=None, pattern=r"^[A-Z]{3}$", description="Defaults to the entity's currency."
+    )
+
+
+class WorkpaperInputIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    category: str = Field(
+        default="input", max_length=60, description="'input', or an adjustment category."
+    )
+    label: str = Field(min_length=1, max_length=300)
+    amount: Decimal | None = Field(default=None, max_digits=20, decimal_places=4)
+    value: str | None = Field(
+        default=None, max_length=200, description="Non-amount inputs: true/false flags."
+    )
+    note: str = Field(default="", max_length=4000)
+    evidence: list[EvidenceRefIn] = Field(default_factory=list, max_length=20)
+
+    @model_validator(mode="after")
+    def _one(self) -> WorkpaperInputIn:
+        if (self.amount is None) == (self.value is None):
+            raise ValueError("Give either an amount or a value.")
+        return self
+
+
+class TrialBalanceLineMap(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    line_key: str = Field(pattern=KEY_PATTERN)
+    category: str = Field(default="input", max_length=60)
+    label: str = Field(min_length=1, max_length=300)
+    account_codes: list[str] = Field(min_length=1, max_length=500)
+    sign: Literal["debit", "credit"] = Field(
+        description="'credit' takes credit balances as positive (income, profit)."
+    )
+
+
+class TrialBalanceImportIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    dataset_version_id: uuid.UUID
+    lines: list[TrialBalanceLineMap] = Field(min_length=1, max_length=100)
+
+
+class ReasonIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    reason: str = Field(min_length=3, max_length=4000)
+
+
+class WorkpaperLineOut(BaseModel):
+    id: uuid.UUID
+    source: LineSource
+    section: str
+    line_key: str
+    category: str
+    label: str
+    ordinal: int
+    amount: Decimal | None
+    value: str | None
+    formula_id: str | None
+    explanation: list[dict[str, Any]]
+    rule_snapshots: list[dict[str, Any]]
+    evidence: list[dict[str, Any]]
+    note: str
+
+
+class WorkpaperSnapshotOut(BaseModel):
+    version: int
+    signed_off_by_name: str | None
+    signed_off_at: datetime
+    result_hash: str | None
+
+
+class WorkpaperSummaryOut(BaseModel):
+    id: uuid.UUID
+    entity_id: uuid.UUID
+    entity_name: str
+    kind: WorkpaperKind
+    title: str
+    period_start: date
+    period_end: date
+    currency: str
+    status: WorkpaperStatus
+    computed_at: datetime | None
+    is_demo: bool
+    created_at: datetime
+    engagement_id: uuid.UUID | None = None
+    prepared_by_name: str | None = None
+    prepared_at: datetime | None = None
+
+
+class WorkpaperOut(WorkpaperSummaryOut):
+    rule_pack_version_id: uuid.UUID
+    rules_prefix: str
+    calc_version: str | None
+    result_hash: str | None
+    warnings: list[str]
+    lines: list[WorkpaperLineOut]
+    snapshots: list[WorkpaperSnapshotOut]
+
+
+class LossEntryIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    kind: Literal["incurred", "used", "forfeited"] = Field(
+        description="Manual movements; transfers and workpaper postings have their own endpoints."
+    )
+    period_start: date
+    period_end: date
+    amount: Decimal = Field(gt=0, max_digits=20, decimal_places=4)
+    note: str = Field(min_length=1, max_length=4000)
+    evidence: list[EvidenceRefIn] = Field(default_factory=list, max_length=20)
+
+
+class LossEntryOut(BaseModel):
+    id: uuid.UUID
+    entity_id: uuid.UUID
+    kind: LossEntryKind
+    period_start: date
+    period_end: date
+    amount: Decimal
+    signed_amount: Decimal
+    currency: str
+    workpaper_id: uuid.UUID | None
+    counterparty_entity_id: uuid.UUID | None
+    counterparty_name: str | None
+    transfer_id: uuid.UUID | None
+    explanation: list[dict[str, Any]]
+    rule_snapshots: list[dict[str, Any]]
+    evidence: list[dict[str, Any]]
+    note: str
+    created_at: datetime
+
+
+class LossRegisterOut(BaseModel):
+    entity_id: uuid.UUID
+    currency: str
+    balance: Decimal
+    entries: list[LossEntryOut]
+
+
+class LossPostingOut(BaseModel):
+    created: list[LossEntryOut]
+    warnings: list[str]
+
+
+class LossTransferIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    from_entity_id: uuid.UUID
+    to_entity_id: uuid.UUID
+    amount: Decimal = Field(gt=0, max_digits=20, decimal_places=4)
+    period_start: date
+    period_end: date
+    common_ownership: Decimal = Field(ge=0, le=1, max_digits=7, decimal_places=6)
+    same_business_continuity: bool
+    both_resident: bool
+    rule_pack_version_id: uuid.UUID
+    rules_prefix: str = Field(min_length=1, max_length=80, pattern=PREFIX_PATTERN)
+    note: str = Field(min_length=1, max_length=4000)
+    evidence: list[EvidenceRefIn] = Field(default_factory=list, max_length=20)
+
+
+class CalcLineOut(BaseModel):
+    key: str
+    label: str
+    section: str
+    formula_id: str
+    amount: Decimal | None
+    value: str | None
+    explanation: list[dict[str, Any]]
+    rule_snapshots: list[dict[str, Any]]
+
+
+class MembershipIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    entity_id: uuid.UUID
+    is_parent: bool = False
+    ownership_share: Decimal = Field(ge=0, le=1, max_digits=7, decimal_places=6)
+    joined_on: date
+    left_on: date | None = None
+    note: str = Field(default="", max_length=4000)
+    evidence: list[EvidenceRefIn] = Field(default_factory=list, max_length=20)
+
+
+class MembershipEndIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    left_on: date
+    note: str = Field(min_length=1, max_length=4000)
+
+
+class GroupMembershipOut(BaseModel):
+    id: uuid.UUID
+    tax_group_id: uuid.UUID
+    entity_id: uuid.UUID
+    entity_name: str
+    is_parent: bool
+    ownership_share: Decimal
+    joined_on: date
+    left_on: date | None
+    evidence: list[dict[str, Any]]
+    note: str
+
+
+class GroupTestIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    rule_pack_version_id: uuid.UUID
+    rules_prefix: str = Field(min_length=1, max_length=80, pattern=PREFIX_PATTERN)
+    on: date
+
+
+class GroupTestOut(BaseModel):
+    on: date
+    calc_version: str
+    result_hash: str
+    lines: list[CalcLineOut]
+    warnings: list[str]
+
+
+class LossTransferOut(BaseModel):
+    entries: list[LossEntryOut]
+    lines: list[CalcLineOut]
+    warnings: list[str]
+
+
+# ---------------------------------------------------------------- transfer pricing
+
+
+class RelatedPartyIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=1, max_length=200)
+    relation: RelatedPartyRelation
+    jurisdiction: str = Field(pattern=r"^[A-Z]{2}$", description="ISO 3166-1 alpha-2 code.")
+    note: str = Field(default="", max_length=4000)
+
+
+class RelatedPartyOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: uuid.UUID
+    entity_id: uuid.UUID
+    name: str
+    relation: RelatedPartyRelation
+    jurisdiction: str
+    note: str
+    is_demo: bool
+
+
+class RPTransactionIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    related_party_id: uuid.UUID
+    period_start: date
+    period_end: date
+    transaction_type: RPTransactionType
+    direction: Literal["receipt", "payment"]
+    description: str = Field(default="", max_length=500)
+    amount: Decimal = Field(gt=0, max_digits=20, decimal_places=4)
+    currency: str | None = Field(
+        default=None, pattern=r"^[A-Z]{3}$", description="Must be the entity's currency."
+    )
+    method: TPMethod = TPMethod.NOT_SET
+    range_low: Decimal | None = Field(default=None, max_digits=20, decimal_places=6)
+    range_high: Decimal | None = Field(default=None, max_digits=20, decimal_places=6)
+    tested_value: Decimal | None = Field(default=None, max_digits=20, decimal_places=6)
+    range_metric: str = Field(default="", max_length=80)
+    benchmark_document_ids: list[uuid.UUID] = Field(default_factory=list, max_length=10)
+    evidence: list[EvidenceRefIn] = Field(default_factory=list, max_length=20)
+
+    @model_validator(mode="after")
+    def _range(self) -> RPTransactionIn:
+        if (self.range_low is None) != (self.range_high is None):
+            raise ValueError("Give both ends of the range, or neither.")
+        if self.range_low is not None and self.range_high is not None:
+            if self.range_low > self.range_high:
+                raise ValueError("The range low must not exceed the high.")
+        elif self.tested_value is not None:
+            raise ValueError("A tested value needs a range.")
+        return self
+
+
+class RPTransactionOut(BaseModel):
+    id: uuid.UUID
+    entity_id: uuid.UUID
+    related_party_id: uuid.UUID
+    related_party_name: str
+    period_start: date
+    period_end: date
+    transaction_type: RPTransactionType
+    direction: str
+    description: str
+    amount: Decimal
+    currency: str
+    method: TPMethod
+    range_low: Decimal | None
+    range_high: Decimal | None
+    tested_value: Decimal | None
+    range_metric: str
+    benchmark_documents: list[dict[str, Any]]
+    evidence: list[dict[str, Any]]
+    is_demo: bool
+
+
+class TPCheckIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    rule_pack_version_id: uuid.UUID
+    rules_prefix: str = Field(min_length=1, max_length=80, pattern=PREFIX_PATTERN)
+    period_start: date
+    period_end: date
+    entity_revenue: Decimal = Field(ge=0, max_digits=20, decimal_places=4)
+    in_mne_group: bool | None = None
+    group_revenue: Decimal | None = Field(default=None, ge=0, max_digits=20, decimal_places=4)
+
+
+class TPCheckOut(BaseModel):
+    currency: str
+    rp_total: Decimal
+    transaction_count: int
+    calc_version: str
+    result_hash: str
+    lines: list[CalcLineOut]
+    warnings: list[str]
+
+
+# ---------------------------------------------------------------- audit engagements (D1)
+
+
+class EngagementIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    entity_id: uuid.UUID
+    kind: EngagementKind
+    name: str = Field(min_length=1, max_length=300)
+    period_start: date
+    period_end: date
+
+    @model_validator(mode="after")
+    def _period(self) -> EngagementIn:
+        if self.period_end < self.period_start:
+            raise ValueError("period_end must not be before period_start")
+        return self
+
+
+class EngagementStatusIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    status: EngagementStatus
+    reason: str = Field(default="", max_length=2000)
+
+
+class EngagementMemberIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    role: EngagementRole
+
+
+class PhaseBudgetIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    phase: EngagementPhase
+    hours: Decimal = Field(ge=0, le=100000, max_digits=10, decimal_places=2)
+
+
+class EngagementBudgetIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    phases: list[PhaseBudgetIn] = Field(max_length=4)
+
+
+class TimeEntryIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    phase: EngagementPhase
+    work_date: date
+    hours: Decimal = Field(gt=0, le=24, max_digits=6, decimal_places=2)
+    note: str = Field(default="", max_length=500)
+
+
+class TimeEntryOut(BaseModel):
+    id: uuid.UUID
+    user_id: uuid.UUID
+    user_name: str
+    phase: EngagementPhase
+    work_date: date
+    hours: Decimal
+    note: str
+
+
+class EngagementMemberOut(BaseModel):
+    user_id: uuid.UUID
+    full_name: str
+    email: str
+    role: EngagementRole
+    actual_hours: Decimal
+
+
+class PhaseHoursOut(BaseModel):
+    phase: EngagementPhase
+    budget_hours: Decimal
+    actual_hours: Decimal
+    variance_hours: Decimal  # budget - actual; negative is an overrun
+    used_share: Decimal | None  # actual / budget, null when no budget
+
+
+class EngagementSummaryOut(BaseModel):
+    id: uuid.UUID
+    entity_id: uuid.UUID
+    entity_name: str
+    kind: EngagementKind
+    name: str
+    period_start: date
+    period_end: date
+    currency: str
+    status: EngagementStatus
+    is_demo: bool
+    created_at: datetime
+
+
+class EngagementOut(EngagementSummaryOut):
+    closed_at: datetime | None
+    cy_tb_version_id: uuid.UUID | None
+    py_tb_version_id: uuid.UUID | None
+    rule_pack_version_id: uuid.UUID | None
+    rules_prefix: str | None
+    members: list[EngagementMemberOut]
+    phases: list[PhaseHoursOut]
+    budget_hours: Decimal
+    actual_hours: Decimal
+
+
+# ---------------------------------------------------------------- lead schedules (D2)
+
+
+class EngagementSetupIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    cy_tb_version_id: uuid.UUID | None = None
+    py_tb_version_id: uuid.UUID | None = None
+    rule_pack_version_id: uuid.UUID | None = None
+    rules_prefix: str | None = Field(default=None, max_length=80, pattern=PREFIX_PATTERN)
+
+    @model_validator(mode="after")
+    def _pack(self) -> EngagementSetupIn:
+        if (self.rule_pack_version_id is None) != (self.rules_prefix is None):
+            raise ValueError("give both rule_pack_version_id and rules_prefix, or neither")
+        return self
+
+
+LEAD_CODE = r"^[A-Za-z0-9]{1,20}$"
+
+
+class LeadScheduleIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    code: str = Field(pattern=LEAD_CODE)
+    name: str = Field(min_length=1, max_length=200)
+    section: FsSection
+
+
+class LeadSchedulesIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    schedules: list[LeadScheduleIn] = Field(max_length=200)
+
+
+class AccountMappingIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    account_code: str = Field(min_length=1, max_length=80)
+    lead_code: str = Field(pattern=LEAD_CODE)
+
+
+class AccountMappingsIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    mappings: list[AccountMappingIn] = Field(max_length=5000)
+
+
+class TbVersionRef(BaseModel):
+    id: uuid.UUID
+    dataset_name: str
+    version_number: int
+
+
+class LeadAccountOut(BaseModel):
+    account_code: str
+    account_name: str | None
+    cy: Decimal
+    py: Decimal
+    movement: Decimal
+    change_share: Decimal | None
+    cy_row_ids: list[int]
+    py_row_ids: list[int]
+
+
+class LeadLineOut(BaseModel):
+    code: str
+    name: str
+    section: FsSection
+    cy: Decimal
+    py: Decimal
+    movement: Decimal
+    change_share: Decimal | None
+    accounts: list[LeadAccountOut]
+
+
+class LeadReportOut(BaseModel):
+    currency: str
+    current: TbVersionRef | None
+    prior: TbVersionRef | None
+    schedules: list[LeadLineOut]
+    unmapped: list[LeadAccountOut]
+    missing_accounts: list[str]  # mapped but in neither trial balance
+    cy_net: Decimal  # a balanced trial balance nets to zero
+    py_net: Decimal
+
+
+class LeadScheduleOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    code: str
+    name: str
+    section: FsSection
+
+
+class AccountMappingOut(BaseModel):
+    account_code: str
+    lead_code: str
+
+
+class AuditWorkpaperIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    kind: Literal["lead_schedule", "materiality", "fs_draft"]
+    title: str = Field(min_length=1, max_length=300)
+
+
+# ---------------------------------------------------------------- risks and programmes (D4)
+
+
+class RiskIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    ref: str = Field(pattern=r"^[A-Za-z0-9._-]{1,20}$")
+    title: str = Field(min_length=1, max_length=300)
+    description: str = Field(default="", max_length=5000)
+    lead_code: str | None = Field(default=None, pattern=LEAD_CODE)
+    assertions: list[Assertion] = Field(min_length=1, max_length=9)
+    inherent_risk: RiskLevel
+    significant: bool = False
+    fraud: bool = False
+    response: str = Field(default="", max_length=5000)
+
+    @model_validator(mode="after")
+    def _unique(self) -> RiskIn:
+        if len(set(self.assertions)) != len(self.assertions):
+            raise ValueError("list each assertion once")
+        return self
+
+
+class RiskOut(BaseModel):
+    id: uuid.UUID
+    ref: str
+    title: str
+    description: str
+    lead_code: str | None
+    assertions: list[Assertion]
+    inherent_risk: RiskLevel
+    significant: bool
+    fraud: bool
+    response: str
+    procedure_ids: list[uuid.UUID]
+
+
+class ProcedureIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    title: str = Field(min_length=1, max_length=300)
+    description: str = Field(default="", max_length=5000)
+    requirement_id: uuid.UUID | None = None
+    assignee_id: uuid.UUID | None = None
+    review_id: uuid.UUID | None = None
+    risk_ids: list[uuid.UUID] = Field(default_factory=list, max_length=50)
+
+
+class ProcedureStatusIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    status: ProcedureStatus
+    conclusion: str = Field(default="", max_length=5000)
+
+
+class ProcedureOut(BaseModel):
+    id: uuid.UUID
+    title: str
+    description: str
+    requirement_id: uuid.UUID | None
+    requirement_code: str | None
+    review_id: uuid.UUID | None
+    assignee_id: uuid.UUID | None
+    assignee_name: str | None
+    status: ProcedureStatus
+    conclusion: str
+    completed_at: datetime | None
+    risk_ids: list[uuid.UUID]
+
+
+class ProgrammeIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    checklist_version_id: uuid.UUID
+
+
+class RiskCoverageOut(BaseModel):
+    risk_id: uuid.UUID
+    ref: str
+    title: str
+    significant: bool
+    fraud: bool
+    procedures: int
+    done: int
+
+
+class CoverageOut(BaseModel):
+    risks: list[RiskCoverageOut]
+    uncovered: list[str]  # risk refs with no procedure
+    significant_open: list[str]  # significant or fraud risks with no completed procedure
+    unlinked_procedures: list[uuid.UUID]  # procedures answering no risk
+
+
+# ---------------------------------------------------------------- sampling (D5)
+
+
+class StratumIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    upper: Decimal | None = Field(default=None, gt=0, max_digits=20, decimal_places=4)
+    size: int | None = Field(default=None, ge=1, le=5000, description="Null tests every item.")
+
+
+class SampleIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=1, max_length=200)
+    method: SamplingMethod
+    dataset_version_id: uuid.UUID
+    amount_column: str = Field(pattern=r"^[a-z_]{1,60}$")
+    size: int | None = Field(default=None, ge=1, le=5000)
+    strata: list[StratumIn] = Field(default_factory=list, max_length=10)
+    seed: str | None = Field(
+        default=None,
+        pattern=r"^[A-Za-z0-9_-]{4,64}$",
+        description="Recorded for reproduction; a random one is generated when omitted.",
+    )
+    risk_id: uuid.UUID | None = None
+
+    @model_validator(mode="after")
+    def _shape(self) -> SampleIn:
+        if self.method is SamplingMethod.STRATIFIED:
+            if not self.strata:
+                raise ValueError("stratified sampling needs strata")
+        elif self.size is None or self.strata:
+            raise ValueError("give a sample size (and no strata) for this method")
+        return self
+
+
+class SampleItemIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    audited_value: Decimal = Field(ge=0, max_digits=20, decimal_places=4)
+    note: str = Field(default="", max_length=1000)
+
+
+class SampleConclusionIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    conclusion: str = Field(min_length=1, max_length=5000)
+
+
+class SampleItemOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    row_id: int
+    stratum: int | None
+    hits: int
+    book_value: Decimal
+    audited_value: Decimal | None
+    result: SampleItemResult
+    note: str
+    tested_at: datetime | None
+
+
+class SampleSummaryOut(BaseModel):
+    id: uuid.UUID
+    name: str
+    method: SamplingMethod
+    dataset_version_id: uuid.UUID
+    amount_column: str
+    seed: str
+    params: dict[str, Any]
+    algorithm_version: str
+    population_count: int
+    population_value: Decimal
+    population_sha256: str
+    risk_id: uuid.UUID | None
+    conclusion: str
+    item_count: int
+    created_at: datetime
+
+
+class ProjectionOut(BaseModel):
+    projected: Decimal
+    known: Decimal
+    untested: int
+    steps: list[dict[str, str]]
+    performance_materiality: Decimal | None
+    exceeds_performance: bool | None
+
+
+class SampleOut(SampleSummaryOut):
+    items: list[SampleItemOut]
+    projection: ProjectionOut
+
+
+class ReproduceOut(BaseModel):
+    reproducible: bool
+    population_unchanged: bool
+    differences: list[int]
+
+
+# ------------------------------------------------------- confirmations and adjustments (D7)
+
+IBAN_LIKE = re.compile(r"[A-Za-z]{2}[0-9]{2}[A-Za-z0-9]{10,30}")
+
+
+class ConfirmationIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    type: ConfirmationType
+    counterparty: str = Field(min_length=1, max_length=200)
+    reference: str = Field(
+        default="",
+        max_length=100,
+        description="An internal reference. Do not enter bank account numbers or IBANs.",
+    )
+    book_amount: Decimal = Field(max_digits=20, decimal_places=4)
+
+    @model_validator(mode="after")
+    def _no_iban(self) -> ConfirmationIn:
+        if IBAN_LIKE.fullmatch(self.reference.replace(" ", "")):
+            raise ValueError("do not enter an IBAN or bank account number as the reference")
+        return self
+
+
+class ConfirmationUpdateIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    status: ConfirmationStatus
+    sent_on: date | None = None
+    responded_on: date | None = None
+    confirmed_amount: Decimal | None = Field(default=None, max_digits=20, decimal_places=4)
+    response_document_id: uuid.UUID | None = None
+    conclusion: str = Field(default="", max_length=5000)
+
+
+class ConfirmationOut(BaseModel):
+    id: uuid.UUID
+    type: ConfirmationType
+    counterparty: str
+    reference: str
+    book_amount: Decimal
+    currency: str
+    status: ConfirmationStatus
+    sent_on: date | None
+    responded_on: date | None
+    confirmed_amount: Decimal | None
+    difference: Decimal | None  # book − confirmed
+    response_document_id: uuid.UUID | None
+    conclusion: str
+
+
+class AdjustmentLineIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    account_code: str = Field(min_length=1, max_length=80)
+    debit: Decimal = Field(default=Decimal(0), ge=0, max_digits=20, decimal_places=4)
+    credit: Decimal = Field(default=Decimal(0), ge=0, max_digits=20, decimal_places=4)
+
+    @model_validator(mode="after")
+    def _one_side(self) -> AdjustmentLineIn:
+        if (self.debit > 0) == (self.credit > 0):
+            raise ValueError("each line has either a debit or a credit")
+        return self
+
+
+class AdjustmentIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    ref: str = Field(pattern=r"^[A-Za-z0-9._-]{1,20}$")
+    description: str = Field(min_length=1, max_length=5000)
+    finding_id: uuid.UUID | None = None
+    lines: list[AdjustmentLineIn] = Field(min_length=2, max_length=50)
+
+
+class AdjustmentDecisionIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    status: AdjustmentStatus
+    reason: str = Field(default="", max_length=5000)
+
+
+class AdjustmentLineOut(BaseModel):
+    account_code: str
+    debit: Decimal
+    credit: Decimal
+    lead_code: str | None
+    section: FsSection | None
+
+
+class AdjustmentOut(BaseModel):
+    id: uuid.UUID
+    ref: str
+    description: str
+    status: AdjustmentStatus
+    reason: str
+    finding_id: uuid.UUID | None
+    lines: list[AdjustmentLineOut]
+    profit_effect: Decimal  # positive increases profit
+    net_assets_effect: Decimal
+    unmapped_accounts: list[str]
+
+
+class SudOut(BaseModel):
+    """Summary of unadjusted differences: passed adjustments against materiality."""
+
+    adjustments: list[AdjustmentOut]
+    profit_effect: Decimal
+    net_assets_effect: Decimal
+    materiality: dict[str, Any] | None
+    clearly_trivial: list[str]  # refs at or below the clearly trivial threshold
+    total_vs_overall: str  # below | at_or_above | not_determinable
+    steps: list[dict[str, str]]
+
+
+# ---------------------------------------------------------------- PBC portal and letter (D8)
+
+
+class PbcRequestIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    ref: str = Field(pattern=r"^[A-Za-z0-9._-]{1,20}$")
+    title: str = Field(min_length=1, max_length=300)
+    description: str = Field(default="", max_length=5000)
+    due_date: date | None = None
+    assignee_id: uuid.UUID | None = Field(default=None, description="A user with the client role.")
+
+
+class PbcReviewIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    status: Literal["accepted", "rejected"]
+    note: str = Field(default="", max_length=5000)
+
+
+class PbcSubmitIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    note: str = Field(default="", max_length=5000)
+
+
+class PbcFileOut(BaseModel):
+    document_id: uuid.UUID
+    title: str
+    uploaded_at: datetime
+
+
+class PbcRequestOut(BaseModel):
+    """What both staff and the assigned client see; no engagement internals."""
+
+    id: uuid.UUID
+    ref: str
+    title: str
+    description: str
+    due_date: date | None
+    status: PbcStatus
+    client_note: str
+    review_note: str
+    submitted_at: datetime | None
+    files: list[PbcFileOut]
+
+
+class PbcStaffOut(PbcRequestOut):
+    assignee_id: uuid.UUID | None
+    assignee_name: str | None
+    overdue: bool
+
+
+class LetterPointIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    include: bool = True
+    recommendation: str = Field(default="", max_length=5000)
+    management_response: str = Field(default="", max_length=5000)
+    response_owner: str = Field(default="", max_length=200)
+    response_due: date | None = None
+
+
+class LetterPointOut(BaseModel):
+    id: uuid.UUID
+    finding_id: uuid.UUID
+    finding_title: str
+    finding_status: FindingStatus
+    severity: Severity
+    observation: str
+    include: bool
+    recommendation: str
+    management_response: str
+    response_owner: str
+    response_due: date | None
+    evidence_refs: list[str]
+
+
+class LetterVersionOut(BaseModel):
+    version: int
+    issued_by_name: str | None
+    issued_at: datetime
+    points: int
+
+
+class LetterOut(BaseModel):
+    points: list[LetterPointOut]
+    versions: list[LetterVersionOut]
+
+
+# ---------------------------------------------------------------- continuous assurance (E)
+
+
+class SignOffOut(BaseModel):
+    status: AssuranceStatus
+    version: int
+    prepared_by_name: str | None
+    prepared_at: datetime | None
+    signed_off_by_name: str | None
+    signed_off_at: datetime | None
+    reopen_reason: str
+
+
+class AssuranceVersionOut(BaseModel):
+    version: int
+    signed_by_name: str | None
+    signed_at: datetime
+    sha256: str
+
+
+def _no_account_number(label: str) -> str:
+    if IBAN_LIKE.search(label.replace(" ", "")):
+        raise ValueError("use a label, not an IBAN or account number")
+    return label
+
+
+class BankRecBase(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=1, max_length=200)
+    account_label: str = Field(
+        min_length=1,
+        max_length=100,
+        description="A name for the bank account. Do not enter account numbers or IBANs.",
+    )
+    gl_accounts: list[Annotated[str, Field(min_length=1, max_length=80)]] = Field(
+        min_length=1, max_length=50, description="GL account codes of this bank account."
+    )
+    bank_closing_balance: Decimal | None = Field(
+        default=None,
+        max_digits=20,
+        decimal_places=4,
+        description="Statement closing balance; when omitted the last statement balance is used.",
+    )
+    book_opening_balance: Decimal = Field(default=Decimal(0), max_digits=20, decimal_places=4)
+
+    @model_validator(mode="after")
+    def _label(self) -> BankRecBase:
+        _no_account_number(self.account_label)
+        if len(set(self.gl_accounts)) != len(self.gl_accounts):
+            raise ValueError("list each GL account once")
+        return self
+
+
+class BankRecIn(BankRecBase):
+    entity_id: uuid.UUID
+    period_start: date
+    period_end: date
+    statement_version_id: uuid.UUID
+    ledger_version_id: uuid.UUID
+    rule_pack_version_id: uuid.UUID
+    rules_prefix: str = Field(max_length=80, pattern=PREFIX_PATTERN)
+
+    @model_validator(mode="after")
+    def _period(self) -> BankRecIn:
+        if self.period_end < self.period_start:
+            raise ValueError("period_end must not be before period_start")
+        return self
+
+
+class BankRecUpdateIn(BankRecBase):
+    pass
+
+
+class ManualMatchIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    bank_row_ids: list[int] = Field(min_length=1, max_length=200)
+    book_row_ids: list[int] = Field(min_length=1, max_length=200)
+    reason: str = Field(min_length=3, max_length=2000)
+
+
+class ReconItemOut(BaseModel):
+    side: ReconSide
+    row_id: int
+    date: date
+    amount: Decimal
+    reference: str
+    description: str
+    match_id: uuid.UUID | None
+    method: ReconMethod | None
+    age_days: int | None
+    bucket: str | None
+
+
+class ReconMatchOut(BaseModel):
+    id: uuid.UUID
+    method: ReconMethod
+    reason: str
+    bank_row_ids: list[int]
+    book_row_ids: list[int]
+    bank_total: Decimal
+    book_total: Decimal
+    difference: Decimal
+    created_by_name: str | None
+    created_at: datetime
+
+
+class AgeingOut(BaseModel):
+    side: ReconSide
+    bucket: str
+    count: int
+    total: Decimal
+
+
+class BankRecSummaryOut(BaseModel):
+    bank_closing_balance: Decimal | None
+    bank_closing_source: Literal["entered", "statement", "unknown"]
+    book_opening_balance: Decimal
+    book_movement: Decimal
+    book_closing_balance: Decimal
+    unmatched_bank_total: Decimal
+    unmatched_book_total: Decimal
+    adjusted_bank: Decimal | None
+    adjusted_book: Decimal
+    difference: Decimal | None
+    bank_items: int
+    book_items: int
+    matched_bank_items: int
+    matched_book_items: int
+    ageing: list[AgeingOut]
+    steps: list[dict[str, str]]
+
+
+class BankRecListOut(BaseModel):
+    id: uuid.UUID
+    entity_id: uuid.UUID
+    entity_name: str
+    name: str
+    account_label: str
+    period_start: date
+    period_end: date
+    currency: str
+    status: AssuranceStatus
+    version: int
+    is_demo: bool
+    created_at: datetime
+
+
+class BankRecOut(BankRecListOut):
+    statement_version_id: uuid.UUID
+    ledger_version_id: uuid.UUID
+    gl_accounts: list[str]
+    rule_pack_version_id: uuid.UUID
+    rules_prefix: str
+    bank_closing_balance: Decimal | None
+    book_opening_balance: Decimal
+    matcher_version: str
+    matched_at: datetime | None
+    warnings: list[str]
+    parameters: dict[str, Any]
+    sign_off: SignOffOut
+    summary: BankRecSummaryOut
+    items: list[ReconItemOut]
+    matches: list[ReconMatchOut]
+    versions: list[AssuranceVersionOut]
+
+
+class SupportItemIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    description: str = Field(min_length=1, max_length=500)
+    amount: Decimal = Field(max_digits=20, decimal_places=4)
+    document_id: uuid.UUID | None = None
+    note: str = Field(default="", max_length=2000)
+
+
+class AccountRecIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    entity_id: uuid.UUID
+    tb_version_id: uuid.UUID
+    as_of: date
+    account_codes: list[Annotated[str, Field(min_length=1, max_length=80)]] = Field(
+        min_length=1, max_length=200, description="One reconciliation is created per account."
+    )
+    rule_pack_version_id: uuid.UUID
+    rules_prefix: str = Field(max_length=80, pattern=PREFIX_PATTERN)
+    owner_id: uuid.UUID | None = None
+
+
+class AccountRecUpdateIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    items: list[SupportItemIn] = Field(max_length=200)
+    explanation: str = Field(default="", max_length=5000)
+    owner_id: uuid.UUID | None = None
+
+
+class SupportItemOut(BaseModel):
+    description: str
+    amount: Decimal
+    document_id: uuid.UUID | None
+    document_title: str | None
+    note: str
+
+
+class VarianceOut(BaseModel):
+    variance: Decimal
+    threshold_abs: Decimal
+    threshold_pct: Decimal
+    exceeds: bool
+    explanation_required: bool
+    steps: list[dict[str, str]]
+
+
+class AccountRecListOut(BaseModel):
+    id: uuid.UUID
+    entity_id: uuid.UUID
+    entity_name: str
+    as_of: date
+    account_code: str
+    account_name: str
+    currency: str
+    tb_balance: Decimal
+    supported: Decimal
+    variance: Decimal
+    exceeds: bool
+    owner_name: str | None
+    status: AssuranceStatus
+    version: int
+    is_demo: bool
+
+
+class AccountRecOut(AccountRecListOut):
+    tb_version_id: uuid.UUID
+    tb_row_ids: list[int]
+    rule_pack_version_id: uuid.UUID
+    rules_prefix: str
+    explanation: str
+    owner_id: uuid.UUID | None
+    items: list[SupportItemOut]
+    check: VarianceOut
+    warnings: list[str]
+    sign_off: SignOffOut
+    versions: list[AssuranceVersionOut]
+
+
+class IntercompanyIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=1, max_length=200)
+    as_of: date
+    entity_a_id: uuid.UUID
+    tb_a_version_id: uuid.UUID
+    accounts_a: list[Annotated[str, Field(min_length=1, max_length=80)]] = Field(
+        min_length=1, max_length=50
+    )
+    entity_b_id: uuid.UUID
+    tb_b_version_id: uuid.UUID
+    accounts_b: list[Annotated[str, Field(min_length=1, max_length=80)]] = Field(
+        min_length=1, max_length=50
+    )
+    rule_pack_version_id: uuid.UUID
+    rules_prefix: str = Field(max_length=80, pattern=PREFIX_PATTERN)
+
+    @model_validator(mode="after")
+    def _two(self) -> IntercompanyIn:
+        if self.entity_a_id == self.entity_b_id:
+            raise ValueError("choose two different entities")
+        return self
+
+
+class ExplanationIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    explanation: str = Field(default="", max_length=5000)
+
+
+class IntercompanySideOut(BaseModel):
+    entity_id: uuid.UUID
+    entity_name: str
+    tb_version_id: uuid.UUID
+    accounts: list[str]
+    balance: Decimal
+    row_ids: list[int]
+
+
+class IntercompanyOut(BaseModel):
+    id: uuid.UUID
+    name: str
+    as_of: date
+    currency: str
+    side_a: IntercompanySideOut
+    side_b: IntercompanySideOut
+    difference: Decimal
+    threshold: Decimal
+    exceeds: bool
+    explanation: str
+    steps: list[dict[str, str]]
+    rule_pack_version_id: uuid.UUID
+    rules_prefix: str
+    warnings: list[str]
+    is_demo: bool
+    sign_off: SignOffOut
+    versions: list[AssuranceVersionOut]
+
+
+class CloseItemIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    title: str = Field(min_length=1, max_length=300)
+    day_offset: int = Field(
+        ge=-60, le=120, description="Days after the period end (may be negative)."
+    )
+    owner_id: uuid.UUID | None = None
+
+
+class ClosePeriodIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    entity_id: uuid.UUID
+    name: str = Field(min_length=1, max_length=200)
+    period_end: date
+    items: list[CloseItemIn] = Field(default_factory=list, max_length=200)
+    copy_from_id: uuid.UUID | None = Field(
+        default=None, description="Copy the checklist (titles, offsets, owners) of another close."
+    )
+
+
+class CloseItemOut(BaseModel):
+    id: uuid.UUID
+    title: str
+    day_offset: int
+    due_date: date | None
+    owner_id: uuid.UUID | None
+    owner_name: str | None
+    task_id: uuid.UUID
+    status: str
+    completion_note: str
+    overdue: bool
+
+
+class ClosePeriodOut(BaseModel):
+    id: uuid.UUID
+    entity_id: uuid.UUID
+    entity_name: str
+    name: str
+    period_end: date
+    status: str
+    closed_by_name: str | None
+    closed_at: datetime | None
+    note: str
+    items: list[CloseItemOut]
+    done: int
+    total: int
+    is_demo: bool
+
+
+class CloseIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    note: str = Field(default="", max_length=2000)
+
+
+class FluxIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    entity_id: uuid.UUID
+    name: str = Field(min_length=1, max_length=200)
+    as_of: date
+    cy_tb_version_id: uuid.UUID
+    py_tb_version_id: uuid.UUID
+    rule_pack_version_id: uuid.UUID
+    rules_prefix: str = Field(max_length=80, pattern=PREFIX_PATTERN)
+
+    @model_validator(mode="after")
+    def _two(self) -> FluxIn:
+        if self.cy_tb_version_id == self.py_tb_version_id:
+            raise ValueError("choose two different trial balance versions")
+        return self
+
+
+class FluxExplainIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    account_code: str = Field(min_length=1, max_length=80)
+    explanation: str = Field(default="", max_length=5000, description="Empty removes it.")
+
+
+class FluxLineOut(BaseModel):
+    account_code: str
+    account_name: str
+    current: Decimal
+    prior: Decimal
+    change: Decimal
+    change_pct: Decimal | None
+    exceeds: bool
+    explanation: str
+    explained_by_name: str | None
+    cy_row_ids: list[int]
+    py_row_ids: list[int]
+
+
+class FluxOut(BaseModel):
+    id: uuid.UUID
+    entity_id: uuid.UUID
+    entity_name: str
+    name: str
+    as_of: date
+    currency: str
+    cy_tb_version_id: uuid.UUID
+    py_tb_version_id: uuid.UUID
+    rule_pack_version_id: uuid.UUID
+    rules_prefix: str
+    threshold_abs: Decimal
+    threshold_pct: Decimal
+    lines: list[FluxLineOut]
+    exceeding: int
+    unexplained: int
+    warnings: list[str]
+    is_demo: bool
+    sign_off: SignOffOut
+    versions: list[AssuranceVersionOut]
+
+
+# ---------------------------------------------------------------- internal controls (E3)
+
+REF = r"^[A-Za-z0-9._-]{1,20}$"
+
+
+class ProcessIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    entity_id: uuid.UUID
+    name: str = Field(min_length=1, max_length=200)
+    description: str = Field(default="", max_length=5000)
+    owner_id: uuid.UUID | None = None
+
+
+class ControlRiskIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    ref: str = Field(pattern=REF)
+    description: str = Field(min_length=1, max_length=5000)
+    assertions: list[Assertion] = Field(default_factory=list, max_length=9)
+    rating: RiskLevel
+
+
+class ControlIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    ref: str = Field(pattern=REF)
+    title: str = Field(min_length=1, max_length=300)
+    description: str = Field(default="", max_length=5000)
+    key: bool = False
+    nature: ControlNature
+    automation: ControlAutomation
+    frequency: ControlFrequency
+    owner_id: uuid.UUID | None = None
+    risk_ids: list[uuid.UUID] = Field(default_factory=list, max_length=50)
+
+
+class ControlRiskOut(ORM):
+    id: uuid.UUID
+    ref: str
+    description: str
+    assertions: list[str]
+    rating: RiskLevel
+
+
+class ControlTestIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    kind: ControlTestKind
+    period_start: date
+    period_end: date
+    procedure: str = Field(default="", max_length=5000)
+    sample_size: int = Field(default=0, ge=0, le=10000, description="Entered by the tester.")
+    evidence: list[EvidenceRefIn] = Field(default_factory=list, max_length=50)
+
+    @model_validator(mode="after")
+    def _period(self) -> ControlTestIn:
+        if self.period_end < self.period_start:
+            raise ValueError("period_end must not be before period_start")
+        return self
+
+
+class ControlTestCompleteIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    conclusion: ControlConclusion
+    exceptions: int = Field(ge=0, le=10000)
+    rationale: str = Field(min_length=3, max_length=5000)
+
+
+class ControlTestOut(BaseModel):
+    id: uuid.UUID
+    control_id: uuid.UUID
+    kind: ControlTestKind
+    period_start: date
+    period_end: date
+    procedure: str
+    sample_size: int
+    exceptions: int
+    evidence: list[dict[str, Any]]
+    status: ControlTestStatus
+    conclusion: ControlConclusion | None
+    rationale: str
+    tester_name: str | None
+    completed_at: datetime | None
+
+
+class ControlOut(BaseModel):
+    id: uuid.UUID
+    process_id: uuid.UUID
+    ref: str
+    title: str
+    description: str
+    key: bool
+    nature: ControlNature
+    automation: ControlAutomation
+    frequency: ControlFrequency
+    owner_id: uuid.UUID | None
+    owner_name: str | None
+    risk_ids: list[uuid.UUID]
+    design: ControlConclusion | None
+    operating: ControlConclusion | None
+    tests: list[ControlTestOut]
+    open_deficiencies: int
+
+
+class ProcessOut(BaseModel):
+    id: uuid.UUID
+    entity_id: uuid.UUID
+    entity_name: str
+    name: str
+    description: str
+    owner_id: uuid.UUID | None
+    owner_name: str | None
+    is_demo: bool
+    risks: list[ControlRiskOut]
+    controls: list[ControlOut]
+    unmitigated_risk_ids: list[uuid.UUID]
+
+
+class DeficiencyIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    control_id: uuid.UUID
+    test_id: uuid.UUID | None = None
+    title: str = Field(min_length=1, max_length=300)
+    description: str = Field(default="", max_length=5000)
+
+
+class ClassifyIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    classification: DeficiencyClass
+    rationale: str = Field(min_length=3, max_length=5000)
+
+
+class DeficiencyRemediationIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    owner_id: uuid.UUID
+    due_date: date
+    title: str = Field(default="", max_length=300)
+
+
+class RemediatedIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    note: str = Field(min_length=3, max_length=5000)
+
+
+class DeficiencyOut(BaseModel):
+    id: uuid.UUID
+    control_id: uuid.UUID
+    control_ref: str
+    control_title: str
+    test_id: uuid.UUID | None
+    title: str
+    description: str
+    classification: DeficiencyClass | None
+    rationale: str
+    classified_by_name: str | None
+    classified_at: datetime | None
+    status: DeficiencyStatus
+    remediation_task_id: uuid.UUID | None
+    remediation_note: str
+    created_at: datetime
+
+
+class CertificationIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    entity_id: uuid.UUID
+    period_start: date
+    period_end: date
+    statement: str = Field(default="", max_length=10000)
+
+
+class StatementIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    statement: str = Field(min_length=1, max_length=10000)
+
+
+class CertificationOut(BaseModel):
+    id: uuid.UUID
+    entity_id: uuid.UUID
+    entity_name: str
+    period_start: date
+    period_end: date
+    statement: str
+    controls: int
+    key_controls: int
+    tested: int
+    ineffective: int
+    open_deficiencies: list[DeficiencyOut]
+    unclassified: int
+    is_demo: bool
+    sign_off: SignOffOut
+    versions: list[AssuranceVersionOut]
+
+
+# ---------------------------------------------------------------- connectors (Phase E6)
+
+
+class ConnectorConfigIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    base_url: str = Field(default="", max_length=300)
+    database: str = Field(default="", max_length=200)
+    username: str = Field(default="", max_length=200)
+
+
+class ConnectorIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    entity_id: uuid.UUID
+    provider: ConnectorProvider
+    name: str = Field(min_length=1, max_length=200)
+    config: ConnectorConfigIn | None = None
+    api_key: str | None = Field(
+        default=None, min_length=8, max_length=500, description="Odoo only; stored encrypted."
+    )
+
+
+class ConnectorSyncIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    kind: DatasetKind
+
+
+class ConnectorSyncOut(BaseModel):
+    id: uuid.UUID
+    kind: DatasetKind
+    status: ConnectorSyncStatus
+    rows: int
+    sha256: str | None
+    dataset_version_id: uuid.UUID | None
+    dataset_version_status: str | None
+    message: str
+    requested_by_name: str | None
+    created_at: datetime
+    finished_at: datetime | None
+
+
+class ConnectorOut(BaseModel):
+    id: uuid.UUID
+    entity_id: uuid.UUID
+    entity_name: str
+    provider: ConnectorProvider
+    provider_label: str
+    auth: str
+    name: str
+    status: ConnectorStatus
+    scopes: list[str]
+    config: dict[str, Any] = Field(description="Non-secret settings only.")
+    has_credentials: bool
+    kinds: list[DatasetKind]
+    datasets: dict[str, uuid.UUID]
+    mapping_status: str
+    last_sync_at: datetime | None
+    last_error: str
+    syncs: list[ConnectorSyncOut]
+    created_at: datetime
+
+
+class ConnectorProviderOut(BaseModel):
+    provider: ConnectorProvider
+    label: str
+    auth: str
+    kinds: list[DatasetKind]
+    scopes: list[str]
+    configured: bool
+    mapping_status: str
+
+
+class ConnectorStatusOut(BaseModel):
+    enabled: bool
+    providers: list[ConnectorProviderOut]
+
+
+class AuthorizeOut(BaseModel):
+    url: str
+
+
+# ---------------------------------------------------------------- content packs (Phase F1)
+
+
+class PackRequirementOut(BaseModel):
+    code: str
+    title: str
+    category: str
+    severity: Severity
+    check_type: str
+
+
+class PackChecklistOut(BaseModel):
+    name: str
+    requirements: list[PackRequirementOut]
+
+
+class PackInstallOut(BaseModel):
+    id: uuid.UUID
+    pack_version: str
+    manifest_sha256: str
+    checklist_version_ids: list[uuid.UUID]
+    rule_pack_version_id: uuid.UUID | None
+    installed_by_name: str | None
+    created_at: datetime
+
+
+class ContentPackOut(BaseModel):
+    id: str
+    version: str
+    title: str
+    sector: str
+    jurisdiction: str
+    status: str
+    synthetic: bool
+    disclaimer: str
+    description: str
+    dataset_kinds: list[DatasetKind]
+    open_questions: list[str]
+    manifest_sha256: str
+    checklists: list[PackChecklistOut]
+    rule_count: int
+    installs: list[PackInstallOut]

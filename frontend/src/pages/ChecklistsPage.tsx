@@ -2,8 +2,9 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import { api } from "@/lib/api";
-import { ChevronDown, ChevronRight, FlaskConical, Info, ListChecks, Lock, type LucideIcon, ScrollText, Building2 } from "lucide-react";
+import { ChevronDown, ChevronRight, ClipboardList, FlaskConical, Info, ListChecks, Lock, type LucideIcon, ScrollText, Building2 } from "lucide-react";
 import type { Checklist, ChecklistKind, ChecklistVersionDetail, Requirement, Severity } from "@/lib/types";
 import { cn, formatDate } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -36,6 +37,7 @@ const KIND_ICON: Record<ChecklistKind, { icon: LucideIcon; tile: string }> = {
   synthetic_demo: { icon: FlaskConical, tile: "bg-amber-50 text-amber-600 ring-amber-200/80" },
   internal_policy: { icon: Building2, tile: "bg-teal-50 text-teal-600 ring-teal-200/80" },
   external_regulatory: { icon: ScrollText, tile: "bg-indigo-50 text-indigo-600 ring-indigo-200/70" },
+  audit_programme: { icon: ClipboardList, tile: "bg-slate-50 text-slate-600 ring-slate-200/80" },
 };
 
 function Notice({ children, tone = "info" }: { children: React.ReactNode; tone?: "info" | "warning" }) {
@@ -150,7 +152,7 @@ export function ChecklistsPage() {
   );
 }
 
-function configSummary(config: Record<string, unknown> & { type: string }, t: (k: string) => string): string {
+function configSummary(config: Record<string, unknown> & { type: string }, t: TFunction): string {
   const list = (v: unknown) => (Array.isArray(v) ? v.map((x) => (Array.isArray(x) ? `(${x.join(" | ")})` : String(x))).join(", ") : "");
   switch (config.type) {
     case "required_text":
@@ -163,8 +165,12 @@ function configSummary(config: Record<string, unknown> & { type: string }, t: (k
       return `${t("checkType.pattern")}: ${String(config.pattern)}`;
     case "metadata":
       return `${t("checkType.metadata")}: ${String(config.field)}${config.equals ? ` = ${String(config.equals)}` : ""}`;
-    default:
+    case "journal_entry_test":
+      return `${t("checkType.journal_entry_test")}: ${t(`jeTest.${String(config.test)}`)} (${String(config.rules_prefix)})`;
+    case "manual":
       return t("checkType.manual");
+    default:
+      return t(`checkType.${config.type}`, { defaultValue: config.type });
   }
 }
 

@@ -1,10 +1,13 @@
 import { useEffect, useState } from "react";
-import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { Link, Navigate, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useQuery } from "@tanstack/react-query";
 import {
   Activity,
+  BriefcaseBusiness,
   Building,
+  CalendarCheck,
+  CalculatorIcon,
   CalendarClock,
   Check,
   ChevronsUpDown,
@@ -13,15 +16,20 @@ import {
   FileSearch,
   FileText,
   FolderOpen,
+  GitCompareArrows,
+  Inbox,
   LayoutDashboard,
   ListChecks,
   LogOut,
   Menu,
   PanelLeftClose,
   PanelLeftOpen,
+  Layers,
   Scale,
   Search,
+  Plug,
   Settings,
+  ShieldCheck,
   SquareCheckBig,
   Table2,
   X,
@@ -53,15 +61,25 @@ type NavKey =
   | "entities"
   | "datasets"
   | "einvoices"
+  | "directTax"
   | "rulePacks"
+  | "contentPacks"
   | "findings"
   | "tasks"
   | "taxCalendar"
+  | "engagements"
+  | "reconciliations"
+  | "close"
+  | "controls"
+  | "connectors"
+  | "portal"
   | "reports"
   | "activity"
   | "settings";
 
-const NAV_GROUPS: { key: string; items: { to: string; key: NavKey; icon: typeof LayoutDashboard; end?: boolean }[] }[] = [
+type NavGroup = { key: string; items: { to: string; key: NavKey; icon: typeof LayoutDashboard; end?: boolean }[] };
+
+const NAV_GROUPS: NavGroup[] = [
   {
     key: "workspace",
     items: [{ to: "/", key: "overview", icon: LayoutDashboard, end: true }],
@@ -79,8 +97,22 @@ const NAV_GROUPS: { key: string; items: { to: string; key: NavKey; icon: typeof 
     items: [
       { to: "/datasets", key: "datasets", icon: Table2 },
       { to: "/einvoices", key: "einvoices", icon: FileCode },
+      { to: "/workpapers", key: "directTax", icon: CalculatorIcon },
       { to: "/entities", key: "entities", icon: Building },
       { to: "/rule-packs", key: "rulePacks", icon: Scale },
+      { to: "/content-packs", key: "contentPacks", icon: Layers },
+    ],
+  },
+  {
+    key: "audit",
+    items: [{ to: "/engagements", key: "engagements", icon: BriefcaseBusiness }],
+  },
+  {
+    key: "assurance",
+    items: [
+      { to: "/reconciliations", key: "reconciliations", icon: GitCompareArrows },
+      { to: "/close", key: "close", icon: CalendarCheck },
+      { to: "/controls", key: "controls", icon: ShieldCheck },
     ],
   },
   {
@@ -96,10 +128,16 @@ const NAV_GROUPS: { key: string; items: { to: string; key: NavKey; icon: typeof 
     key: "admin",
     items: [
       { to: "/activity", key: "activity", icon: Activity },
+      { to: "/connectors", key: "connectors", icon: Plug },
       { to: "/settings", key: "settings", icon: Settings },
     ],
   },
 ];
+
+/** Client contacts reach only the request portal; the backend refuses them everywhere else. */
+const CLIENT_NAV: NavGroup[] = [{ key: "workspace", items: [{ to: "/portal", key: "portal", icon: Inbox, end: true }] }];
+
+export const CLIENT_HOME = "/portal";
 
 const COLLAPSE_KEY = "saqient.sidebar.collapsed";
 
@@ -167,8 +205,8 @@ export function LanguageSwitch({ className, tone = "light" }: { className?: stri
   );
 }
 
-function useNavCounts(): Partial<Record<NavKey, number>> {
-  const q = useQuery({ queryKey: ["dashboard"], queryFn: () => api<Dashboard>("/dashboard"), staleTime: 30_000 });
+function useNavCounts(enabled: boolean): Partial<Record<NavKey, number>> {
+  const q = useQuery({ queryKey: ["dashboard"], queryFn: () => api<Dashboard>("/dashboard"), staleTime: 30_000, enabled });
   if (!q.data) return {};
   return { findings: q.data.findings_proposed, tasks: q.data.open_tasks };
 }
@@ -238,12 +276,14 @@ function SidebarContents({ collapsed, onNavigate }: { collapsed: boolean; onNavi
   const { t } = useTranslation();
   const { me, logout } = useAuth();
   const navigate = useNavigate();
-  const counts = useNavCounts();
+  const isClient = me?.role === "client";
+  const counts = useNavCounts(!!me && !isClient);
   if (!me) return null;
+  const groups = isClient ? CLIENT_NAV : NAV_GROUPS;
   return (
     <>
       <div className={cn("flex h-16 shrink-0 items-center px-4", collapsed && "justify-center px-2")}>
-        <Link to="/" onClick={onNavigate} className="rounded-lg" aria-label={t("app.name")}>
+        <Link to={isClient ? CLIENT_HOME : "/"} onClick={onNavigate} className="rounded-lg" aria-label={t("app.name")}>
           <Logo withText={!collapsed} />
         </Link>
       </div>
@@ -251,7 +291,7 @@ function SidebarContents({ collapsed, onNavigate }: { collapsed: boolean; onNavi
         <OrgSwitcher collapsed={collapsed} />
       </div>
       <nav aria-label={t("nav.primary")} className={cn("flex-1 space-y-5 overflow-y-auto px-3 py-2", collapsed && "px-2")}>
-        {NAV_GROUPS.map((g) => (
+        {groups.map((g) => (
           <div key={g.key}>
             {!collapsed && g.key !== "workspace" && (
               <p className="mb-1.5 px-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400">{t(`nav.group.${g.key}`)}</p>
@@ -354,6 +394,8 @@ export function AppLayout() {
   }, [collapsed]);
 
   if (!me) return null;
+  const isClient = me.role === "client";
+  if (isClient && location.pathname !== CLIENT_HOME) return <Navigate to={CLIENT_HOME} replace />;
   return (
     <div className="flex min-h-screen bg-slate-50">
       <a
@@ -405,6 +447,7 @@ export function AppLayout() {
           >
             {collapsed ? <PanelLeftOpen className="size-[18px] rtl-flip" aria-hidden /> : <PanelLeftClose className="size-[18px] rtl-flip" aria-hidden />}
           </button>
+          {!isClient && (
           <button
             type="button"
             onClick={() => setPaletteOpen(true)}
@@ -416,10 +459,11 @@ export function AppLayout() {
               Ctrl K
             </kbd>
           </button>
+          )}
           <div className="ms-auto flex items-center gap-2">
             {me.demo_mode && <SyntheticBadge className="hidden md:inline-flex" />}
             <LanguageSwitch />
-            <AccountMenu />
+            {!isClient && <AccountMenu />}
           </div>
         </header>
         {me.demo_mode && (
@@ -432,7 +476,7 @@ export function AppLayout() {
         </main>
         <footer className="no-print px-8 pb-5 pt-2 text-center text-[11px] text-slate-400">{t("app.footerDisclaimer")}</footer>
       </div>
-      <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
+      {!isClient && <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />}
     </div>
   );
 }

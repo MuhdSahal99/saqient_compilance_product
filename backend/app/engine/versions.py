@@ -4,7 +4,11 @@
 test). ``deterministic-1.1.0`` adds data checks over finance datasets and runs
 text checks with the unchanged 1.0.0 code. ``deterministic-1.2.0`` adds
 e-invoice, master data, readiness and VAT return checks, and lets checks take
-their period from the review's tax period; 1.1.0 checks run unchanged. New runs
+their period from the review's tax period; 1.1.0 checks run unchanged.
+``deterministic-1.3.0`` adds the withholding tax check; 1.2.0 checks run unchanged.
+``deterministic-1.4.0`` adds journal entry tests; 1.3.0 checks run unchanged.
+``deterministic-1.5.0`` adds segregation of duties and AP analytics; 1.4.0 checks run
+unchanged. New runs
 use ``ENGINE_VERSION``; a run records the version it used, so earlier results stay explainable.
 """
 
@@ -24,6 +28,7 @@ from app.engine import (
     ProhibitedTermsCheck,
     RequiredTextCheck,
 )
+from app.engine.ap_checks import ApAnalyticsCheck
 from app.engine.data_checks import (
     DATA_CHECK_TYPES,
     DateRuleCheck,
@@ -38,7 +43,10 @@ from app.engine.einvoice_checks import (
     EInvoiceValidateCheck,
     RejectionMatchCheck,
 )
+from app.engine.fa_checks import DepreciationCheck
+from app.engine.je_checks import JournalEntryCheck
 from app.engine.master_data_checks import CompletenessCheck, PartyCrossCheck, TaxIdFormatCheck
+from app.engine.sod_checks import SodConflictCheck
 from app.engine.tax_checks import TAX_CHECK_TYPES
 from app.engine.vat_checks import (
     BlockedInputCheck,
@@ -47,9 +55,14 @@ from app.engine.vat_checks import (
     VatGlReconcileCheck,
     ZeroRatedEvidenceCheck,
 )
+from app.engine.wht_checks import WhtRateCheck
 
 DATA_ENGINE_VERSION = "deterministic-1.1.0"
-ENGINE_VERSION = "deterministic-1.2.0"
+ENGINE_V12 = "deterministic-1.2.0"
+ENGINE_V13 = "deterministic-1.3.0"
+ENGINE_V14 = "deterministic-1.4.0"
+ENGINE_V15 = "deterministic-1.5.0"
+ENGINE_VERSION = "deterministic-1.6.0"
 
 DataCheckConfig11 = Annotated[
     RequiredTextCheck
@@ -67,7 +80,7 @@ DataCheckConfig11 = Annotated[
     Field(discriminator="type"),
 ]
 
-AnyCheckConfig = Annotated[
+DataCheckConfig12 = Annotated[
     RequiredTextCheck
     | PhraseGroupsCheck
     | ProhibitedTermsCheck
@@ -94,11 +107,43 @@ AnyCheckConfig = Annotated[
     Field(discriminator="type"),
 ]
 
+DataCheckConfig13 = Annotated[
+    DataCheckConfig12 | WhtRateCheck,
+    Field(discriminator="type"),
+]
+
+DataCheckConfig14 = Annotated[
+    DataCheckConfig13 | JournalEntryCheck,
+    Field(discriminator="type"),
+]
+
+DataCheckConfig15 = Annotated[
+    DataCheckConfig14 | SodConflictCheck | ApAnalyticsCheck,
+    Field(discriminator="type"),
+]
+
+AnyCheckConfig = Annotated[
+    DataCheckConfig15 | DepreciationCheck,
+    Field(discriminator="type"),
+]
+
 _text: TypeAdapter[CheckConfig] = TypeAdapter(CheckConfig)
 _data11: TypeAdapter[DataCheckConfig11] = TypeAdapter(DataCheckConfig11)
+_data12: TypeAdapter[DataCheckConfig12] = TypeAdapter(DataCheckConfig12)
+_data13: TypeAdapter[DataCheckConfig13] = TypeAdapter(DataCheckConfig13)
+_data14: TypeAdapter[DataCheckConfig14] = TypeAdapter(DataCheckConfig14)
+_data15: TypeAdapter[DataCheckConfig15] = TypeAdapter(DataCheckConfig15)
 _any: TypeAdapter[AnyCheckConfig] = TypeAdapter(AnyCheckConfig)
 
-SUPPORTED = (TEXT_ENGINE_VERSION, DATA_ENGINE_VERSION, ENGINE_VERSION)
+SUPPORTED = (
+    TEXT_ENGINE_VERSION,
+    DATA_ENGINE_VERSION,
+    ENGINE_V12,
+    ENGINE_V13,
+    ENGINE_V14,
+    ENGINE_V15,
+    ENGINE_VERSION,
+)
 
 
 def parse_check(raw: dict[str, Any], version: str = ENGINE_VERSION) -> Any:
@@ -107,6 +152,14 @@ def parse_check(raw: dict[str, Any], version: str = ENGINE_VERSION) -> Any:
         return _text.validate_python(raw)
     if version == DATA_ENGINE_VERSION:
         return _data11.validate_python(raw)
+    if version == ENGINE_V12:
+        return _data12.validate_python(raw)
+    if version == ENGINE_V13:
+        return _data13.validate_python(raw)
+    if version == ENGINE_V14:
+        return _data14.validate_python(raw)
+    if version == ENGINE_V15:
+        return _data15.validate_python(raw)
     if version == ENGINE_VERSION:
         return _any.validate_python(raw)
     raise ValueError(f"Unknown engine version {version!r}.")

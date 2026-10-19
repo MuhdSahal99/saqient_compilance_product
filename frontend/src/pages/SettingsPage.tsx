@@ -1,5 +1,5 @@
-import type { ReactNode } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useState, type ReactNode } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -8,6 +8,8 @@ import { Bot, Building2, Info, KeyRound, Languages, Loader2, ShieldCheck, type L
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import type { AIStatus } from "@/lib/types";
+import { aiSettingsKey, useOrgAISettings, type OrgAISettings } from "@/lib/content-packs";
+import { formatDate } from "@/lib/utils";
 import { MembersCard } from "@/components/members-card";
 import { MockNotice } from "@/components/ai-suggestions";
 import { useAuth } from "@/lib/auth";
@@ -17,7 +19,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { FieldError, Input, Label, Select } from "@/components/ui/input";
-import { ErrorState, errorMessage, LoadingState, PageHeader, SyntheticBadge, useUnsavedChangesWarning } from "@/components/common";
+import { ConfirmDialog, ErrorState, errorMessage, LoadingState, PageHeader, SyntheticBadge, useUnsavedChangesWarning } from "@/components/common";
 
 const pwSchema = z
   .object({
@@ -192,11 +194,102 @@ export function SettingsPage() {
               {ai.data && <p className="text-[13px] text-slate-500">{t("settings.aiProvider", { provider: ai.data.provider })}</p>}
               <p className="leading-relaxed text-slate-600">{ai.data?.enabled ? t("settings.aiExplainerOn") : t("settings.aiExplainer")}</p>
               {ai.data?.is_mock && <MockNotice />}
+              <OrgAIOptIn />
             </CardContent>
           </Card>
         </div>
       </div>
     </>
+  );
+}
+
+/** The organisation's own opt-in to AI suggestions, on top of the deployment switch. */
+function OrgAIOptIn() {
+  const { t, i18n } = useTranslation();
+  const { can } = useAuth();
+  const qc = useQueryClient();
+  const settings = useOrgAISettings();
+  const [confirm, setConfirm] = useState(false);
+  const save = useMutation({
+    mutationFn: (opted_in: boolean) => api<OrgAISettings>("/org/ai-settings", { method: "PUT", json: { opted_in } }),
+    onSuccess: (s) => {
+      qc.setQueryData(aiSettingsKey, s);
+      void qc.invalidateQueries({ queryKey: ["ai-status"] });
+      void qc.invalidateQueries({ queryKey: ["me"] });
+      setConfirm(false);
+      toast.success(s.opted_in ? t("settings.aiOptedIn") : t("settings.aiOptedOut"));
+    },
+    onError: (e) => {
+      setConfirm(false);
+      toast.error(errorMessage(e, t("common.genericError")));
+    },
+  });
+  return (
+    <section aria-labelledby="ai-optin-title" className="space-y-3 border-t border-slate-100 pt-4">
+      <h3 id="ai-optin-title" className="text-[13px] font-semibold text-navy-900">
+        {t("settings.aiOrgTitle")}
+      </h3>
+      {settings.isLoading && <LoadingState rows={1} />}
+      {settings.isError && <ErrorState error={settings.error} onRetry={() => void settings.refetch()} />}
+      {settings.data && (
+        <>
+          <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-[13px]">
+            <dt className="text-slate-500">{t("settings.aiDeployment")}</dt>
+            <dd className="flex flex-wrap items-center gap-1.5 text-slate-800">
+              {settings.data.deployment_available ? t("settings.aiDeploymentAvailable") : t("settings.aiDeploymentUnavailable")}
+              {settings.data.is_mock && <Badge tone="amber">{t("settings.aiMock")}</Badge>}
+            </dd>
+            {settings.data.deployment_available && (
+              <>
+                <dt className="text-slate-500">{t("settings.aiModel")}</dt>
+                <dd className="break-all text-slate-800" dir="ltr">
+                  {settings.data.provider}
+                  {settings.data.model ? ` · ${settings.data.model}` : ""}
+                </dd>
+              </>
+            )}
+            <dt className="text-slate-500">{t("settings.aiOrgState")}</dt>
+            <dd className="text-slate-800">
+              {settings.data.opted_in
+                ? settings.data.opted_in_at
+                  ? t("settings.aiOptedInSince", { date: formatDate(settings.data.opted_in_at, i18n.language, true) })
+                  : t("settings.aiOptedInState")
+                : t("settings.aiNotOptedIn")}
+            </dd>
+          </dl>
+          {can("admin") && (
+            <div className="space-y-1.5">
+              <Button
+                size="sm"
+                variant={settings.data.opted_in ? "outline" : "accent"}
+                aria-pressed={settings.data.opted_in}
+                aria-describedby={settings.data.deployment_available ? undefined : "ai-optin-reason"}
+                disabled={save.isPending || (!settings.data.deployment_available && !settings.data.opted_in)}
+                onClick={() => setConfirm(true)}
+              >
+                {save.isPending && <Loader2 className="animate-spin" aria-hidden />}
+                {settings.data.opted_in ? t("settings.aiOptOut") : t("settings.aiOptIn")}
+              </Button>
+              {!settings.data.deployment_available && (
+                <p id="ai-optin-reason" className="text-xs text-slate-500">
+                  {t("settings.aiUnavailableReason")}
+                </p>
+              )}
+            </div>
+          )}
+          {!can("admin") && <p className="text-xs text-slate-500">{t("settings.aiAdminOnly")}</p>}
+          <ConfirmDialog
+            open={confirm}
+            onOpenChange={setConfirm}
+            title={settings.data.opted_in ? t("settings.aiOptOutTitle") : t("settings.aiOptInTitle")}
+            description={settings.data.opted_in ? t("settings.aiOptOutConfirm") : t("settings.aiOptInConfirm")}
+            confirmLabel={settings.data.opted_in ? t("settings.aiOptOut") : t("settings.aiOptIn")}
+            busy={save.isPending}
+            onConfirm={() => settings.data && save.mutate(!settings.data.opted_in)}
+          />
+        </>
+      )}
+    </section>
   );
 }
 

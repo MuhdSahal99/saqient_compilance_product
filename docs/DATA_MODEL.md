@@ -103,6 +103,21 @@ Evidence JSON items: `block_id, ref, page_number, paragraph_number, quote,
 context, highlight_start, highlight_end`. Quotes are copied from
 `source_blocks.text`.
 
+## Direct tax (Phase C)
+
+| Table | Key columns | Notes |
+|---|---|---|
+| `tax_workpapers` | entity_id, kind (corporate_tax, sbr_test, qfzp_test, pillar_two, zakat), period, currency, rule_pack_version_id, rules_prefix, status (draft, signed_off), calc_version, result_hash, warnings | One paper per entity, period and kind of work. |
+| `workpaper_lines` | workpaper_id, source (manual, computed), section, line_key (unique per paper), category, amount NUMERIC(20,4) or value, formula_id, explanation, rule_snapshots, evidence | Computed keys are `calc:<key>`. |
+| `workpaper_snapshots` | workpaper_id, version, content, signed_off_by_id | Immutable (trigger); exports render from it. |
+| `tax_loss_entries` | entity_id, kind (incurred, used, transferred_in/out, forfeited), period, amount (positive), workpaper_id, counterparty_entity_id, transfer_id, explanation, rule_snapshots, evidence | Unique (workpaper_id, kind): a paper posts once. |
+| `tax_group_memberships` | tax_group_id, entity_id, is_parent, ownership_share NUMERIC(7,6), joined_on, left_on | No overlapping memberships per entity; one parent at a time. |
+| `related_parties` | entity_id, name, relation, jurisdiction | Unique (entity, name). |
+| `related_party_transactions` | entity_id, related_party_id, period, transaction_type, direction, amount, currency, method, range_low/high, tested_value, benchmark_document_ids, evidence | Amounts in the entity's currency. |
+
+Dataset kind `wht_payments` (payment id, date, payee, payee country, payment type,
+gross, withheld, treaty rate, certificate) feeds the 1.3.0 `wht_rates` check.
+
 ## Finding status transitions
 
 ```
@@ -122,3 +137,51 @@ remain allowed.
 distinct. Append-only hash chain per organisation (ADR 0006); a trigger
 rejects UPDATE. `services/audit.record` strips keys such as `text`,
 `content`, `password`, `token`, `csrf`, `body`.
+
+## Audit (Phase D)
+
+All tables carry `org_id` and are reached through the engagement.
+
+| Table | Key columns | Notes |
+|---|---|---|
+| `audit_engagements` | entity_id, kind, name, period, phase, status, currency, cy/py_tb_version_id, rule_pack_version_id, rules_prefix | Closed engagements refuse changes. |
+| `engagement_members`, `engagement_budgets`, `time_entries` | engagement_id, user_id, role / phase, hours | Budget vs actual per phase. |
+| `lead_schedules`, `account_mappings` | engagement_id, code, name, section / account_code → lead_code | Feed lead schedule papers and the SUD. |
+| `audit_risks`, `audit_procedures`, `risk_procedures` | ref, assertions, inherent risk, significant, fraud / title, status, requirement_id, review_id | Coverage = risks with procedures. |
+| `audit_samples`, `audit_sample_items` | method, dataset_version_id, amount_column, seed, params, algorithm_version, population hash / row_id, stratum, hits, book/audited value, result | Reproducible from seed. |
+| `audit_confirmations` | type, counterparty, reference, book/confirmed amount, status, dates, conclusion | planned → sent → responded / no_response → closed. |
+| `audit_adjustments`, `adjustment_lines` | ref, status (proposed / recorded / passed), reason / account_code, debit, credit | Must balance; passed ones form the SUD. |
+| `pbc_requests`, `pbc_files` | ref, title, due_date, assignee (client), status / document_version_id | Client uploads via the portal. |
+| `letter_points`, `letter_snapshots` | finding_id, include, recommendation, response / version, content | Snapshots immutable (trigger). |
+
+`tax_workpapers` gains `engagement_id`, `prepared_by_id`, `prepared_at`; `reviews` gains
+`engagement_id`; roles gain `client`; checklist kinds gain `audit_programme`.
+
+## Assurance (Phase E)
+
+All tables carry `org_id`. Sign-off objects share `status`, `prepared_by/at`,
+`signed_off_by/at`, `version`, `reopen_reason`; snapshots live in `assurance_snapshots`
+(object, object_id, version, content, sha256; immutable by trigger).
+
+| Table | Key columns | Notes |
+|---|---|---|
+| `bank_reconciliations`, `recon_matches`, `recon_match_lines` | entity, period, statement/ledger version, pack + prefix, balances / method, rule / side, row_id | A row matches once per side (unique). |
+| `account_reconciliations`, `recon_support_items` | tb_version_id, account_code (unique pair), support items | Variance vs pack thresholds. |
+| `intercompany_reconciliations` | entity a/b, TB versions a/b, accounts a/b | Difference vs pack limit. |
+| `close_periods`, `close_items` | entity, period_end (unique pair), status / day_offset, task_id | Items are tasks (`close_checklist`). |
+| `flux_reviews`, `flux_explanations` | CY/PY TB versions / account_code, text | Accounts above both pack limits need text. |
+| `control_processes`, `control_risks`, `controls`, `control_tests` | entity / ref, assertions, rating / ref, key, nature, automation, frequency, risk_ids / kind, period, sample, exceptions, evidence, conclusion | Risk-control matrix. |
+| `control_deficiencies`, `control_certifications` | control, test, classification, remediation_task_id / entity, period, statement | Remediation tasks are `control_remediation`. |
+| `connectors`, `connector_syncs` | entity, provider, status, scopes, config, secret_enc, oauth state hash, datasets / kind, status, rows, sha256, dataset_version_id | Secrets encrypted; never returned. |
+
+New dataset kinds: `user_roles`, `ap_payments`, `employee_master`, `three_way_match`,
+`expense_claims`. New job kind: `connector_sync`.
+
+## Sector packs (Phase F)
+
+| Table | Key columns | Notes |
+|---|---|---|
+| `content_pack_installs` | org_id, pack_id, pack_version (unique triple), manifest_sha256, checklist_version_ids, rule_pack_version_id, installed_by_id | Installs draft checklists and a draft rule pack. |
+
+`organizations` gains `ai_opt_in` and `ai_opt_in_at`. Workpaper kinds gain `fs_draft`
+(engagement) and `lease_ifrs16` (entity). New dataset kind: `fixed_assets`.

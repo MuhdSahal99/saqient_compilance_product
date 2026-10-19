@@ -13,10 +13,19 @@ any JSON object or array.
 from __future__ import annotations
 
 import json
+from datetime import date
 from decimal import Decimal
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    ConfigDict,
+    Field,
+    TypeAdapter,
+    ValidationError,
+    model_validator,
+)
 
 MAX_JSON_BYTES = 64 * 1024
 
@@ -143,6 +152,92 @@ class Obligation(_M):
     period_basis: Literal["fiscal", "calendar"] = "calendar"
 
 
+class RateBand(_M):
+    """Income from ``lower`` up to ``upper`` (open-ended if null) is taxed at ``rate`` (0–1)."""
+
+    lower: Decimal = Field(ge=0)
+    upper: Decimal | None = None
+    rate: Decimal = Field(ge=0, le=1)
+
+
+def _bands(v: list[RateBand]) -> list[RateBand]:
+    prev: Decimal | None = Decimal(0)
+    for b in v:
+        if prev is None or b.lower != prev:
+            raise ValueError("bands must start at 0 and be contiguous (lower = previous upper)")
+        if b.upper is not None and b.upper <= b.lower:
+            raise ValueError("each band's upper must be above its lower")
+        prev = b.upper
+    if prev is not None:
+        raise ValueError("the last band must be open-ended (upper null)")
+    return v
+
+
+def _ascending(v: list[int]) -> list[int]:
+    if any(b <= a for a, b in zip(v, v[1:], strict=False)):
+        raise ValueError("bounds must increase")
+    return v
+
+
+class ShareRange(_M):
+    low: Decimal = Field(ge=0, le=1)
+    high: Decimal = Field(ge=0, le=1)
+
+    @model_validator(mode="after")
+    def _order(self) -> ShareRange:
+        if self.high < self.low:
+            raise ValueError("high must not be below low")
+        return self
+
+
+SodCode = Annotated[str, Field(min_length=1, max_length=120)]
+
+
+class SodConflict(_M):
+    """Two sets of role or permission codes that one user should not hold together."""
+
+    id: str = Field(pattern=r"^[A-Za-z0-9._-]{1,40}$")
+    a: list[SodCode] = Field(min_length=1, max_length=100)
+    b: list[SodCode] = Field(min_length=1, max_length=100)
+    description: str = Field(min_length=1, max_length=500)
+
+    @model_validator(mode="after")
+    def _disjoint(self) -> SodConflict:
+        a = {" ".join(x.split()).casefold() for x in self.a}
+        if a & {" ".join(x.split()).casefold() for x in self.b}:
+            raise ValueError("a code cannot be on both sides of a conflict")
+        return self
+
+
+def _unique_ids(v: list[SodConflict]) -> list[SodConflict]:
+    ids = [c.id for c in v]
+    if len(ids) != len(set(ids)):
+        raise ValueError("conflict ids must be unique")
+    return v
+
+
+class ExpenseLimit(_M):
+    """A policy limit for one expense category, in one currency."""
+
+    currency: str = Field(pattern=r"^[A-Z]{3}$")
+    per_claim: Decimal | None = Field(default=None, ge=0)
+    receipt_over: Decimal | None = Field(default=None, ge=0)
+
+
+class BenfordBands(_M):
+    """Mean absolute deviation upper bounds; above ``marginal`` is nonconformity."""
+
+    close: Decimal = Field(gt=0, le=1)
+    acceptable: Decimal = Field(gt=0, le=1)
+    marginal: Decimal = Field(gt=0, le=1)
+
+    @model_validator(mode="after")
+    def _order(self) -> BenfordBands:
+        if not self.close < self.acceptable < self.marginal:
+            raise ValueError("bands must increase: close < acceptable < marginal")
+        return self
+
+
 GoLiveWave.model_rebuild()
 BoxLayout.model_rebuild()
 
@@ -154,6 +249,46 @@ FAMILIES: dict[str, TypeAdapter[Any]] = {
     "box_layout": TypeAdapter(BoxLayout),
     "obligations": TypeAdapter(list[Obligation]),
     "codes": TypeAdapter(list[Annotated[str, Field(max_length=80)]]),
+    # Withholding rate per payment type code (a share between 0 and 1).
+    "wht_rates": TypeAdapter(
+        dict[
+            Annotated[str, Field(pattern=r"^[a-z0-9_]{1,60}$")],
+            Annotated[Decimal, Field(ge=0, le=1)],
+        ]
+    ),
+    "rate_bands": TypeAdapter(
+        Annotated[list[RateBand], Field(min_length=1, max_length=20), AfterValidator(_bands)]
+    ),
+    "materiality_share_ranges": TypeAdapter(
+        dict[Annotated[str, Field(pattern=r"^[a-z_]{1,40}$")], ShareRange]
+    ),
+    "weekend_days": TypeAdapter(
+        Annotated[list[Annotated[int, Field(ge=1, le=7)]], Field(max_length=3)]
+    ),
+    "holidays": TypeAdapter(Annotated[list[date], Field(max_length=400)]),
+    "benford_mad_bands": TypeAdapter(BenfordBands),
+    # Inclusive upper bounds in days, ascending (e.g. [30, 60, 90] → 0-30, 31-60, 61-90, 91+).
+    "ageing_buckets": TypeAdapter(
+        Annotated[
+            list[Annotated[int, Field(ge=1, le=3650)]],
+            Field(min_length=1, max_length=10),
+            AfterValidator(_ascending),
+        ]
+    ),
+    "trn_countries": TypeAdapter(
+        Annotated[list[Annotated[str, Field(pattern=r"^[A-Z]{2}$")]], Field(max_length=300)]
+    ),
+    "expense_limits": TypeAdapter(
+        Annotated[
+            dict[Annotated[str, Field(pattern=r"^[a-z0-9_]{1,60}$")], ExpenseLimit],
+            Field(max_length=200),
+        ]
+    ),
+    "sod_conflicts": TypeAdapter(
+        Annotated[
+            list[SodConflict], Field(min_length=1, max_length=500), AfterValidator(_unique_ids)
+        ]
+    ),
     "required_fields": TypeAdapter(
         dict[Annotated[str, Field(pattern=r"^([A-Z]{2}|\*)$")], list[Code]]
     ),
