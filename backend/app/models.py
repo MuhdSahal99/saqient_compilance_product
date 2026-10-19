@@ -23,6 +23,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    false,
     func,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
@@ -462,6 +463,9 @@ class Organization(Base):
     name: Mapped[str] = mapped_column(String(200))
     slug: Mapped[str] = mapped_column(String(80), unique=True)
     is_demo: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Phase F4: an org admin's explicit opt-in before any document text goes to a model.
+    ai_opt_in: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+    ai_opt_in_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = _created()
 
 

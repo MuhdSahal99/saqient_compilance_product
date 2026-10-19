@@ -609,6 +609,22 @@ class AISuggestionsOut(BaseModel):
     suggestions: list[AISuggestionOut]
 
 
+class AISettingsOut(BaseModel):
+    deployment_available: bool = Field(
+        description="The deployment has an AI provider configured (off by default)."
+    )
+    provider: str
+    model: str | None
+    is_mock: bool
+    opted_in: bool = Field(description="An org admin turned AI suggestions on for this org.")
+    opted_in_at: datetime | None
+
+
+class AISettingsIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    opted_in: bool
+
+
 class AIDecisionIn(BaseModel):
     note: str = Field(default="", max_length=2000)
 

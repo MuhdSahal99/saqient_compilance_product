@@ -238,9 +238,12 @@ def members(ctx: Ctx, db: DB) -> list[MemberOut]:
 def ai_status(ctx: Ctx) -> dict[str, Any]:
     s = get_settings()
     provider = get_provider(s)
-    enabled = s.ai_enabled and provider.name != "disabled"
+    deployment = s.ai_enabled and provider.name != "disabled"
+    enabled = deployment and ctx.org.ai_opt_in
     return {
         "enabled": enabled,
+        "deployment_enabled": deployment,
+        "org_opted_in": ctx.org.ai_opt_in,
         "provider": provider.name,
         "model": s.ai_model if s.ai_enabled else None,
         "available_features": [FEATURE] if enabled else [],
@@ -249,6 +252,8 @@ def ai_status(ctx: Ctx) -> dict[str, Any]:
             "AI suggestions are available. Each suggestion needs a reviewer's acceptance "
             "before it becomes a finding."
             if enabled
+            else "AI is offered but this organisation has not opted in."
+            if deployment
             else "AI is disabled. Reviews use deterministic checks and human decisions only."
         ),
     }

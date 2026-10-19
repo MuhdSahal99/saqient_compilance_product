@@ -37,6 +37,7 @@ from app.models import (
     Job,
     JobKind,
     JobStatus,
+    Organization,
     Requirement,
     Review,
     ReviewStatus,
@@ -100,12 +101,36 @@ def feature_available() -> bool:
         return False
 
 
+def org_enabled(org: Organization | None) -> bool:
+    """The deployment has a provider and the organisation's admin opted in."""
+    return bool(org is not None and org.ai_opt_in and feature_available())
+
+
+def set_opt_in(db: Session, org: Organization, on: bool, actor: User) -> None:
+    """Record an org admin's AI opt-in or opt-out (Phase F4)."""
+    if org.ai_opt_in == on:
+        return
+    org.ai_opt_in = on
+    org.ai_opt_in_at = _now() if on else None
+    audit.record(
+        db,
+        org_id=org.id,
+        actor_id=actor.id,
+        action="ai.org_opted_in" if on else "ai.org_opted_out",
+        object_type="organization",
+        object_id=org.id,
+        meta={"provider": get_settings().ai_provider},
+    )
+
+
 # ---------------------------------------------------------------- request
 
 
 def request_suggestions(db: Session, review: Review, actor: User) -> Job:
     if not feature_available():
         raise AIError("AI suggestions are not enabled for this deployment.")
+    if not org_enabled(db.get(Organization, review.org_id)):
+        raise AIError("An organisation admin has not turned on AI suggestions.")
     if review.status == ReviewStatus.SIGNED_OFF:
         raise AIError("Reopen the review before requesting AI suggestions.")
     if review.document_version_id is None:
@@ -302,6 +327,9 @@ def execute_suggestions(db: Session, job: Job, checkpoint: Checkpoint) -> None:
         raise PermanentJobError("AI is not configured correctly for this deployment.") from exc
     if provider.name == "disabled" or provider.name != run.provider:
         raise PermanentJobError("The AI provider changed or was disabled; request again.")
+    org = db.get(Organization, job.org_id)
+    if org is None or not org.ai_opt_in:
+        raise PermanentJobError("AI suggestions were turned off for this organisation.")
     requirements = list(
         db.scalars(
             select(Requirement)

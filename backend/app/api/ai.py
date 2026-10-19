@@ -6,10 +6,13 @@ from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import select
 
 from app.api.reviews import finding_out
-from app.deps import DB, Ctx, Decider, Writer, get_owned_or_404
-from app.models import AISuggestion, AISuggestionRun, Review
+from app.config import get_settings
+from app.deps import DB, Admin, Ctx, Decider, Writer, get_owned_or_404
+from app.models import AISuggestion, AISuggestionRun, Organization, Review
 from app.schemas import (
     AIDecisionIn,
+    AISettingsIn,
+    AISettingsOut,
     AISuggestionOut,
     AISuggestionRunOut,
     AISuggestionsOut,
@@ -69,7 +72,7 @@ def _latest(db: DB, review: Review) -> AISuggestionsOut:
             key=lambda s: s.requirement.ordinal,
         )
     return AISuggestionsOut(
-        available=svc.feature_available(),
+        available=svc.org_enabled(db.get(Organization, review.org_id)),
         run=_run_out(run) if run else None,
         suggestions=[_suggestion_out(s) for s in rows],
     )
@@ -77,6 +80,48 @@ def _latest(db: DB, review: Review) -> AISuggestionsOut:
 
 def _bad(exc: Exception) -> HTTPException:
     return HTTPException(status.HTTP_409_CONFLICT, str(exc))
+
+
+def _settings_out(ctx: Ctx) -> AISettingsOut:
+    s = get_settings()
+    available = svc.feature_available()
+    return AISettingsOut(
+        deployment_available=available,
+        provider=s.ai_provider if available else "disabled",
+        model=(s.ai_model or s.ai_provider) if available else None,
+        is_mock=available and s.ai_provider == "mock",
+        opted_in=ctx.org.ai_opt_in,
+        opted_in_at=ctx.org.ai_opt_in_at,
+    )
+
+
+@router.get(
+    "/org/ai-settings",
+    response_model=AISettingsOut,
+    summary="Organisation AI settings",
+    description="Whether the deployment offers AI suggestions and whether this "
+    "organisation opted in. Both must hold before any document text goes to a model.",
+)
+def get_ai_settings(ctx: Ctx) -> AISettingsOut:
+    return _settings_out(ctx)
+
+
+@router.put(
+    "/org/ai-settings",
+    response_model=AISettingsOut,
+    summary="Opt the organisation in or out of AI suggestions",
+    description="Org admins only. Opting in is refused while the deployment has no AI "
+    "provider. Suggestions still need a reviewer's acceptance to become findings.",
+)
+def put_ai_settings(body: AISettingsIn, ctx: Admin, db: DB) -> AISettingsOut:
+    if body.opted_in and not svc.feature_available():
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "AI suggestions are not enabled for this deployment."
+        )
+    svc.set_opt_in(db, ctx.org, body.opted_in, ctx.user)
+    db.commit()
+    db.refresh(ctx.org)
+    return _settings_out(ctx)
 
 
 @router.get("/reviews/{review_id}/ai-suggestions", response_model=AISuggestionsOut)
