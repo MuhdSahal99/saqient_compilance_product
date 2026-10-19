@@ -1,0 +1,74 @@
+{
+  "formula": "lease_ifrs16",
+  "prefix": "syn.audit",
+  "rules": "synthetic: 2 decimals half_up",
+  "cases": [
+    {
+      "name": "three payments of 1000 in arrears at 10% per period",
+      "inputs": [
+        {"key": "payment", "amount": "1000"},
+        {"key": "periods", "value": "3"},
+        {"key": "rate_per_period", "value": "0.10"},
+        {"key": "timing", "value": "arrears"},
+        {"key": "initial_direct_costs", "amount": "100"},
+        {"key": "incentives", "amount": "50"}
+      ],
+      "worked": [
+        "1.1^-3 = 0.7513148009; PV = 1000 × (1 - 0.7513148009) / 0.1 = 2486.851991 → 2486.85",
+        "ROU = 2486.85 + 100 + 0 - 50 = 2536.85; depreciation 2536.85 / 3 = 845.6167 → 845.62",
+        "interest 1 = 2486.85 × 0.1 = 248.685 → 248.69 (half up); closing 2486.85 + 248.69 - 1000 = 1735.54",
+        "total interest 3000 - 2486.85 = 513.15"
+      ],
+      "expected": {
+        "lease_liability": "2486.85",
+        "rou_asset": "2536.85",
+        "depreciation_per_period": "845.62",
+        "first_period_interest": "248.69",
+        "closing_liability_first_period": "1735.54",
+        "total_interest": "513.15"
+      }
+    },
+    {
+      "name": "same lease in advance",
+      "inputs": [
+        {"key": "payment", "amount": "1000"},
+        {"key": "periods", "value": "3"},
+        {"key": "rate_per_period", "value": "0.10"},
+        {"key": "timing", "value": "advance"}
+      ],
+      "worked": [
+        "PV = 2486.851991 × 1.1 = 2735.537190 → 2735.54",
+        "after the first payment 1735.54; interest 173.554 → 173.55; closing 1735.54 + 173.55 = 1909.09",
+        "total interest 3000 - 2735.54 = 264.46"
+      ],
+      "expected": {
+        "lease_liability": "2735.54",
+        "rou_asset": "2735.54",
+        "first_period_interest": "173.55",
+        "closing_liability_first_period": "1909.09",
+        "total_interest": "264.46"
+      }
+    },
+    {
+      "name": "zero rate",
+      "inputs": [
+        {"key": "payment", "amount": "500"},
+        {"key": "periods", "value": "4"},
+        {"key": "rate_per_period", "value": "0"},
+        {"key": "timing", "value": "arrears"}
+      ],
+      "worked": ["PV = 500 × 4 = 2000; depreciation 2000 / 4 = 500; no interest"],
+      "expected": {"lease_liability": "2000", "depreciation_per_period": "500", "total_interest": "0"}
+    },
+    {
+      "name": "bad timing",
+      "inputs": [
+        {"key": "payment", "amount": "1"},
+        {"key": "periods", "value": "1"},
+        {"key": "rate_per_period", "value": "0.01"},
+        {"key": "timing", "value": "monthly"}
+      ],
+      "error": "timing must be arrears or advance"
+    }
+  ]
+}

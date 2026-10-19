@@ -287,6 +287,24 @@ SCHEMAS: dict[DatasetKind, CanonicalSchema] = {
             _CURRENCY,
         ),
     ),
+    DatasetKind.FIXED_ASSETS: CanonicalSchema(
+        DatasetKind.FIXED_ASSETS,
+        (
+            _f("asset_id", "text", True, "asset", "asset no", "asset number", "tag"),
+            _f("description", "text", False, "asset description", "name"),
+            _f("category", "text", False, "asset class", "class"),
+            _f("cost", "amount", True, "gross cost", "acquisition cost", "original cost"),
+            _f("residual_value", "amount", False, "residual", "salvage value", "scrap value"),
+            _f("useful_life_months", "text", False, "useful life", "life months"),
+            _f("rate", "amount", False, "depreciation rate", "annual rate"),
+            _f("acquisition_date", "date", True, "acquired", "purchase date", "capitalised"),
+            _f("disposal_date", "date", False, "disposed", "retirement date"),
+            _f("method", "text", False, "depreciation method"),
+            _f("recorded_accumulated", "amount", False, "accumulated depreciation"),
+            _f("recorded_charge", "amount", False, "depreciation charge", "charge for period"),
+            _CURRENCY,
+        ),
+    ),
 }
 
 

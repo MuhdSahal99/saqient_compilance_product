@@ -1715,7 +1715,7 @@ class AccountMappingOut(BaseModel):
 
 class AuditWorkpaperIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    kind: Literal["lead_schedule", "materiality"]
+    kind: Literal["lead_schedule", "materiality", "fs_draft"]
     title: str = Field(min_length=1, max_length=300)
 
 

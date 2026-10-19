@@ -114,6 +114,8 @@ def audit_rules(p: str = "syn.audit") -> list[dict[str, Any]]:
     return [
         row(f"{p}.amount_decimals", "integer", 2, "Amount decimals"),
         row(f"{p}.rounding_mode", "string", "half_up", "Rounding mode"),
+        row(f"{p}.fs_note_tolerance", "decimal", "1", "Note cross-check tolerance", "currency"),
+        row(f"{p}.dep_tolerance", "decimal", "1", "Depreciation tolerance", "currency"),
         row(f"{p}.materiality_share_ranges", "json", MATERIALITY_RANGES, "Materiality guidance"),
         row(f"{p}.weekend_days", "json", [6, 7], "Weekend days (ISO weekday numbers)"),
         row(f"{p}.holidays", "json", ["2025-03-30", "2025-06-06", "2025-12-02"], "Holidays"),

@@ -43,6 +43,7 @@ from app.engine.einvoice_checks import (
     EInvoiceValidateCheck,
     RejectionMatchCheck,
 )
+from app.engine.fa_checks import DepreciationCheck
 from app.engine.je_checks import JournalEntryCheck
 from app.engine.master_data_checks import CompletenessCheck, PartyCrossCheck, TaxIdFormatCheck
 from app.engine.sod_checks import SodConflictCheck
@@ -60,7 +61,8 @@ DATA_ENGINE_VERSION = "deterministic-1.1.0"
 ENGINE_V12 = "deterministic-1.2.0"
 ENGINE_V13 = "deterministic-1.3.0"
 ENGINE_V14 = "deterministic-1.4.0"
-ENGINE_VERSION = "deterministic-1.5.0"
+ENGINE_V15 = "deterministic-1.5.0"
+ENGINE_VERSION = "deterministic-1.6.0"
 
 DataCheckConfig11 = Annotated[
     RequiredTextCheck
@@ -115,8 +117,13 @@ DataCheckConfig14 = Annotated[
     Field(discriminator="type"),
 ]
 
-AnyCheckConfig = Annotated[
+DataCheckConfig15 = Annotated[
     DataCheckConfig14 | SodConflictCheck | ApAnalyticsCheck,
+    Field(discriminator="type"),
+]
+
+AnyCheckConfig = Annotated[
+    DataCheckConfig15 | DepreciationCheck,
     Field(discriminator="type"),
 ]
 
@@ -125,6 +132,7 @@ _data11: TypeAdapter[DataCheckConfig11] = TypeAdapter(DataCheckConfig11)
 _data12: TypeAdapter[DataCheckConfig12] = TypeAdapter(DataCheckConfig12)
 _data13: TypeAdapter[DataCheckConfig13] = TypeAdapter(DataCheckConfig13)
 _data14: TypeAdapter[DataCheckConfig14] = TypeAdapter(DataCheckConfig14)
+_data15: TypeAdapter[DataCheckConfig15] = TypeAdapter(DataCheckConfig15)
 _any: TypeAdapter[AnyCheckConfig] = TypeAdapter(AnyCheckConfig)
 
 SUPPORTED = (
@@ -133,6 +141,7 @@ SUPPORTED = (
     ENGINE_V12,
     ENGINE_V13,
     ENGINE_V14,
+    ENGINE_V15,
     ENGINE_VERSION,
 )
 
@@ -149,6 +158,8 @@ def parse_check(raw: dict[str, Any], version: str = ENGINE_VERSION) -> Any:
         return _data13.validate_python(raw)
     if version == ENGINE_V14:
         return _data14.validate_python(raw)
+    if version == ENGINE_V15:
+        return _data15.validate_python(raw)
     if version == ENGINE_VERSION:
         return _any.validate_python(raw)
     raise ValueError(f"Unknown engine version {version!r}.")

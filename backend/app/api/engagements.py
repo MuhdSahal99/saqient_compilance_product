@@ -429,9 +429,12 @@ def reload_leads(workpaper_id: uuid.UUID, db: DB, ctx: Writer) -> WorkpaperOut:
     from app.api.workpapers import workpaper_out
 
     wp = get_owned_or_404(db, TaxWorkpaper, workpaper_id, ctx.org.id)
-    if wp.engagement_id is None or wp.kind.value != "lead_schedule":
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Not a lead schedule workpaper.")
+    if wp.engagement_id is None or wp.kind.value not in ("lead_schedule", "fs_draft"):
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT, "Not a lead schedule or FS draft workpaper."
+        )
     e = get_engagement(db, ctx, wp.engagement_id)
-    _guard(lambda: leads.load_lead_balances(db, e, wp, ctx.user))
+    load = leads.load_lead_balances if wp.kind.value == "lead_schedule" else leads.load_fs_balances
+    _guard(lambda: load(db, e, wp, ctx.user))
     db.commit()
     return workpaper_out(db, wp)

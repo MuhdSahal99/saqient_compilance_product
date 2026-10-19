@@ -140,6 +140,7 @@ class DatasetKind(str, enum.Enum):
     EMPLOYEE_MASTER = "employee_master"
     THREE_WAY_MATCH = "three_way_match"
     EXPENSE_CLAIMS = "expense_claims"
+    FIXED_ASSETS = "fixed_assets"
 
 
 class TaxType(str, enum.Enum):
@@ -158,9 +159,14 @@ class WorkpaperKind(str, enum.Enum):
     # Audit workpapers (Phase D) belong to an engagement.
     LEAD_SCHEDULE = "lead_schedule"
     MATERIALITY = "materiality"
+    FS_DRAFT = "fs_draft"
+    # Entity workpapers (Phase F3).
+    LEASE_IFRS16 = "lease_ifrs16"
 
 
-AUDIT_WORKPAPER_KINDS = frozenset({WorkpaperKind.LEAD_SCHEDULE, WorkpaperKind.MATERIALITY})
+AUDIT_WORKPAPER_KINDS = frozenset(
+    {WorkpaperKind.LEAD_SCHEDULE, WorkpaperKind.MATERIALITY, WorkpaperKind.FS_DRAFT}
+)
 
 
 class WorkpaperStatus(str, enum.Enum):

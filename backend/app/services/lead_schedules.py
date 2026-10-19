@@ -22,6 +22,7 @@ from app.models import (
     AccountMapping,
     AuditEngagement,
     DatasetVersion,
+    FsSection,
     LeadSchedule,
     TaxWorkpaper,
     User,
@@ -299,7 +300,48 @@ def create_workpaper(
     )
     if wp.kind is WorkpaperKind.LEAD_SCHEDULE:
         load_lead_balances(db, e, wp, actor)
+    elif wp.kind is WorkpaperKind.FS_DRAFT:
+        load_fs_balances(db, e, wp, actor)
     return wp
+
+
+def load_fs_balances(db: Session, e: AuditEngagement, wp: TaxWorkpaper, actor: User) -> None:
+    """Replace an FS draft's face lines with the lead schedules by section, then compute."""
+    rep = report(db, e)
+    if not rep["schedules"]:
+        raise EngagementError("Set up lead schedules and account mappings first.")
+    for ln in [x for x in wp.lines if x.line_key.startswith("fs_")]:
+        workpapers.delete_input(db, wp, ln.line_key, actor)
+    cy_v = db.get(DatasetVersion, e.cy_tb_version_id) if e.cy_tb_version_id else None
+    py_v = db.get(DatasetVersion, e.py_tb_version_id) if e.py_tb_version_id else None
+    for s in rep["schedules"]:
+        code, section = s["code"].lower(), FsSection(s["section"]).value
+        for side, v, category in (("cy", cy_v, "current_year"), ("py", py_v, "prior_year")):
+            if v is None:
+                continue
+            rows = sorted(r for a in s["accounts"] for r in a[f"{side}_row_ids"])
+            line = workpapers.put_input(
+                db,
+                wp,
+                f"fs_{section}_{code}_{side}",
+                WorkpaperInputIn(
+                    category=category,
+                    label=f"{s['code']} {s['name']} ({YEAR_LABEL[side]})",
+                    amount=s[side],
+                    note=f"From trial balance {v.dataset.name} v{v.version_number}",
+                ),
+                actor,
+            )
+            line.evidence = [
+                _dataset_ref(
+                    v,
+                    rows,
+                    account_codes=sorted(a["account_code"] for a in s["accounts"]),
+                    lead_code=s["code"],
+                )
+            ]
+    db.flush()
+    workpapers.compute(db, wp, actor)
 
 
 def load_lead_balances(db: Session, e: AuditEngagement, wp: TaxWorkpaper, actor: User) -> None:
