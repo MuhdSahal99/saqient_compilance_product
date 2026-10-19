@@ -147,3 +147,17 @@ Features listed here are either absent or deliberately labelled in the UI.
 - The audit UI offers each dataset's latest ready version only for trial balances and
   samples; older versions are reachable through the API. The main JS chunk now exceeds
   the 900 kB warning limit because of the added translations.
+
+## Assurance (Phase E)
+
+- Connectors were tested only against mocked HTTP transports. Zoho Books and Odoo field
+  mappings, scopes and data-centre URLs follow public documentation and are
+  **unverified against live accounts**. Each sync pulls a full snapshot (no incremental
+  cursor yet). Rate limiting is per sync, not shared across workers.
+- Three-way match quantities use the amount column type, so they carry a currency code.
+- The synthetic pack's SoD matrix, AP thresholds and expense limits are drafts for the
+  demo only. Mitigating controls for SoD conflicts are recorded as finding decisions.
+- Supplier and employee IBANs in imported datasets are stored in the dataset Parquet
+  as imported (as in Phase A); only findings and evidence mask them.
+- Close periods have no calendar export; flux needs both trial balances in the same
+  account structure.
