@@ -19,6 +19,7 @@ from app.api import (
     bank_recs,
     checklists,
     close_flux,
+    connectors,
     controls,
     datasets,
     documents,
@@ -147,6 +148,7 @@ def create_app() -> FastAPI:
         account_recs,
         close_flux,
         controls,
+        connectors,
     ):
         app.include_router(module.router, prefix="/api")
 

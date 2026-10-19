@@ -112,6 +112,27 @@ class Settings(BaseSettings):
     # (for example the compose "inference" service). Never for a public endpoint.
     ai_allow_insecure_http: bool = False
 
+    # Read-only accounting connectors (Phase E6). Off unless explicitly enabled.
+    connectors_enabled: bool = False
+    zoho_client_id: str = ""
+    zoho_client_secret: str = Field(default="", repr=False)
+    zoho_accounts_url: str = "https://accounts.zoho.com"
+    zoho_api_url: str = "https://www.zohoapis.com/books/v3"
+    # Odoo base URLs must be https and end with one of these host suffixes.
+    odoo_allowed_host_suffixes: str = ".odoo.com"
+    connector_min_interval_ms: int = 500
+    connector_max_retries: int = 3
+    connector_max_pages: int = 200
+    connector_timeout_seconds: int = 30
+
+    @property
+    def odoo_allowed_suffix_list(self) -> list[str]:
+        return [h.strip().lower() for h in self.odoo_allowed_host_suffixes.split(",") if h.strip()]
+
+    @property
+    def zoho_configured(self) -> bool:
+        return bool(self.zoho_client_id and self.zoho_client_secret)
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
@@ -155,6 +176,14 @@ class Settings(BaseSettings):
             problems.append("MAIL_BACKEND=smtp requires SMTP_HOST")
         if not self.app_base_url.startswith("https://"):
             problems.append("APP_BASE_URL must be an https URL in production")
+        if self.connectors_enabled:
+            if bool(self.zoho_client_id) != bool(self.zoho_client_secret):
+                problems.append("ZOHO_CLIENT_ID and ZOHO_CLIENT_SECRET must be set together")
+            for name in ("zoho_accounts_url", "zoho_api_url"):
+                if not getattr(self, name).startswith("https://"):
+                    problems.append(f"{name.upper()} must be an https URL")
+            if not self.odoo_allowed_suffix_list:
+                problems.append("ODOO_ALLOWED_HOST_SUFFIXES must list at least one host suffix")
         if problems:
             raise ConfigError("; ".join(problems))
 

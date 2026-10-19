@@ -403,6 +403,7 @@ class JobKind(str, enum.Enum):
     AI_SUGGEST = "ai_suggest"
     DATASET_PARSE = "dataset_parse"
     DATASET_BUILD = "dataset_build"
+    CONNECTOR_SYNC = "connector_sync"
 
 
 class AIAssessment(str, enum.Enum):
@@ -2837,3 +2838,90 @@ class ControlCertification(SignOffMixin, Base):
     created_at: Mapped[datetime] = _created()
 
     entity: Mapped[LegalEntity] = relationship(lazy="joined")
+
+
+# ---------------------------------------------------------------- connectors (Phase E6)
+
+
+class ConnectorProvider(str, enum.Enum):
+    ZOHO_BOOKS = "zoho_books"
+    ODOO = "odoo"
+
+
+class ConnectorStatus(str, enum.Enum):
+    PENDING = "pending"  # created; not yet authorised or tested
+    CONNECTED = "connected"
+    ERROR = "error"
+    DISCONNECTED = "disconnected"
+
+
+class ConnectorSyncStatus(str, enum.Enum):
+    QUEUED = "queued"
+    SUCCEEDED = "succeeded"
+    UNCHANGED = "unchanged"  # same content as the latest version; nothing new stored
+    FAILED = "failed"
+
+
+class Connector(Base):
+    """A read-only link to an entity's accounting system. Secrets are encrypted at rest."""
+
+    __tablename__ = "connectors"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    entity_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("legal_entities.id", ondelete="CASCADE"), index=True
+    )
+    provider: Mapped[ConnectorProvider] = mapped_column(
+        _enum(ConnectorProvider, "connector_provider")
+    )
+    name: Mapped[str] = mapped_column(String(200))
+    status: Mapped[ConnectorStatus] = mapped_column(
+        _enum(ConnectorStatus, "connector_status"), default=ConnectorStatus.PENDING
+    )
+    scopes: Mapped[list[str]] = mapped_column(JSONType, default=list)
+    # Non-secret settings (Odoo base URL, database and user; Zoho organisation id).
+    config: Mapped[dict[str, Any]] = mapped_column(JSONType, default=dict)
+    # crypto.encrypt_field of a JSON object (tokens or API key); never returned or logged.
+    secret_enc: Mapped[str | None] = mapped_column(Text)
+    oauth_state_hash: Mapped[str | None] = mapped_column(String(64))
+    oauth_verifier_enc: Mapped[str | None] = mapped_column(Text)
+    oauth_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    oauth_started_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    # Dataset id per dataset kind, so each sync adds a version to the same dataset.
+    datasets: Mapped[dict[str, str]] = mapped_column(JSONType, default=dict)
+    last_sync_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_error: Mapped[str] = mapped_column(Text, default="")
+    created_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = _created()
+
+    entity: Mapped[LegalEntity] = relationship(lazy="joined")
+
+
+class ConnectorSync(Base):
+    """One pull of one dataset kind; succeeds with a new dataset version or none."""
+
+    __tablename__ = "connector_syncs"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    connector_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("connectors.id", ondelete="CASCADE"), index=True
+    )
+    kind: Mapped[DatasetKind] = mapped_column(_enum(DatasetKind, "connector_sync_kind"))
+    status: Mapped[ConnectorSyncStatus] = mapped_column(
+        _enum(ConnectorSyncStatus, "connector_sync_status"), default=ConnectorSyncStatus.QUEUED
+    )
+    rows: Mapped[int] = mapped_column(Integer, default=0)
+    sha256: Mapped[str | None] = mapped_column(String(64))
+    dataset_version_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("dataset_versions.id", ondelete="SET NULL")
+    )
+    message: Mapped[str] = mapped_column(Text, default="")
+    requested_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = _created()
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

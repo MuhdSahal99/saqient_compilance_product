@@ -19,6 +19,9 @@ from app.models import (
     CheckOutcome,
     ConfirmationStatus,
     ConfirmationType,
+    ConnectorProvider,
+    ConnectorStatus,
+    ConnectorSyncStatus,
     ControlAutomation,
     ControlConclusion,
     ControlFrequency,
@@ -2697,3 +2700,83 @@ class CertificationOut(BaseModel):
     is_demo: bool
     sign_off: SignOffOut
     versions: list[AssuranceVersionOut]
+
+
+# ---------------------------------------------------------------- connectors (Phase E6)
+
+
+class ConnectorConfigIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    base_url: str = Field(default="", max_length=300)
+    database: str = Field(default="", max_length=200)
+    username: str = Field(default="", max_length=200)
+
+
+class ConnectorIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    entity_id: uuid.UUID
+    provider: ConnectorProvider
+    name: str = Field(min_length=1, max_length=200)
+    config: ConnectorConfigIn | None = None
+    api_key: str | None = Field(
+        default=None, min_length=8, max_length=500, description="Odoo only; stored encrypted."
+    )
+
+
+class ConnectorSyncIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    kind: DatasetKind
+
+
+class ConnectorSyncOut(BaseModel):
+    id: uuid.UUID
+    kind: DatasetKind
+    status: ConnectorSyncStatus
+    rows: int
+    sha256: str | None
+    dataset_version_id: uuid.UUID | None
+    dataset_version_status: str | None
+    message: str
+    requested_by_name: str | None
+    created_at: datetime
+    finished_at: datetime | None
+
+
+class ConnectorOut(BaseModel):
+    id: uuid.UUID
+    entity_id: uuid.UUID
+    entity_name: str
+    provider: ConnectorProvider
+    provider_label: str
+    auth: str
+    name: str
+    status: ConnectorStatus
+    scopes: list[str]
+    config: dict[str, Any] = Field(description="Non-secret settings only.")
+    has_credentials: bool
+    kinds: list[DatasetKind]
+    datasets: dict[str, uuid.UUID]
+    mapping_status: str
+    last_sync_at: datetime | None
+    last_error: str
+    syncs: list[ConnectorSyncOut]
+    created_at: datetime
+
+
+class ConnectorProviderOut(BaseModel):
+    provider: ConnectorProvider
+    label: str
+    auth: str
+    kinds: list[DatasetKind]
+    scopes: list[str]
+    configured: bool
+    mapping_status: str
+
+
+class ConnectorStatusOut(BaseModel):
+    enabled: bool
+    providers: list[ConnectorProviderOut]
+
+
+class AuthorizeOut(BaseModel):
+    url: str
