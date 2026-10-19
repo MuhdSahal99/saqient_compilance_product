@@ -1,0 +1,43 @@
+{
+  "formula": "lead_schedule",
+  "prefix": "syn.audit",
+  "rules": "synthetic: 2 decimals half_up",
+  "cases": [
+    {
+      "name": "movements, change shares and a new schedule",
+      "inputs": [
+        {"key": "lead_a_cy", "category": "current_year", "amount": "150000"},
+        {"key": "lead_a_py", "category": "prior_year", "amount": "120000"},
+        {"key": "lead_b_cy", "category": "current_year", "amount": "-80000"},
+        {"key": "lead_b_py", "category": "prior_year", "amount": "-100000"},
+        {"key": "lead_c_cy", "category": "current_year", "amount": "5000.555"}
+      ],
+      "worked": [
+        "A: 150000 - 120000 = 30000; 30000 / 120000 = 0.25",
+        "B: -80000 - (-100000) = 20000; 20000 / |-100000| = 0.2",
+        "C: 5000.555 rounds half up to 5000.56; no prior year, change not determinable",
+        "net CY 150000 - 80000 + 5000.56 = 75000.56; net PY 120000 - 100000 = 20000"
+      ],
+      "expected": {
+        "lead_a_movement": "30000",
+        "lead_a_change": "0.2500",
+        "lead_b_movement": "20000",
+        "lead_b_change": "0.2000",
+        "lead_c_movement": "5000.56",
+        "lead_c_change": "not_determinable",
+        "total_cy": "75000.56",
+        "total_py": "20000"
+      }
+    },
+    {
+      "name": "balance in the wrong category",
+      "inputs": [{"key": "lead_a_cy", "category": "prior_year", "amount": "1"}],
+      "error": "must be in the current year category"
+    },
+    {
+      "name": "no balances",
+      "inputs": [],
+      "error": "Add lead schedule balances"
+    }
+  ]
+}

@@ -20,6 +20,7 @@ from app.models import (
     EngagementRole,
     EngagementStatus,
     FindingStatus,
+    FsSection,
     JobStatus,
     LineSource,
     LossEntryKind,
@@ -1260,6 +1261,9 @@ class WorkpaperSummaryOut(BaseModel):
     computed_at: datetime | None
     is_demo: bool
     created_at: datetime
+    engagement_id: uuid.UUID | None = None
+    prepared_by_name: str | None = None
+    prepared_at: datetime | None = None
 
 
 class WorkpaperOut(WorkpaperSummaryOut):
@@ -1581,7 +1585,111 @@ class EngagementSummaryOut(BaseModel):
 
 class EngagementOut(EngagementSummaryOut):
     closed_at: datetime | None
+    cy_tb_version_id: uuid.UUID | None
+    py_tb_version_id: uuid.UUID | None
+    rule_pack_version_id: uuid.UUID | None
+    rules_prefix: str | None
     members: list[EngagementMemberOut]
     phases: list[PhaseHoursOut]
     budget_hours: Decimal
     actual_hours: Decimal
+
+
+# ---------------------------------------------------------------- lead schedules (D2)
+
+
+class EngagementSetupIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    cy_tb_version_id: uuid.UUID | None = None
+    py_tb_version_id: uuid.UUID | None = None
+    rule_pack_version_id: uuid.UUID | None = None
+    rules_prefix: str | None = Field(default=None, max_length=80, pattern=PREFIX_PATTERN)
+
+    @model_validator(mode="after")
+    def _pack(self) -> EngagementSetupIn:
+        if (self.rule_pack_version_id is None) != (self.rules_prefix is None):
+            raise ValueError("give both rule_pack_version_id and rules_prefix, or neither")
+        return self
+
+
+LEAD_CODE = r"^[A-Za-z0-9]{1,20}$"
+
+
+class LeadScheduleIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    code: str = Field(pattern=LEAD_CODE)
+    name: str = Field(min_length=1, max_length=200)
+    section: FsSection
+
+
+class LeadSchedulesIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    schedules: list[LeadScheduleIn] = Field(max_length=200)
+
+
+class AccountMappingIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    account_code: str = Field(min_length=1, max_length=80)
+    lead_code: str = Field(pattern=LEAD_CODE)
+
+
+class AccountMappingsIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    mappings: list[AccountMappingIn] = Field(max_length=5000)
+
+
+class TbVersionRef(BaseModel):
+    id: uuid.UUID
+    dataset_name: str
+    version_number: int
+
+
+class LeadAccountOut(BaseModel):
+    account_code: str
+    account_name: str | None
+    cy: Decimal
+    py: Decimal
+    movement: Decimal
+    change_share: Decimal | None
+    cy_row_ids: list[int]
+    py_row_ids: list[int]
+
+
+class LeadLineOut(BaseModel):
+    code: str
+    name: str
+    section: FsSection
+    cy: Decimal
+    py: Decimal
+    movement: Decimal
+    change_share: Decimal | None
+    accounts: list[LeadAccountOut]
+
+
+class LeadReportOut(BaseModel):
+    currency: str
+    current: TbVersionRef | None
+    prior: TbVersionRef | None
+    schedules: list[LeadLineOut]
+    unmapped: list[LeadAccountOut]
+    missing_accounts: list[str]  # mapped but in neither trial balance
+    cy_net: Decimal  # a balanced trial balance nets to zero
+    py_net: Decimal
+
+
+class LeadScheduleOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    code: str
+    name: str
+    section: FsSection
+
+
+class AccountMappingOut(BaseModel):
+    account_code: str
+    lead_code: str
+
+
+class AuditWorkpaperIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    kind: Literal["lead_schedule", "materiality"]
+    title: str = Field(min_length=1, max_length=300)

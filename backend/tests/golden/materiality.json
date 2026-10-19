@@ -1,0 +1,99 @@
+{
+  "formula": "materiality",
+  "prefix": "syn.audit",
+  "rules": "synthetic guidance: PBT 0.04-0.09, revenue 0.004-0.015, performance 0.55-0.8, trivial 0.02-0.06; 2 decimals half_up",
+  "cases": [
+    {
+      "name": "profit before tax, all shares inside guidance",
+      "inputs": [
+        {"key": "benchmark_type", "value": "profit_before_tax"},
+        {"key": "benchmark", "amount": "2000000"},
+        {"key": "overall_pct", "amount": "0.05"},
+        {"key": "performance_pct", "amount": "0.75"},
+        {"key": "trivial_pct", "amount": "0.05"},
+        {"key": "rationale", "value": "Synthetic: profit-oriented owner-managed entity"}
+      ],
+      "worked": [
+        "overall 2000000 x 0.05 = 100000.00",
+        "performance 100000 x 0.75 = 75000.00; trivial 100000 x 0.05 = 5000.00",
+        "0.04 <= 0.05 <= 0.09; 0.55 <= 0.75 <= 0.8; 0.02 <= 0.05 <= 0.06"
+      ],
+      "expected": {
+        "overall": "100000.00",
+        "performance": "75000.00",
+        "trivial": "5000.00",
+        "check:overall": "within",
+        "check:performance": "within",
+        "check:trivial": "within"
+      }
+    },
+    {
+      "name": "revenue, rounding and shares outside guidance",
+      "inputs": [
+        {"key": "benchmark_type", "value": "revenue"},
+        {"key": "benchmark", "amount": "12345678"},
+        {"key": "overall_pct", "amount": "0.02"},
+        {"key": "performance_pct", "amount": "0.6"},
+        {"key": "trivial_pct", "amount": "0.01"},
+        {"key": "rationale", "value": "Synthetic: loss-making, revenue is stable"}
+      ],
+      "worked": [
+        "overall 12345678 x 0.02 = 246913.56",
+        "performance 246913.56 x 0.6 = 148148.136 -> 148148.14",
+        "trivial 246913.56 x 0.01 = 2469.1356 -> 2469.14",
+        "0.02 > 0.015 outside; 0.6 within; 0.01 < 0.02 outside"
+      ],
+      "expected": {
+        "overall": "246913.56",
+        "performance": "148148.14",
+        "trivial": "2469.14",
+        "check:overall": "outside",
+        "check:performance": "within",
+        "check:trivial": "outside"
+      }
+    },
+    {
+      "name": "benchmark with no guidance range",
+      "inputs": [
+        {"key": "benchmark_type", "value": "other"},
+        {"key": "benchmark", "amount": "1000"},
+        {"key": "overall_pct", "amount": "0.1"},
+        {"key": "performance_pct", "amount": "0.5"},
+        {"key": "trivial_pct", "amount": "0.03"},
+        {"key": "rationale", "value": "Synthetic: grant-funded body"}
+      ],
+      "worked": ["overall 100.00; performance 50.00 (0.5 < 0.55 outside); trivial 3.00 within"],
+      "expected": {
+        "overall": "100.00",
+        "performance": "50.00",
+        "trivial": "3.00",
+        "check:overall": "not_determinable",
+        "check:performance": "outside",
+        "check:trivial": "within"
+      }
+    },
+    {
+      "name": "rationale is required",
+      "inputs": [
+        {"key": "benchmark_type", "value": "revenue"},
+        {"key": "benchmark", "amount": "1000"},
+        {"key": "overall_pct", "amount": "0.01"},
+        {"key": "performance_pct", "amount": "0.5"},
+        {"key": "trivial_pct", "amount": "0.05"}
+      ],
+      "error": "Record the rationale"
+    },
+    {
+      "name": "share above one",
+      "inputs": [
+        {"key": "benchmark_type", "value": "revenue"},
+        {"key": "benchmark", "amount": "1000"},
+        {"key": "overall_pct", "amount": "5"},
+        {"key": "performance_pct", "amount": "0.5"},
+        {"key": "trivial_pct", "amount": "0.05"},
+        {"key": "rationale", "value": "x"}
+      ],
+      "error": "must be a share above 0"
+    }
+  ]
+}

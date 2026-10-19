@@ -10,20 +10,38 @@ from fastapi import APIRouter, HTTPException, Query, Response, status
 from sqlalchemy import select
 
 from app.deps import DB, DECIDE_ROLES, Ctx, Decider, Writer, get_owned_or_404
-from app.models import AuditEngagement, EngagementRole, EngagementStatus, LegalEntity, TimeEntry
+from app.models import (
+    AuditEngagement,
+    EngagementRole,
+    EngagementStatus,
+    LegalEntity,
+    TaxWorkpaper,
+    TimeEntry,
+)
 from app.schemas import (
+    AccountMappingOut,
+    AccountMappingsIn,
+    AuditWorkpaperIn,
     EngagementBudgetIn,
     EngagementIn,
     EngagementMemberIn,
     EngagementMemberOut,
     EngagementOut,
+    EngagementSetupIn,
     EngagementStatusIn,
     EngagementSummaryOut,
+    LeadReportOut,
+    LeadScheduleOut,
+    LeadSchedulesIn,
     PhaseHoursOut,
     TimeEntryIn,
     TimeEntryOut,
+    WorkpaperOut,
+    WorkpaperSummaryOut,
 )
 from app.services import engagements as svc
+from app.services import lead_schedules as leads
+from app.services.workpapers import WorkpaperError
 
 router = APIRouter(tags=["audit engagements"])
 
@@ -63,6 +81,10 @@ def engagement_out(db: DB, e: AuditEngagement) -> EngagementOut:
     return EngagementOut(
         **_summary(e),
         closed_at=e.closed_at,
+        cy_tb_version_id=e.cy_tb_version_id,
+        py_tb_version_id=e.py_tb_version_id,
+        rule_pack_version_id=e.rule_pack_version_id,
+        rules_prefix=e.rules_prefix,
         members=[
             EngagementMemberOut(
                 user_id=m.user_id,
@@ -260,3 +282,156 @@ def delete_time(entry_id: uuid.UUID, db: DB, ctx: Writer) -> Response:
         raise bad(exc) from exc
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# ---------------------------------------------------------------- lead schedules (D2)
+
+
+def _guard(fn):  # type: ignore[no-untyped-def]
+    """Map service errors to HTTP errors (404 for ids from other tenants)."""
+    try:
+        return fn()
+    except LookupError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found.") from exc
+    except svc.EngagementError as exc:
+        raise bad(exc) from exc
+    except WorkpaperError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
+
+
+@router.put(
+    "/engagements/{engagement_id}/setup",
+    response_model=EngagementOut,
+    summary="Choose trial balances and the audit rule pack",
+    description=(
+        "Current and prior-year trial balance versions of the engagement's entity, and the "
+        "published rule pack (with key prefix) that audit workpapers read."
+    ),
+)
+def set_up(
+    engagement_id: uuid.UUID, body: EngagementSetupIn, db: DB, ctx: Decider
+) -> EngagementOut:
+    e = get_engagement(db, ctx, engagement_id)
+    _guard(lambda: leads.set_up(db, e, body, ctx.user))
+    db.commit()
+    return engagement_out(db, e)
+
+
+@router.get(
+    "/engagements/{engagement_id}/lead-schedules",
+    response_model=list[LeadScheduleOut],
+    summary="List lead schedules",
+)
+def list_schedules(engagement_id: uuid.UUID, db: DB, ctx: Ctx) -> list[LeadScheduleOut]:
+    e = get_engagement(db, ctx, engagement_id)
+    return [LeadScheduleOut.model_validate(x) for x in leads.schedules(db, e)]
+
+
+@router.put(
+    "/engagements/{engagement_id}/lead-schedules",
+    response_model=list[LeadScheduleOut],
+    summary="Replace the lead schedules",
+    description="Codes are stored upper case. A schedule with mapped accounts cannot be removed.",
+)
+def put_schedules(
+    engagement_id: uuid.UUID, body: LeadSchedulesIn, db: DB, ctx: Writer
+) -> list[LeadScheduleOut]:
+    e = get_engagement(db, ctx, engagement_id)
+    _guard(lambda: leads.replace_schedules(db, e, body, ctx.user))
+    db.commit()
+    return [LeadScheduleOut.model_validate(x) for x in leads.schedules(db, e)]
+
+
+@router.get(
+    "/engagements/{engagement_id}/account-mappings",
+    response_model=list[AccountMappingOut],
+    summary="List account mappings",
+)
+def list_mappings(engagement_id: uuid.UUID, db: DB, ctx: Ctx) -> list[AccountMappingOut]:
+    e = get_engagement(db, ctx, engagement_id)
+    return [AccountMappingOut(account_code=a, lead_code=c) for a, c in leads.mappings(db, e)]
+
+
+@router.put(
+    "/engagements/{engagement_id}/account-mappings",
+    response_model=list[AccountMappingOut],
+    summary="Replace the account mappings",
+    description="Maps trial balance account codes to lead schedule codes.",
+)
+def put_mappings(
+    engagement_id: uuid.UUID, body: AccountMappingsIn, db: DB, ctx: Writer
+) -> list[AccountMappingOut]:
+    e = get_engagement(db, ctx, engagement_id)
+    _guard(lambda: leads.replace_mappings(db, e, body, ctx.user))
+    db.commit()
+    return [AccountMappingOut(account_code=a, lead_code=c) for a, c in leads.mappings(db, e)]
+
+
+@router.get(
+    "/engagements/{engagement_id}/lead-report",
+    response_model=LeadReportOut,
+    summary="Lead schedules with prior-year comparison",
+    description=(
+        "Mapped balances per lead schedule and account, movement and change share, "
+        "unmapped accounts and mapped accounts missing from both trial balances."
+    ),
+)
+def lead_report(engagement_id: uuid.UUID, db: DB, ctx: Ctx) -> LeadReportOut:
+    e = get_engagement(db, ctx, engagement_id)
+    return LeadReportOut.model_validate(_guard(lambda: leads.report(db, e)))
+
+
+@router.get(
+    "/engagements/{engagement_id}/workpapers",
+    response_model=list[WorkpaperSummaryOut],
+    summary="List the engagement's audit workpapers",
+)
+def list_workpapers(engagement_id: uuid.UUID, db: DB, ctx: Ctx) -> list[WorkpaperSummaryOut]:
+    from app.api.workpapers import _summary as wp_summary
+
+    e = get_engagement(db, ctx, engagement_id)
+    rows = db.scalars(
+        select(TaxWorkpaper)
+        .where(TaxWorkpaper.org_id == ctx.org.id, TaxWorkpaper.engagement_id == e.id)
+        .order_by(TaxWorkpaper.created_at)
+    ).unique()
+    return [WorkpaperSummaryOut(**wp_summary(wp)) for wp in rows]
+
+
+@router.post(
+    "/engagements/{engagement_id}/workpapers",
+    response_model=WorkpaperOut,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create an audit workpaper",
+    description=(
+        "Lead schedule workpapers are filled from the lead report and computed; materiality "
+        "workpapers start empty for the team's benchmark, percentages and rationale."
+    ),
+)
+def create_workpaper(
+    engagement_id: uuid.UUID, body: AuditWorkpaperIn, db: DB, ctx: Writer
+) -> WorkpaperOut:
+    from app.api.workpapers import workpaper_out
+
+    e = get_engagement(db, ctx, engagement_id)
+    wp = _guard(lambda: leads.create_workpaper(db, e, body, ctx.user))
+    db.commit()
+    return workpaper_out(db, wp)
+
+
+@router.post(
+    "/workpapers/{workpaper_id}/reload-leads",
+    response_model=WorkpaperOut,
+    summary="Reload a lead schedule workpaper",
+    description="Replaces its balances with the current lead report and computes again.",
+)
+def reload_leads(workpaper_id: uuid.UUID, db: DB, ctx: Writer) -> WorkpaperOut:
+    from app.api.workpapers import workpaper_out
+
+    wp = get_owned_or_404(db, TaxWorkpaper, workpaper_id, ctx.org.id)
+    if wp.engagement_id is None or wp.kind.value != "lead_schedule":
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Not a lead schedule workpaper.")
+    e = get_engagement(db, ctx, wp.engagement_id)
+    _guard(lambda: leads.load_lead_balances(db, e, wp, ctx.user))
+    db.commit()
+    return workpaper_out(db, wp)

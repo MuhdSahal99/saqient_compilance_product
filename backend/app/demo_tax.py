@@ -99,6 +99,33 @@ def wht_rules(p: str = "syn.wht") -> list[dict[str, Any]]:
     ]
 
 
+MATERIALITY_RANGES = {
+    "profit_before_tax": {"low": "0.04", "high": "0.09"},
+    "revenue": {"low": "0.004", "high": "0.015"},
+    "total_assets": {"low": "0.008", "high": "0.018"},
+    "performance": {"low": "0.55", "high": "0.8"},
+    "trivial": {"low": "0.02", "high": "0.06"},
+}
+BENFORD_BANDS = {"close": "0.005", "acceptable": "0.011", "marginal": "0.016"}
+
+
+def audit_rules(p: str = "syn.audit") -> list[dict[str, Any]]:
+    """Synthetic audit guidance: materiality ranges and journal entry test parameters."""
+    return [
+        row(f"{p}.amount_decimals", "integer", 2, "Amount decimals"),
+        row(f"{p}.rounding_mode", "string", "half_up", "Rounding mode"),
+        row(f"{p}.materiality_share_ranges", "json", MATERIALITY_RANGES, "Materiality guidance"),
+        row(f"{p}.weekend_days", "json", [6, 7], "Weekend days (ISO weekday numbers)"),
+        row(f"{p}.holidays", "json", ["2025-03-30", "2025-06-06", "2025-12-02"], "Holidays"),
+        row(f"{p}.round_amount_multiple", "decimal", "5000", "Round amount multiple", "currency"),
+        row(f"{p}.approval_limit", "decimal", "50000", "Journal approval limit", "currency"),
+        row(f"{p}.below_limit_share", "decimal", "0.04", "Just below the limit (share)"),
+        row(f"{p}.min_user_entries", "integer", 3, "Fewest entries for a usual poster"),
+        row(f"{p}.benford_mad_bands", "json", BENFORD_BANDS, "Benford MAD conformity bands"),
+        row(f"{p}.benford_min_population", "integer", 50, "Fewest amounts for Benford"),
+    ]
+
+
 def rules() -> list[dict[str, Any]]:
-    """All synthetic direct-tax rules."""
-    return [*ct_rules(), *p2_rules(), *zakat_rules(), *wht_rules()]
+    """All synthetic direct-tax and audit rules."""
+    return [*ct_rules(), *p2_rules(), *zakat_rules(), *wht_rules(), *audit_rules()]

@@ -13,10 +13,19 @@ any JSON object or array.
 from __future__ import annotations
 
 import json
+from datetime import date
 from decimal import Decimal
 from typing import Annotated, Any, Literal
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    ConfigDict,
+    Field,
+    TypeAdapter,
+    ValidationError,
+    model_validator,
+)
 
 MAX_JSON_BYTES = 64 * 1024
 
@@ -164,6 +173,31 @@ def _bands(v: list[RateBand]) -> list[RateBand]:
     return v
 
 
+class ShareRange(_M):
+    low: Decimal = Field(ge=0, le=1)
+    high: Decimal = Field(ge=0, le=1)
+
+    @model_validator(mode="after")
+    def _order(self) -> ShareRange:
+        if self.high < self.low:
+            raise ValueError("high must not be below low")
+        return self
+
+
+class BenfordBands(_M):
+    """Mean absolute deviation upper bounds; above ``marginal`` is nonconformity."""
+
+    close: Decimal = Field(gt=0, le=1)
+    acceptable: Decimal = Field(gt=0, le=1)
+    marginal: Decimal = Field(gt=0, le=1)
+
+    @model_validator(mode="after")
+    def _order(self) -> BenfordBands:
+        if not self.close < self.acceptable < self.marginal:
+            raise ValueError("bands must increase: close < acceptable < marginal")
+        return self
+
+
 GoLiveWave.model_rebuild()
 BoxLayout.model_rebuild()
 
@@ -185,6 +219,14 @@ FAMILIES: dict[str, TypeAdapter[Any]] = {
     "rate_bands": TypeAdapter(
         Annotated[list[RateBand], Field(min_length=1, max_length=20), AfterValidator(_bands)]
     ),
+    "materiality_share_ranges": TypeAdapter(
+        dict[Annotated[str, Field(pattern=r"^[a-z_]{1,40}$")], ShareRange]
+    ),
+    "weekend_days": TypeAdapter(
+        Annotated[list[Annotated[int, Field(ge=1, le=7)]], Field(max_length=3)]
+    ),
+    "holidays": TypeAdapter(Annotated[list[date], Field(max_length=400)]),
+    "benford_mad_bands": TypeAdapter(BenfordBands),
     "required_fields": TypeAdapter(
         dict[Annotated[str, Field(pattern=r"^([A-Z]{2}|\*)$")], list[Code]]
     ),

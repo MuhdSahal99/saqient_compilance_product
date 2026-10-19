@@ -147,6 +147,12 @@ class WorkpaperKind(str, enum.Enum):
     QFZP_TEST = "qfzp_test"
     PILLAR_TWO = "pillar_two"
     ZAKAT = "zakat"
+    # Audit workpapers (Phase D) belong to an engagement.
+    LEAD_SCHEDULE = "lead_schedule"
+    MATERIALITY = "materiality"
+
+
+AUDIT_WORKPAPER_KINDS = frozenset({WorkpaperKind.LEAD_SCHEDULE, WorkpaperKind.MATERIALITY})
 
 
 class WorkpaperStatus(str, enum.Enum):
@@ -217,6 +223,14 @@ class EngagementStatus(str, enum.Enum):
     COMPLETION = "completion"
     REPORTING = "reporting"
     CLOSED = "closed"
+
+
+class FsSection(str, enum.Enum):
+    ASSET = "asset"
+    LIABILITY = "liability"
+    EQUITY = "equity"
+    INCOME = "income"
+    EXPENSE = "expense"
 
 
 class EngagementRole(str, enum.Enum):
@@ -1493,6 +1507,15 @@ class TaxWorkpaper(Base):
     )
     # Rule keys hang off this prefix, e.g. 'ae.ct'.
     rules_prefix: Mapped[str] = mapped_column(String(80))
+    # Audit workpapers: the engagement, and the preparer step before reviewer sign-off.
+    engagement_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("audit_engagements.id", ondelete="RESTRICT"), index=True
+    )
+    prepared_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    prepared_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    prepared_by: Mapped[User | None] = relationship(foreign_keys=[prepared_by_id], lazy="joined")
     status: Mapped[WorkpaperStatus] = mapped_column(
         _enum(WorkpaperStatus, "workpaper_status"), default=WorkpaperStatus.DRAFT
     )
@@ -1711,6 +1734,17 @@ class AuditEngagement(Base):
     status: Mapped[EngagementStatus] = mapped_column(
         _enum(EngagementStatus, "engagement_status"), default=EngagementStatus.PLANNING
     )
+    # Trial balances for lead schedules (D2) and the audit rule pack (thresholds, rounding).
+    cy_tb_version_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("dataset_versions.id", ondelete="SET NULL")
+    )
+    py_tb_version_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("dataset_versions.id", ondelete="SET NULL")
+    )
+    rule_pack_version_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("rule_pack_versions.id", ondelete="RESTRICT")
+    )
+    rules_prefix: Mapped[str | None] = mapped_column(String(80))
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     is_demo: Mapped[bool] = mapped_column(Boolean, default=False)
     created_by_id: Mapped[uuid.UUID | None] = mapped_column(
@@ -1759,6 +1793,38 @@ class EngagementBudget(Base):
     hours: Mapped[Decimal] = mapped_column(Numeric(10, 2))
 
     engagement: Mapped[AuditEngagement] = relationship(back_populates="budgets")
+
+
+class LeadSchedule(Base):
+    """A financial statement lead schedule (e.g. 'A Cash and bank') of an engagement."""
+
+    __tablename__ = "lead_schedules"
+    __table_args__ = (UniqueConstraint("engagement_id", "code"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    engagement_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("audit_engagements.id", ondelete="CASCADE"), index=True
+    )
+    code: Mapped[str] = mapped_column(String(20))  # stored upper case
+    name: Mapped[str] = mapped_column(String(200))
+    section: Mapped[FsSection] = mapped_column(_enum(FsSection, "fs_section"))
+    ordinal: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class AccountMapping(Base):
+    """Trial balance account → lead schedule, for one engagement."""
+
+    __tablename__ = "account_mappings"
+    __table_args__ = (UniqueConstraint("engagement_id", "account_code"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    engagement_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("audit_engagements.id", ondelete="CASCADE"), index=True
+    )
+    account_code: Mapped[str] = mapped_column(String(80))
+    lead_schedule_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("lead_schedules.id", ondelete="RESTRICT"), index=True
+    )
 
 
 class TimeEntry(Base):
