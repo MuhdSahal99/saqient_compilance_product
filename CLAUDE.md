@@ -19,9 +19,10 @@ Boundaries (non-negotiable):
 - No invented regulations, statutory citations, customers, metrics or results.
 - A text match is not proof of compliance; a missing match is not
   automatically a violation. Automated outcomes are never final decisions.
-- AI inference (Jais, Falcon or any other model) is **disabled by default**.
-  The only AI feature is reviewer-accepted AI suggestions on a review. The core
-  application must work with no external AI API.
+- AI inference (Gemini, Jais, Falcon or any other model) is **disabled by default**.
+  AI features are reviewer-accepted AI suggestions on a review and the multi-agent
+  AI task drafts (docs/MODEL_INTEGRATION.md); every output needs a person's
+  acceptance. The core application must work with no external AI API.
 
 ## Repository structure
 
@@ -32,7 +33,7 @@ backend/        FastAPI app, SQLAlchemy models, Alembic migrations, Celery worke
   app/engine/     deterministic check engine (no AI, no arbitrary regex)
   app/extraction/ PDF / DOCX / TXT text extraction into source blocks
   app/storage/    storage adapters (local default; S3 / GCS optional)
-  app/ai/         provider abstraction (disabled by default) + citation validation
+  app/ai/         provider abstraction (disabled by default), Gemini adapter, agents, citation validation
   tests/          integration tests against PostgreSQL
 frontend/       React + TypeScript + Vite SPA
   src/components/ui/  vendored shadcn/ui-style components
