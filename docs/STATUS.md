@@ -8,6 +8,8 @@ Last updated: 2026-10-21 · Phases A–F are merged into main. Phase G (multi-ag
 
 **Checks executed (2026-10-21):** ruff + format, mypy (139 files), migration 0035 upgrade/downgrade/upgrade and `alembic check` clean, pytest **402 passed, 2 skipped** (Gemini request shape, retries and safe errors against a mocked transport; guards; role and tenant 404 tests for the new endpoints), pnpm lint (0 errors, 8 existing warnings), typecheck, Vitest **68 passed**, build (main chunk 1,008 kB; assistant page lazy), Playwright **9 passed**.
 
+**Dependency exception (owner-approved 2026-10-21):** Pillow 12.3.0 → 13.0.0 (released 2026-10-16) and certifi 2026.7.22 → 2026.10.19 (released 2026-10-20) went in before the 7-day release age, to clear 9 security advisories that failed `pip-audit`; `exclude-newer` moved to 2026-10-21 with only these two packages upgraded.
+
 **Not executed:** any live Gemini call (no key in CI; mocked HTTP transport, mock and scripted providers only).
 
 **Next:** owner adds `GEMINI_API_KEY`, runs `python -m app.ai.smoke`, tries the agents on synthetic data; later Falcon on SageMaker behind the OpenAI-compatible adapter.
