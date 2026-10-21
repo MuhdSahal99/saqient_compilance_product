@@ -1,7 +1,7 @@
 """AI provider abstraction. Disabled by default.
 
-Used only by AI-suggested findings (app/services/ai_suggestions.py), which a
-reviewer must accept before anything becomes a finding.
+Used by AI-suggested findings (app/services/ai_suggestions.py) and the agents in
+app/ai/agents/. Every output is a suggestion a person must accept.
 
 See docs/MODEL_INTEGRATION.md before enabling anything here.
 """
@@ -10,41 +10,29 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass
-from typing import Any, Protocol
+from collections.abc import Callable
+from typing import Any
 from urllib.parse import urlparse
 
-from app.config import ConfigError, Settings
+from app.ai.types import AIDisabledError, AIProviderError, Completion, Provider
+from app.config import AITier, ConfigError, Settings
+
+__all__ = [
+    "AIDisabledError",
+    "AIProviderError",
+    "Completion",
+    "Provider",
+    "get_provider",
+    "MOCK_PREFIX",
+]
 
 MOCK_PREFIX = "[MOCK — not analysis] "
-
-
-class AIDisabledError(RuntimeError):
-    pass
-
-
-class AIProviderError(RuntimeError):
-    pass
-
-
-@dataclass
-class Completion:
-    text: str
-    provider: str
-    model: str
-    model_version: str | None
-
-
-class Provider(Protocol):
-    name: str
-
-    def complete(self, system: str, prompt: str) -> Completion: ...
 
 
 class DisabledProvider:
     name = "disabled"
 
-    def complete(self, system: str, prompt: str) -> Completion:
+    def complete(self, system: str, prompt: str, *, max_tokens: int | None = None) -> Completion:
         raise AIDisabledError("AI is disabled for this deployment.")
 
 
@@ -57,13 +45,21 @@ class MockProvider:
         if settings.app_env not in ("development", "test"):
             raise ConfigError("MockProvider is only available in development or test.")
 
-    def complete(self, system: str, prompt: str) -> Completion:
-        """Return a fixed, labelled answer in the suggestion JSON shape.
+    def complete(self, system: str, prompt: str, *, max_tokens: int | None = None) -> Completion:
+        """Return a fixed, labelled answer.
+
+        Agents name their output schema in the system prompt (``Output schema: x``);
+        a registered mock answer for that schema is used. Otherwise the answer is in
+        the review suggestion shape:
 
         It quotes the first few words of the first numbered block in the prompt,
         so the citation check runs against real stored text. It reads nothing
         else and makes no judgement about the document.
         """
+        schema = _MOCK_SCHEMA.search(system)
+        if schema and schema.group(1) in MOCK_ANSWERS:
+            body: dict[str, Any] = MOCK_ANSWERS[schema.group(1)](prompt)
+            return Completion(json.dumps(body), "mock", "mock", None)
         citations = []
         match = _MOCK_BLOCK.search(prompt)
         if match:
@@ -79,6 +75,9 @@ class MockProvider:
 
 
 _MOCK_BLOCK = re.compile(r"^\[(B\d+)\] (.+)$", re.MULTILINE)
+_MOCK_SCHEMA = re.compile(r"^Output schema: ([a-z_]+)$", re.MULTILINE)
+# Schema name -> function building a labelled mock answer from the prompt.
+MOCK_ANSWERS: dict[str, Callable[[str], dict[str, Any]]] = {}
 
 
 class OpenAICompatibleProvider:
@@ -88,8 +87,11 @@ class OpenAICompatibleProvider:
     actual API before enabling (docs/MODEL_INTEGRATION.md).
     """
 
-    def __init__(self, settings: Settings, name: str = "openai_compatible") -> None:
+    def __init__(
+        self, settings: Settings, name: str = "openai_compatible", tier: AITier = "fast"
+    ) -> None:
         self.name = name
+        self.model = settings.ai_model_for(tier)
         host = (urlparse(settings.ai_base_url).hostname or "").lower()
         if (
             not settings.ai_base_url.startswith("https://")
@@ -119,17 +121,19 @@ class OpenAICompatibleProvider:
             return {"x-goog-api-key": key}
         return {"Authorization": f"Bearer {key}"} if key else {}
 
-    def complete(self, system: str, prompt: str) -> Completion:  # pragma: no cover
+    def complete(
+        self, system: str, prompt: str, *, max_tokens: int | None = None
+    ) -> Completion:  # pragma: no cover
         import httpx
 
         s = self._settings
         payload = {
-            "model": s.ai_model,
+            "model": self.model,
             "messages": [
                 {"role": "system", "content": system},
                 {"role": "user", "content": prompt[: s.ai_max_input_chars]},
             ],
-            "max_tokens": s.ai_max_output_tokens,
+            "max_tokens": max_tokens or s.ai_max_output_tokens,
             "temperature": 0,
         }
         try:
@@ -147,7 +151,7 @@ class OpenAICompatibleProvider:
             text = data["choices"][0]["message"]["content"]
         except Exception as exc:
             raise AIProviderError(f"AI request failed ({type(exc).__name__}).") from exc
-        return Completion(text, self.name, data.get("model", s.ai_model), data.get("id"))
+        return Completion(text, self.name, data.get("model", self.model), data.get("id"))
 
 
 class GoogleToken:
@@ -176,11 +180,19 @@ class GoogleToken:
         return str(self._credentials.token)
 
 
-def get_provider(settings: Settings) -> Provider:
-    """Return the configured provider. Never falls back to another provider."""
+def get_provider(settings: Settings, tier: AITier = "fast") -> Provider:
+    """Return the configured provider for a model tier. Never falls back to another provider.
+
+    ``tier`` picks the model (AI_MODEL_REASONING / AI_MODEL_FAST); the provider is the
+    same for every tier.
+    """
     settings.validate_ai()
     if not settings.ai_enabled or settings.ai_provider == "disabled":
         return DisabledProvider()
     if settings.ai_provider == "mock":
         return MockProvider(settings)
-    return OpenAICompatibleProvider(settings, name=settings.ai_provider)
+    if settings.ai_provider == "gemini":
+        from app.ai.gemini import GeminiProvider
+
+        return GeminiProvider(settings, tier)
+    return OpenAICompatibleProvider(settings, name=settings.ai_provider, tier=tier)
