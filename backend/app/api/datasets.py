@@ -197,6 +197,26 @@ def get_dataset(dataset_id: uuid.UUID, ctx: Ctx, db: DB) -> DatasetDetailOut:
     return _detail(get_owned_or_404(db, Dataset, dataset_id, ctx.org_id))
 
 
+@router.delete(
+    "/datasets/{dataset_id}",
+    status_code=204,
+    summary="Delete an unused dataset",
+    description="Deletes the dataset, all its versions and their stored files, for example after "
+    "a wrong upload. Refused with 409 while any version is used by a review, reconciliation, "
+    "workpaper or other record; upload a corrected version instead. Queued processing is "
+    "cancelled. The audit event keeps the name, type and file hashes.",
+)
+def delete_dataset(dataset_id: uuid.UUID, ctx: Writer, db: DB) -> None:
+    ds = get_owned_or_404(db, Dataset, dataset_id, ctx.org_id)
+    try:
+        keys = svc.delete_dataset(db, ds, ctx.user)
+    except svc.DatasetInUse as exc:
+        db.rollback()
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    db.commit()
+    svc.drop_files(keys)
+
+
 @router.post(
     "/datasets/{dataset_id}/versions",
     status_code=201,
@@ -244,6 +264,24 @@ async def upload_version(
 )
 def get_version(version_id: uuid.UUID, ctx: Ctx, db: DB) -> DatasetVersionDetailOut:
     return _version_detail(db, get_owned_or_404(db, DatasetVersion, version_id, ctx.org_id))
+
+
+@router.delete(
+    "/dataset-versions/{version_id}",
+    status_code=204,
+    summary="Delete an unused dataset version",
+    description="Deletes one version and its stored files. Deleting the only version deletes "
+    "the dataset. Refused with 409 while the version is used anywhere.",
+)
+def delete_version(version_id: uuid.UUID, ctx: Writer, db: DB) -> None:
+    v = get_owned_or_404(db, DatasetVersion, version_id, ctx.org_id)
+    try:
+        keys = svc.delete_version(db, v, ctx.user)
+    except svc.DatasetInUse as exc:
+        db.rollback()
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    db.commit()
+    svc.drop_files(keys)
 
 
 @router.put(

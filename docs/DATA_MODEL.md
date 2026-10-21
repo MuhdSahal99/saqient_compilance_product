@@ -50,7 +50,7 @@ organizations ─┬─ memberships ── users ── user_sessions
 | Table | Key columns | Notes |
 |---|---|---|
 | `datasets` | entity_id, kind (trial_balance, general_ledger, sales_register, purchase_register, bank_statement), name, period_start, period_end | Logical dataset for one legal entity. |
-| `dataset_versions` | dataset_id, version_number, original_filename, file_format (csv/xlsx/mt940/camt053), size_bytes, raw_sha256, raw_storage_key, status, failure_message, source_columns, source_row_count, column_mapping, parse_options, mapping_confirmed_by_id/at, parquet_storage_key, parquet_sha256, row_count, derived_fields, totals, errors, error_count | Status: pending → parsing → needs_mapping → processing → ready / failed. Canonical schemas per kind are in `app/datasets/schemas.py`. Storage keys are never returned by the API. (ADR 0007) |
+| `dataset_versions` | dataset_id, version_number, original_filename, file_format (csv/xlsx/mt940/camt053), size_bytes, raw_sha256, raw_storage_key, status, failure_message, source_columns, source_row_count, column_mapping, parse_options, mapping_confirmed_by_id/at, parquet_storage_key, parquet_sha256, row_count, derived_fields, totals, errors, error_count | Status: pending → parsing → needs_mapping → processing → ready / failed. Canonical schemas per kind are in `app/datasets/schemas.py`. Storage keys are never returned by the API. An unused dataset or version can be deleted (rows and files; the audit event keeps name, kind and hashes); anything referenced by a foreign key or by JSON evidence is refused with 409. (ADR 0007) |
 
 ## E-invoicing, VAT and tax calendar (Phase B)
 
