@@ -180,3 +180,14 @@ Features listed here are either absent or deliberately labelled in the UI.
 - AI suggestions were tested with the mock provider only. Opting in does not choose a
   provider; the deployment does.
 - The main JS chunk is now 1,010 kB (translations load eagerly); the packs page is lazy.
+- AI agents (Phase G) were tested with the mock provider, scripted providers and a
+  mocked Gemini HTTP transport only. No live Gemini call was made in CI; answer quality,
+  Arabic quality and citation pass rates on real documents are unknown.
+- The contract scan reads the document in order up to `AI_MAX_INPUT_CHARS`; longer
+  contracts are only partly read (a warning says so).
+- Q&A retrieval is word overlap over verified rules and requirements (the router adds
+  English search terms for Arabic questions); there is no semantic search yet.
+- The number check ignores whole numbers up to 12 (list positions, months) and cannot
+  tell a correct calculation from a wrong one; it only flags numbers absent from the input.
+- Gemini's free tier may use prompts to improve Google's products; use it with synthetic
+  data only.

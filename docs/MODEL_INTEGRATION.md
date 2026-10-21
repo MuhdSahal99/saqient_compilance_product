@@ -1,10 +1,53 @@
 # Model integration (off by default)
 
-AI is **off** by default. One feature can use a model when an administrator
-turns it on: **AI suggestions** on a review. Nothing else calls a model, and the
+AI is **off** by default. When an administrator turns it on, two features can use a
+model: **AI suggestions** on a review, and the **multi-agent AI tasks** below. The
 whole application works with no model at all.
 
-## AI suggestions (the only AI feature)
+## Gemini (recommended for now)
+
+```
+AI_ENABLED=true
+AI_PROVIDER=gemini
+GEMINI_API_KEY=<your key from Google AI Studio>      # never commit it
+# optional: AI_MODEL_REASONING=gemini-3.8-flash  AI_MODEL_FAST=gemini-3.5-flash-lite
+```
+
+Then restart (`docker compose up -d`), sign in as an org admin, and turn AI on under
+Settings. Defaults (checked 2026-10-21 on ai.google.dev): `gemini-3.8-flash` for the
+reasoning tier and `gemini-3.5-flash-lite` for the fast tier; both are stable, have a
+free tier and have no announced shutdown. `gemini-4-argon` is the flagship but paid
+only. Model names change; check the Gemini models and deprecations pages when you
+upgrade.
+
+**Free tier warning.** On Gemini's free tier Google may use prompts and responses to
+improve its products. Use the free tier with synthetic/demo data only. Real client
+documents need a paid (billing-enabled) key and a review of where data is processed,
+or a self-hosted model (Falcon/Jais below).
+
+Smoke test after setting the key (one synthetic call per tier, no organisation data):
+
+```
+docker compose exec api python -m app.ai.smoke
+```
+
+## Multi-agent AI tasks
+
+Each task runs as a background job through several agents (`app/ai/agents/`):
+
+| Task | Agents (tier) | Grounding |
+|---|---|---|
+| Contract VAT and related-party scan (document) | contract analyst (reasoning) → checking agent (fast) | Every item needs a quote that matches stored block text; cues from a fixed list |
+| Plain-language explanation (finding) | finding explainer (fast) → checking agent | Only the finding and its evidence; English and Arabic; stray numbers flagged |
+| Letter wording (letter point) | letter drafter (reasoning) → checking agent | Confirmed findings only; stray numbers flagged |
+| Question on verified content | router (fast) → answerer (reasoning) → checking agent | Only verified rules and verified-source requirements; ids checked; refuses when nothing verified fits |
+
+After each agent the app checks quotes, cited ids and numbers deterministically; the
+checking agent then reads the draft against the evidence. Every task records each
+agent call (agent, tier, model, model version, tokens, duration). A reviewer accepts or
+dismisses each draft; accepting letter wording copies it into the letter point.
+
+## AI suggestions on a review
 
 1. A writer (analyst, reviewer or admin) clicks *Get AI suggestions* on a review.
 2. An `ai_suggest` background job sends one request per checklist requirement:
@@ -52,7 +95,7 @@ by default, and `available_features: ["review_suggestions"]` when a provider is 
 
 ```
 AI_ENABLED=false
-AI_PROVIDER=disabled          # disabled | mock | openai_compatible | jais | falcon
+AI_PROVIDER=disabled          # disabled | mock | gemini | openai_compatible | jais | falcon
 AI_BASE_URL=
 AI_MODEL=
 AI_API_KEY=                   # backend only, never sent to the browser
@@ -63,7 +106,15 @@ AI_MAX_OUTPUT_TOKENS=800
 AI_ALLOWED_HOSTS=             # comma-separated hostnames an admin approved
 AI_ALLOW_INSECURE_HTTP=false  # http only to an allowlisted host on a private network
 AI_SERVING_INTERFACE_VERIFIED=false
+AI_MODEL_REASONING=           # agent tiers; empty = AI_MODEL (or the Gemini defaults)
+AI_MODEL_FAST=
+AI_MAX_RETRIES=2
+GEMINI_API_KEY=               # AI_PROVIDER=gemini; AI_API_KEY also accepted
 ```
+
+Groq and OpenRouter use `AI_PROVIDER=openai_compatible` with their base URL in
+`AI_BASE_URL` and host in `AI_ALLOWED_HOSTS`. Falcon on SageMaker can use the same
+adapter behind an OpenAI-compatible gateway once its serving API is verified.
 
 Rules: no user-supplied URLs; no automatic fallback to another provider; AI
 failure never breaks deterministic review; sending document text externally

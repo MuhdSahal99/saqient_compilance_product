@@ -1,6 +1,18 @@
 # Status
 
-Last updated: 2026-10-19 · Phase A is merged into main. Phases B (PR #7), C (PR #8) and D (PR #9) await review. Phase E (PR #10, CI green) awaits review. Phase F (sector packs) is complete on `feat/phase-f-sector-packs`, stacked on Phase E.
+Last updated: 2026-10-21 · Phases A–F are merged into main. Phase G (multi-agent AI, Gemini) is on `feat/phase-g-ai-agents`.
+
+## Phase G — multi-agent AI layer (Gemini first)
+
+**Done:** `AI_PROVIDER=gemini` adapter (`generateContent`, key header only, JSON mode, bounded retry); reasoning and fast model tiers (`AI_MODEL_REASONING` / `AI_MODEL_FAST`, Gemini defaults `gemini-3.8-flash` / `gemini-3.5-flash-lite`); six agents (contract analyst, finding explainer, letter drafter, router, verified-content answerer, checking agent) with strict JSON outputs; pipelines with deterministic guards (quote validation, id checks, number grounding) and a checking agent; `ai_tasks` + `ai_task_steps` (model and version per step); accept/dismiss with audit, accepted letter wording copied into the letter point; AI assistant page, Explain on findings, Draft wording on letter points, Contract scan on documents, en/ar; `python -m app.ai.smoke`. ADR 0015. Migration 0035.
+
+**Checks executed (2026-10-21):** ruff + format, mypy (139 files), migration 0035 upgrade/downgrade/upgrade and `alembic check` clean, pytest **402 passed, 2 skipped** (Gemini request shape, retries and safe errors against a mocked transport; guards; role and tenant 404 tests for the new endpoints), pnpm lint (0 errors, 8 existing warnings), typecheck, Vitest **68 passed**, build (main chunk 1,008 kB; assistant page lazy), Playwright **9 passed**.
+
+**Dependency exception (owner-approved 2026-10-21):** Pillow 12.3.0 → 13.0.0 (released 2026-10-16) and certifi 2026.7.22 → 2026.10.19 (released 2026-10-20) went in before the 7-day release age, to clear 9 security advisories that failed `pip-audit`; `exclude-newer` moved to 2026-10-21 with only these two packages upgraded.
+
+**Not executed:** any live Gemini call (no key in CI; mocked HTTP transport, mock and scripted providers only).
+
+**Next:** owner adds `GEMINI_API_KEY`, runs `python -m app.ai.smoke`, tries the agents on synthetic data; later Falcon on SageMaker behind the OpenAI-compatible adapter.
 
 ## Phase F — sector content packs
 

@@ -52,7 +52,7 @@ dev = [
 package = false
 # Supply-chain protection: only resolve releases published at least 7 days
 # before this date. Move the date forward deliberately when upgrading.
-exclude-newer = "2026-10-05T00:00:00Z"
+exclude-newer = "2026-10-21T00:00:00Z"
 
 [tool.ruff]
 line-length = 100

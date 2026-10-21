@@ -46,6 +46,7 @@ from app.db import get_engine
 
 # Register job handlers for the API process too (eager mode uses them).
 from app.services import ai_suggestions as _ai_jobs  # noqa: F401
+from app.services import ai_tasks as _ai_tasks  # noqa: F401
 from app.services import datasets as _dataset_jobs  # noqa: F401
 from app.services import documents as _doc_jobs  # noqa: F401
 from app.services import reviews as _review_jobs  # noqa: F401

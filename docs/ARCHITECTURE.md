@@ -29,8 +29,11 @@ FastAPI (uvicorn) ── PostgreSQL 16  (all state, tenant rows carry org_id)
 - **AI**: `app/ai/__init__.py` — `DisabledProvider` (default), `MockProvider`
   (dev/test only, output labelled mock), `OpenAICompatibleProvider` (host
   allowlist; API key, Google Cloud token for Vertex AI, or Google API key).
-  Used only by reviewer-accepted AI suggestions on a review
+  Used by reviewer-accepted AI suggestions on a review
   (`services/ai_suggestions.py`); every quote passes `app/ai/citations.py`.
+  Multi-agent AI tasks (`services/ai_tasks.py`, agents in `app/ai/agents/`, Gemini
+  adapter in `app/ai/gemini.py`) run as `ai_agent` jobs with deterministic guards after
+  every agent; outputs are drafts a reviewer accepts (ADR 0015).
 
 ## Authentication and sessions
 

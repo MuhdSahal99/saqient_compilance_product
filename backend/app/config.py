@@ -10,7 +10,18 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 INSECURE_SECRET = "change-me-in-production"  # noqa: S105 - sentinel, rejected in production
 
-AIProviderName = Literal["disabled", "mock", "openai_compatible", "jais", "falcon"]
+AIProviderName = Literal["disabled", "mock", "openai_compatible", "gemini", "jais", "falcon"]
+AITier = Literal["reasoning", "fast"]
+
+GEMINI_HOST = "generativelanguage.googleapis.com"
+
+
+# Stable Gemini models with a free tier and no announced shutdown (checked 2026-10-21).
+# Override with AI_MODEL_REASONING / AI_MODEL_FAST, e.g. gemini-4-argon (paid only).
+GEMINI_DEFAULT_MODELS: dict[str, str] = {
+    "reasoning": "gemini-3.8-flash",
+    "fast": "gemini-3.5-flash-lite",
+}
 
 
 class ConfigError(RuntimeError):
@@ -111,6 +122,14 @@ class Settings(BaseSettings):
     # Plain http to an allowlisted host, for a model server on a private network only
     # (for example the compose "inference" service). Never for a public endpoint.
     ai_allow_insecure_http: bool = False
+    # Model tiers for the agents (docs/MODEL_INTEGRATION.md). Empty means AI_MODEL.
+    # With AI_PROVIDER=gemini they default to the Gemini models below.
+    ai_model_reasoning: str = ""
+    ai_model_fast: str = ""
+    # Gemini Developer API key. Used when AI_PROVIDER=gemini; AI_API_KEY also works.
+    gemini_api_key: str = Field(default="", repr=False)
+    gemini_base_url: str = f"https://{GEMINI_HOST}/v1beta"
+    ai_max_retries: int = 2
 
     # Read-only accounting connectors (Phase E6). Off unless explicitly enabled.
     connectors_enabled: bool = False
@@ -140,6 +159,19 @@ class Settings(BaseSettings):
     @property
     def ai_allowed_host_list(self) -> list[str]:
         return [h.strip().lower() for h in self.ai_allowed_hosts.split(",") if h.strip()]
+
+    def ai_model_for(self, tier: AITier) -> str:
+        """The model an agent of this tier uses. Never empty for an enabled provider."""
+        chosen = self.ai_model_reasoning if tier == "reasoning" else self.ai_model_fast
+        if chosen:
+            return chosen
+        if self.ai_provider == "gemini":
+            return self.ai_model or GEMINI_DEFAULT_MODELS[tier]
+        return self.ai_model
+
+    @property
+    def gemini_key(self) -> str:
+        return self.gemini_api_key or self.ai_api_key
 
     @property
     def max_upload_bytes(self) -> int:
@@ -197,6 +229,11 @@ class Settings(BaseSettings):
                 f"AI_PROVIDER={self.ai_provider} requires AI_SERVING_INTERFACE_VERIFIED=true "
                 "after the serving API has been verified (docs/MODEL_INTEGRATION.md)"
             )
+        if self.ai_provider == "gemini":
+            if not self.gemini_key:
+                raise ConfigError("AI_PROVIDER=gemini requires GEMINI_API_KEY")
+            if not self.gemini_base_url.startswith(f"https://{GEMINI_HOST}/"):
+                raise ConfigError(f"GEMINI_BASE_URL must be on https://{GEMINI_HOST}/")
 
 
 @lru_cache

@@ -411,6 +411,7 @@ class JobKind(str, enum.Enum):
     DATASET_PARSE = "dataset_parse"
     DATASET_BUILD = "dataset_build"
     CONNECTOR_SYNC = "connector_sync"
+    AI_AGENT = "ai_agent"
 
 
 class AIAssessment(str, enum.Enum):
@@ -426,6 +427,23 @@ class AISuggestionStatus(str, enum.Enum):
     PENDING = "pending"
     ACCEPTED = "accepted"
     REJECTED = "rejected"
+
+
+class AITaskKind(str, enum.Enum):
+    """What a multi-agent AI task produces (app/ai/agents). Always a draft for a person."""
+
+    CONTRACT_TAX = "contract_tax"
+    FINDING_EXPLAIN = "finding_explain"
+    LETTER_DRAFT = "letter_draft"
+    PACK_QA = "pack_qa"
+
+
+class AITaskStatus(str, enum.Enum):
+    RUNNING = "running"
+    READY = "ready"  # output waiting for a person
+    FAILED = "failed"
+    ACCEPTED = "accepted"
+    DISMISSED = "dismissed"
 
 
 class JobStatus(str, enum.Enum):
@@ -1541,6 +1559,77 @@ class AISuggestion(Base):
     run: Mapped[AISuggestionRun] = relationship(lazy="joined")
     requirement: Mapped[Requirement] = relationship(lazy="joined")
     decided_by: Mapped[User | None] = relationship(lazy="joined")
+
+
+class AITask(Base):
+    """One multi-agent AI request: what was asked, which agents ran, and the draft output.
+
+    The output is a suggestion. Nothing changes elsewhere until a person accepts it.
+    Prompts and document text are not stored here; only the validated output is.
+    """
+
+    __tablename__ = "ai_tasks"
+    __table_args__ = (Index("ix_ai_tasks_subject", "org_id", "subject_type", "subject_id"),)
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    kind: Mapped[AITaskKind] = mapped_column(_enum(AITaskKind, "ai_task_kind"))
+    # "document_version" | "finding" | "letter_point" | "organization"
+    subject_type: Mapped[str] = mapped_column(String(40))
+    subject_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    question: Mapped[str] = mapped_column(Text, default="")
+    language: Mapped[str] = mapped_column(String(8), default="en")
+    status: Mapped[AITaskStatus] = mapped_column(
+        _enum(AITaskStatus, "ai_task_status"), default=AITaskStatus.RUNNING
+    )
+    job_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("jobs.id"))
+    requested_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    provider: Mapped[str] = mapped_column(String(40))
+    prompt_version: Mapped[str] = mapped_column(String(40))
+    output: Mapped[dict[str, Any]] = mapped_column(JSONType, default=dict)
+    warnings: Mapped[list[str]] = mapped_column(JSONType, default=list)
+    error: Mapped[str] = mapped_column(Text, default="")
+    decided_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    decision_note: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = _created()
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    job: Mapped[Job] = relationship(lazy="joined")
+    requested_by: Mapped[User | None] = relationship(foreign_keys=[requested_by_id], lazy="joined")
+    decided_by: Mapped[User | None] = relationship(foreign_keys=[decided_by_id], lazy="joined")
+    steps: Mapped[list[AITaskStep]] = relationship(
+        back_populates="task", order_by="AITaskStep.ordinal", cascade="all, delete-orphan"
+    )
+
+
+class AITaskStep(Base):
+    """One agent call within a task: agent, model tier, model and version, tokens, outcome."""
+
+    __tablename__ = "ai_task_steps"
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    org_id: Mapped[uuid.UUID] = _org_fk()
+    task_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("ai_tasks.id", ondelete="CASCADE"), index=True
+    )
+    ordinal: Mapped[int] = mapped_column(Integer)
+    agent: Mapped[str] = mapped_column(String(40))
+    tier: Mapped[str] = mapped_column(String(20))
+    provider: Mapped[str] = mapped_column(String(40))
+    model: Mapped[str] = mapped_column(String(200), default="")
+    model_version: Mapped[str] = mapped_column(String(200), default="")
+    # "ok" | "invalid_output" | "provider_error"
+    status: Mapped[str] = mapped_column(String(20))
+    duration_ms: Mapped[int] = mapped_column(Integer, default=0)
+    input_tokens: Mapped[int | None] = mapped_column(Integer)
+    output_tokens: Mapped[int | None] = mapped_column(Integer)
+    note: Mapped[str] = mapped_column(String(300), default="")
+    created_at: Mapped[datetime] = _created()
+
+    task: Mapped[AITask] = relationship(back_populates="steps")
 
 
 class Comment(Base):

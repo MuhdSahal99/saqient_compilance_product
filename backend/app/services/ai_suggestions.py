@@ -162,7 +162,7 @@ def request_suggestions(db: Session, review: Review, actor: User) -> Job:
         job_id=job.id,
         requested_by_id=actor.id,
         provider=s.ai_provider,
-        model=s.ai_model or s.ai_provider,
+        model=s.ai_model_for("fast") or s.ai_provider,
         prompt_version=PROMPT_VERSION,
         document_version_id=review.document_version_id,
         checklist_version_id=review.checklist_version_id,
@@ -322,7 +322,7 @@ def execute_suggestions(db: Session, job: Job, checkpoint: Checkpoint) -> None:
         raise PermanentJobError("The AI suggestion request no longer exists.")
     s = get_settings()
     try:
-        provider = ai.get_provider(s)
+        provider = ai.get_provider(s, "fast")
     except Exception as exc:
         raise PermanentJobError("AI is not configured correctly for this deployment.") from exc
     if provider.name == "disabled" or provider.name != run.provider:

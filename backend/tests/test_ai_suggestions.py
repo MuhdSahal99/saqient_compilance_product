@@ -27,7 +27,7 @@ def mock_ai(monkeypatch: pytest.MonkeyPatch, tenant_a: Tenant, db) -> None:  # t
 
 
 def _use_provider(monkeypatch: pytest.MonkeyPatch, provider: object) -> None:
-    monkeypatch.setattr(ai_suggestions.ai, "get_provider", lambda settings: provider)
+    monkeypatch.setattr(ai_suggestions.ai, "get_provider", lambda settings, tier="fast": provider)
 
 
 def _request(client: ApiClient, review_id: str) -> dict:  # type: ignore[type-arg]
@@ -53,7 +53,7 @@ def test_mock_suggestions_are_labelled_and_cite_stored_text(
 ) -> None:
     client = login(tenant_a.users[Role.ANALYST])
     status = client.get("/api/ai/status").json()
-    assert status["available_features"] == ["review_suggestions"] and status["is_mock"] is True
+    assert status["available_features"][0] == "review_suggestions" and status["is_mock"] is True
 
     review = start_review(client, tenant_a)
     data = _request(client, review["id"])

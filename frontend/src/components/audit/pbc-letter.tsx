@@ -20,6 +20,7 @@ import { Input, Select, Textarea } from "@/components/ui/input";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { ConfirmDialog, EmptyState, ErrorState, FindingStatusBadge, LoadingState, SeverityBadge } from "@/components/common";
 import { Field, MutationError, PbcStatusBadge } from "./shared";
+import { AIAssist } from "@/components/ai-task";
 
 // ---------------------------------------------------------------- PBC (staff)
 
@@ -417,6 +418,7 @@ export function LetterTab({ e }: { e: Engagement }) {
                       {t("engagements.letter.evidence")}: {p.evidence_refs.join("; ")}
                     </p>
                   )}
+                  {e.status !== "closed" && <AIAssist kind="letter_draft" subjectId={p.id} />}
                 </div>
                 {editable && (
                   <Button variant="ghost" size="icon-sm" aria-label={t("workpapers.editNamed", { name: p.finding_title })} onClick={() => setEditing(p)}>

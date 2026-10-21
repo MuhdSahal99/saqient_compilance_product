@@ -47,6 +47,7 @@ import {
 } from "@/components/common";
 import { DOCUMENT_TYPES, FileTypeTile, UploadDialog } from "@/components/upload-dialog";
 import { evidenceLocation } from "@/lib/evidence";
+import { AIAssist } from "@/components/ai-task";
 
 const metaSchema = z.object({
   title: z.string().trim().min(1).max(300),
@@ -375,6 +376,9 @@ export function DocumentDetailPage() {
           )}
         </div>
         <div className="space-y-6">
+          {latest?.status === "ready" && (
+            <AIAssist kind="contract_tax" subjectId={latest.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-xs" />
+          )}
           <Card>
             <CardHeader className="flex-row items-center justify-between">
               <CardTitle>{t("documents.versions")}</CardTitle>
