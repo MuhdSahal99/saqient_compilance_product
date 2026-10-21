@@ -52,6 +52,9 @@ const ConnectorsPage = lazy(() => import("@/pages/ConnectorsPage").then((m) => (
 const ContentPacksPage = lazy(() => import("@/pages/ContentPacksPage").then((m) => ({ default: m.ContentPacksPage })));
 const ContentPackDetailPage = lazy(() => import("@/pages/ContentPacksPage").then((m) => ({ default: m.ContentPackDetailPage })));
 
+/** Phase G AI assistant (multi-agent tasks), loaded on first visit. */
+const AIAssistantPage = lazy(() => import("@/pages/AIAssistantPage").then((m) => ({ default: m.AIAssistantPage })));
+
 function Lazy({ children }: { children: ReactNode }) {
   return <Suspense fallback={<LoadingState />}>{children}</Suspense>;
 }
@@ -141,6 +144,7 @@ export const routes = [
               { path: "/connectors", element: <Lazy><ConnectorsPage /></Lazy> },
               { path: "/portal", element: <PortalPage /> },
               { path: "/reports", element: <ReportsPage /> },
+              { path: "/ai", element: <Lazy><AIAssistantPage /></Lazy> },
               { path: "/activity", element: <ActivityPage /> },
               { path: "/settings", element: <SettingsPage /> },
               { path: "*", element: <NotFoundPage /> },

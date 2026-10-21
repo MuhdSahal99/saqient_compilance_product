@@ -30,6 +30,7 @@ import { FieldError, Input, Label, Select, Textarea } from "@/components/ui/inpu
 import { errorMessage, FindingStatusBadge, OutcomeBadge, SeverityBadge, useUnsavedChangesWarning } from "./common";
 import { EvidenceItem } from "./evidence";
 import { evidenceKey } from "@/lib/evidence";
+import { AIAssist } from "@/components/ai-task";
 import { MockNotice } from "./ai-suggestions";
 
 const DECIDABLE = new Set(["proposed", "in_review", "confirmed", "dismissed", "accepted_risk"]);
@@ -383,6 +384,7 @@ export function FindingPanel({ finding, onLocate }: { finding: Finding; onLocate
           <span className="font-medium">{t("findings.remediationNotes")}:</span> {finding.remediation_notes}
         </p>
       )}
+      <AIAssist kind="finding_explain" subjectId={finding.id} />
       <Comments finding={finding} canWrite={can("write")} />
       <FindingActivity findingId={finding.id} />
     </div>

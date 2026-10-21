@@ -3,6 +3,7 @@ import { Link, Navigate, NavLink, Outlet, useLocation, useNavigate } from "react
 import { useTranslation } from "react-i18next";
 import { useQuery } from "@tanstack/react-query";
 import {
+  Sparkles,
   Activity,
   BriefcaseBusiness,
   Building,
@@ -64,6 +65,7 @@ type NavKey =
   | "directTax"
   | "rulePacks"
   | "contentPacks"
+  | "aiAssistant"
   | "findings"
   | "tasks"
   | "taxCalendar"
@@ -122,6 +124,7 @@ const NAV_GROUPS: NavGroup[] = [
       { to: "/tasks", key: "tasks", icon: SquareCheckBig },
       { to: "/tax-calendar", key: "taxCalendar", icon: CalendarClock },
       { to: "/reports", key: "reports", icon: FileText },
+      { to: "/ai", key: "aiAssistant", icon: Sparkles },
     ],
   },
   {

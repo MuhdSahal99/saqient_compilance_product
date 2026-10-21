@@ -41,7 +41,8 @@
     "close": "Close",
     "controls": "Controls",
     "connectors": "Connectors",
-    "contentPacks": "Content packs"
+    "contentPacks": "Content packs",
+    "aiAssistant": "AI assistant"
   },
   "common": {
     "breadcrumbs": "Breadcrumbs",
@@ -2556,5 +2557,98 @@
   },
   "packJurisdiction": {
     "generic": "Generic (no jurisdiction)"
+  },
+  "agents": {
+    "title": "AI assistant",
+    "description": "Agents that draft explanations, letter wording, contract notes and answers from verified content. Every result is a draft for a person to accept or dismiss.",
+    "explainer": "Several agents work on each request: a specialist drafts, the app checks quotes, cited ids and numbers against the stored evidence, and a checking agent reads the draft against that evidence. Nothing changes until a reviewer accepts it. AI output is not legal advice and not a compliance decision.",
+    "offTitle": "AI is not turned on",
+    "offHint": "The deployment needs an AI provider and an organisation admin must opt in under Settings. Everything else in the app works without AI.",
+    "draftLabel": "AI draft — needs human review",
+    "unchecked": "Not confirmed by the checking agent",
+    "working": "The agents are working…",
+    "failed": "The AI task failed: {{error}}",
+    "requestedBy": "Requested by {{name}} · {{date}}",
+    "decidedBy": "Decided by {{name}} · {{date}}",
+    "stepsSummary_one": "{{count}} agent step · {{models}}",
+    "stepsSummary_other": "{{count}} agent steps · {{models}}",
+    "duration": "{{ms}} ms",
+    "note": "Note (optional)",
+    "accept": "Accept",
+    "useWording": "Use this wording",
+    "dismiss": "Dismiss",
+    "acceptedToast": "AI draft accepted",
+    "dismissedToast": "AI draft dismissed",
+    "runAgain": "Run again",
+    "history": "Recent AI tasks",
+    "filter": "Filter by task",
+    "allKinds": "All tasks",
+    "emptyTitle": "No AI tasks yet",
+    "emptyHint": "Ask a question above, or use Explain on a finding, Draft wording on a letter point, or Contract scan on a document.",
+    "agentsTitle": "Agents and models",
+    "agentsHint": "Reasoning agents use the larger model; fast agents use the lighter one.",
+    "agentColumn": "Agent",
+    "modelColumn": "Model",
+    "kind": {
+      "contract_tax": "Contract VAT and related-party scan",
+      "finding_explain": "Plain-language explanation",
+      "letter_draft": "Letter wording draft",
+      "pack_qa": "Question on verified content"
+    },
+    "run": {
+      "contract_tax": "Scan contract",
+      "finding_explain": "Explain",
+      "letter_draft": "Draft wording"
+    },
+    "status": {
+      "running": "Running",
+      "ready": "Waiting for review",
+      "failed": "Failed",
+      "accepted": "Accepted",
+      "dismissed": "Dismissed"
+    },
+    "tier": {
+      "reasoning": "Reasoning model",
+      "fast": "Fast model"
+    },
+    "agent": {
+      "contract_tax": "Contract analyst",
+      "finding_explainer": "Finding explainer",
+      "letter_drafter": "Letter drafter",
+      "router": "Router",
+      "pack_qa": "Verified-content answerer",
+      "critic": "Checking agent"
+    },
+    "stepStatus": {
+      "ok": "answered",
+      "invalid_output": "unreadable answer",
+      "provider_error": "provider error"
+    },
+    "contract": {
+      "none": "No passages were flagged with a verifiable quote.",
+      "question": "Question for the reviewer",
+      "topic": {
+        "vat_treatment": "VAT treatment",
+        "related_party": "Related party"
+      }
+    },
+    "letter": {
+      "implication": "Possible implication",
+      "recommendation": "Recommendation"
+    },
+    "qa": {
+      "label": "Ask about your verified rules and checklists",
+      "placeholder": "For example: which filing deadline applies to monthly VAT returns?",
+      "hint": "Answers use only rules and requirements your organisation has verified. If nothing verified covers the question, the assistant says so.",
+      "language": "Answer language",
+      "ask": "Ask",
+      "question": "Question",
+      "insufficient": "The verified content does not cover this question.",
+      "sources": "Verified sources used",
+      "sourceType": {
+        "rule": "Verified rule",
+        "requirement": "Verified requirement"
+      }
+    }
   }
 }
