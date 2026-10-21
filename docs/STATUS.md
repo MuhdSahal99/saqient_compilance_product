@@ -6,7 +6,7 @@ Last updated: 2026-10-21 · Phases A–F are merged into main. Phase G (multi-ag
 
 **Done:** `AI_PROVIDER=gemini` adapter (`generateContent`, key header only, JSON mode, bounded retry); reasoning and fast model tiers (`AI_MODEL_REASONING` / `AI_MODEL_FAST`, Gemini defaults `gemini-3.8-flash` / `gemini-3.5-flash-lite`); six agents (contract analyst, finding explainer, letter drafter, router, verified-content answerer, checking agent) with strict JSON outputs; pipelines with deterministic guards (quote validation, id checks, number grounding) and a checking agent; `ai_tasks` + `ai_task_steps` (model and version per step); accept/dismiss with audit, accepted letter wording copied into the letter point; AI assistant page, Explain on findings, Draft wording on letter points, Contract scan on documents, en/ar; `python -m app.ai.smoke`. ADR 0015. Migration 0035.
 
-**Checks executed (2026-10-21):** ruff + format, mypy (139 files), migration 0035 upgrade/downgrade/upgrade and `alembic check` clean, pytest (see PR), pnpm lint (0 errors, 8 existing warnings), typecheck, Vitest **68 passed**, build (main chunk 1,008 kB; assistant page lazy), Playwright **9 passed**.
+**Checks executed (2026-10-21):** ruff + format, mypy (139 files), migration 0035 upgrade/downgrade/upgrade and `alembic check` clean, pytest **402 passed, 2 skipped** (Gemini request shape, retries and safe errors against a mocked transport; guards; role and tenant 404 tests for the new endpoints), pnpm lint (0 errors, 8 existing warnings), typecheck, Vitest **68 passed**, build (main chunk 1,008 kB; assistant page lazy), Playwright **9 passed**.
 
 **Not executed:** any live Gemini call (no key in CI; mocked HTTP transport, mock and scripted providers only).
 
