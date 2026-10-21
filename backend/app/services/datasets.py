@@ -9,7 +9,7 @@ import warnings
 from datetime import UTC, date, datetime
 
 import polars as pl
-from sqlalchemy import func, select
+from sqlalchemy import JSON, ColumnElement, Text, func, or_, select
 from sqlalchemy.orm import Session
 
 from app import malware
@@ -18,12 +18,14 @@ from app.datasets.build import BuildOptions, build_canonical, from_parquet, to_p
 from app.datasets.readers import DatasetFileError, RawTable, detect_format, read_table
 from app.datasets.schemas import suggest_mapping, validate_mapping
 from app.models import (
+    Base,
     Dataset,
     DatasetKind,
     DatasetStatus,
     DatasetVersion,
     Job,
     JobKind,
+    JobStatus,
     LegalEntity,
     User,
 )
@@ -355,6 +357,117 @@ def _mark_failed(db: Session, job: Job) -> None:
 
 on_unsuccessful(JobKind.DATASET_PARSE)(_mark_failed)
 on_unsuccessful(JobKind.DATASET_BUILD)(_mark_failed)
+
+
+# ---------------------------------------------------------------- deletion
+
+# Tables whose references to a version are bookkeeping, not use: the version's own
+# rows, its processing jobs (cancelled on delete) and the audit chain (kept as is).
+_NOT_USES = {"datasets", "dataset_versions", "jobs", "audit_events"}
+
+
+class DatasetInUse(Exception):
+    pass
+
+
+def usage_count(db: Session, org_id: uuid.UUID, version_ids: list[uuid.UUID]) -> int:
+    """Rows anywhere that point at these versions: foreign keys or ids inside JSON evidence."""
+    if not version_ids:
+        return 0
+    ids = [str(v) for v in version_ids]
+    total = 0
+    for table in Base.metadata.sorted_tables:
+        if table.name in _NOT_USES or "org_id" not in table.c:
+            continue
+        for col in table.c:
+            cond: ColumnElement[bool]
+            if any(fk.column.table.name == "dataset_versions" for fk in col.foreign_keys):
+                cond = col.in_(version_ids)
+            elif isinstance(col.type, JSON):
+                cond = or_(*(col.cast(Text).contains(i) for i in ids))
+            else:
+                continue
+            stmt = select(func.count()).select_from(table).where(table.c.org_id == org_id, cond)
+            total += db.scalar(stmt) or 0
+    return total
+
+
+def _remove_versions(db: Session, versions: list[DatasetVersion]) -> list[str]:
+    """Check, cancel queued jobs and delete the rows; returns storage keys to drop after commit."""
+    ids = [v.id for v in versions]
+    org_id = versions[0].org_id
+    if n := usage_count(db, org_id, ids):
+        raise DatasetInUse(
+            f"This data is used in {n} place(s), such as a review, reconciliation or workpaper. "
+            "Upload a corrected version instead; the record of what was used stays intact."
+        )
+    jobs = list(
+        db.scalars(
+            select(Job).where(
+                Job.org_id == org_id,
+                Job.target_id.in_(ids),
+                Job.status.in_([JobStatus.QUEUED, JobStatus.RUNNING]),
+            )
+        )
+    )
+    if any(j.status is JobStatus.RUNNING for j in jobs):
+        raise DatasetInUse("The file is being processed right now. Try again in a moment.")
+    now = datetime.now(UTC)
+    for j in jobs:
+        j.status, j.cancel_requested, j.finished_at = JobStatus.CANCELLED, True, now
+    keys = [k for v in versions for k in (v.raw_storage_key, v.parquet_storage_key) if k]
+    for v in versions:
+        db.delete(v)
+    return keys
+
+
+def delete_version(db: Session, v: DatasetVersion, actor: User) -> list[str]:
+    """Delete one unused version. The only version of a dataset goes with the dataset."""
+    ds = v.dataset
+    if len(ds.versions) == 1:
+        return delete_dataset(db, ds, actor)
+    keys = _remove_versions(db, [v])
+    audit.record(
+        db,
+        org_id=ds.org_id,
+        actor_id=actor.id,
+        action="dataset.version_deleted",
+        object_type="dataset",
+        object_id=ds.id,
+        meta={"version_id": str(v.id), "version": v.version_number, "sha256": v.raw_sha256},
+    )
+    return keys
+
+
+def delete_dataset(db: Session, ds: Dataset, actor: User) -> list[str]:
+    """Delete an unused dataset and its versions; the audit event keeps names and hashes."""
+    versions = list(ds.versions)
+    keys = _remove_versions(db, versions) if versions else []
+    audit.record(
+        db,
+        org_id=ds.org_id,
+        actor_id=actor.id,
+        action="dataset.deleted",
+        object_type="dataset",
+        object_id=ds.id,
+        meta={
+            "name": ds.name,
+            "kind": ds.kind.value,
+            "versions": [{"version": v.version_number, "sha256": v.raw_sha256} for v in versions],
+        },
+    )
+    db.delete(ds)
+    return keys
+
+
+def drop_files(keys: list[str]) -> None:
+    """Remove stored files once the deletion has been committed."""
+    storage = get_storage()
+    for key in keys:
+        try:
+            storage.delete(key)
+        except Exception as exc:  # the rows are gone; a leftover file is only wasted space
+            logger.warning("dataset file delete failed: %s", type(exc).__name__)
 
 
 class DatasetNotReady(RuntimeError):

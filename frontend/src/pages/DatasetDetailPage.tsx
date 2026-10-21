@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useParams, useSearchParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { AlertTriangle, CheckCircle2, Columns3, Fingerprint, Info, Loader2, Sigma, Upload } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Columns3, Fingerprint, Info, Loader2, Sigma, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { api, qs } from "@/lib/api";
 import type { DatasetDetail, DatasetKindSchema, DatasetRows, DatasetVersionDetail } from "@/lib/types";
@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label, Select } from "@/components/ui/input";
 import { Tabs } from "@/components/ui/tabs";
-import { DatasetStatusBadge, ErrorState, errorMessage, LoadingState, PageHeader, Pagination, SyntheticBadge, useUnsavedChangesWarning } from "@/components/common";
+import { ConfirmDialog, DatasetStatusBadge, ErrorState, errorMessage, LoadingState, PageHeader, Pagination, SyntheticBadge, useUnsavedChangesWarning } from "@/components/common";
 import { DatasetUploadDialog } from "./DatasetsPage";
 
 const DATE_FORMATS = ["%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y", "%d-%m-%Y", "%d.%m.%Y", "%Y/%m/%d"] as const;
@@ -209,6 +209,9 @@ export function DatasetDetailPage() {
   const { t, i18n } = useTranslation();
   const { can } = useAuth();
   const [uploadOpen, setUploadOpen] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState<"dataset" | "version" | null>(null);
+  const qc = useQueryClient();
+  const navigate = useNavigate();
   const dataset = useQuery({
     queryKey: ["dataset", datasetId],
     queryFn: () => api<DatasetDetail>(`/datasets/${datasetId}`),
@@ -236,6 +239,33 @@ export function DatasetDetailPage() {
       return s;
     });
 
+  const remove = useMutation({
+    mutationFn: (target: "dataset" | "version") =>
+      api(target === "dataset" ? `/datasets/${datasetId}` : `/dataset-versions/${versionId}`, { method: "DELETE" }),
+    onSuccess: (_, target) => {
+      setConfirmDelete(null);
+      void qc.invalidateQueries({ queryKey: ["datasets"] });
+      if (target === "dataset") {
+        toast.success(t("datasets.deleted"));
+        navigate("/datasets");
+        return;
+      }
+      toast.success(t("datasets.versionDeleted"));
+      qc.removeQueries({ queryKey: ["dataset-version", versionId] });
+      setParams((s) => {
+        s.delete("version");
+        s.delete("rows");
+        s.delete("panel");
+        return s;
+      });
+      void qc.invalidateQueries({ queryKey: ["dataset", datasetId] });
+    },
+    onError: (e) => {
+      setConfirmDelete(null);
+      toast.error(errorMessage(e, t("common.genericError")));
+    },
+  });
+
   if (dataset.isLoading) return <LoadingState />;
   if (dataset.isError || !dataset.data) return <ErrorState error={dataset.error} onRetry={() => void dataset.refetch()} />;
   const d = dataset.data;
@@ -261,9 +291,14 @@ export function DatasetDetailPage() {
         }
         actions={
           can("write") && (
-            <Button variant="outline" onClick={() => setUploadOpen(true)}>
-              <Upload aria-hidden /> {t("datasets.newVersion")}
-            </Button>
+            <>
+              <Button variant="destructive-outline" onClick={() => setConfirmDelete("dataset")}>
+                <Trash2 aria-hidden /> {t("datasets.delete")}
+              </Button>
+              <Button variant="outline" onClick={() => setUploadOpen(true)}>
+                <Upload aria-hidden /> {t("datasets.newVersion")}
+              </Button>
+            </>
           )
         }
       />
@@ -314,6 +349,11 @@ export function DatasetDetailPage() {
                       <Loader2 className="size-3.5 animate-spin text-teal-600" aria-hidden />
                       {t(`datasets.busy.${v.status}`)}
                     </span>
+                  )}
+                  {can("write") && versions.length > 1 && (
+                    <Button size="sm" variant="ghost" className="ms-auto" onClick={() => setConfirmDelete("version")}>
+                      <Trash2 aria-hidden /> {t("datasets.deleteVersion", { n: v.version_number })}
+                    </Button>
                   )}
                 </div>
                 {v.failure_message && (
@@ -439,6 +479,16 @@ export function DatasetDetailPage() {
         </div>
       </div>
       <DatasetUploadDialog open={uploadOpen} onOpenChange={setUploadOpen} datasetId={d.id} />
+      <ConfirmDialog
+        open={confirmDelete !== null}
+        onOpenChange={(o) => !o && setConfirmDelete(null)}
+        title={confirmDelete === "version" ? t("datasets.deleteVersionTitle", { n: v?.version_number ?? "" }) : t("datasets.deleteTitle")}
+        description={confirmDelete === "version" ? t("datasets.deleteVersionDescription") : t("datasets.deleteDescription")}
+        confirmLabel={t("common.delete")}
+        destructive
+        busy={remove.isPending}
+        onConfirm={() => confirmDelete && remove.mutate(confirmDelete)}
+      />
     </>
   );
 }

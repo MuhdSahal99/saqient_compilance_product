@@ -872,7 +872,15 @@
     "column": "Column",
     "value": "Value",
     "problem": "Problem",
-    "showingRows": "Showing rows {{rows}}."
+    "showingRows": "Showing rows {{rows}}.",
+    "delete": "Delete dataset",
+    "deleteTitle": "Delete this dataset?",
+    "deleteDescription": "Every version and its stored files are deleted, for example after a wrong upload. The audit trail keeps the name, type and file fingerprints. Data already used in a review, reconciliation or workpaper cannot be deleted; upload a corrected version instead.",
+    "deleted": "Dataset deleted.",
+    "deleteVersion": "Delete v{{n}}",
+    "deleteVersionTitle": "Delete version {{n}}?",
+    "deleteVersionDescription": "This version and its stored files are deleted. Other versions stay. A version already used in a review, reconciliation or workpaper cannot be deleted.",
+    "versionDeleted": "Version deleted."
   },
   "rulePacks": {
     "title": "Rule packs",

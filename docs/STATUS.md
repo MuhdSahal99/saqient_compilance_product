@@ -2,6 +2,12 @@
 
 Last updated: 2026-10-21 · Phases A–F are merged into main. Phase G (multi-agent AI, Gemini) is on `feat/phase-g-ai-agents`.
 
+## Dataset deletion (follow-up, `feat/phase-g-dataset-delete`)
+
+**Done:** `DELETE /api/datasets/{id}` and `DELETE /api/dataset-versions/{id}` (analyst, reviewer, admin) for wrong uploads. Refused with 409 while any table points at a version (foreign keys, or the id inside JSON evidence); queued processing is cancelled, running processing refused; stored files dropped after commit; audit event keeps name, kind and hashes. Delete buttons with confirmation on the dataset page, en/ar. No migration.
+
+**Checks executed (2026-10-21):** ruff + format, mypy, pytest **408 passed, 2 skipped** (6 new: roles, tenant 404s, in use, JSON evidence, jobs), pnpm lint (0 errors), typecheck, Vitest 71 passed, build. Playwright not run for this change.
+
 ## Phase G — multi-agent AI layer (Gemini first)
 
 **Done:** `AI_PROVIDER=gemini` adapter (`generateContent`, key header only, JSON mode, bounded retry); reasoning and fast model tiers (`AI_MODEL_REASONING` / `AI_MODEL_FAST`, Gemini defaults `gemini-3.8-flash` / `gemini-3.5-flash-lite`); six agents (contract analyst, finding explainer, letter drafter, router, verified-content answerer, checking agent) with strict JSON outputs; pipelines with deterministic guards (quote validation, id checks, number grounding) and a checking agent; `ai_tasks` + `ai_task_steps` (model and version per step); accept/dismiss with audit, accepted letter wording copied into the letter point; AI assistant page, Explain on findings, Draft wording on letter points, Contract scan on documents, en/ar; `python -m app.ai.smoke`. ADR 0015. Migration 0035.
