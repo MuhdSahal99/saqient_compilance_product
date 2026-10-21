@@ -12,6 +12,8 @@ from app.models import (
     AdjustmentStatus,
     AIAssessment,
     AISuggestionStatus,
+    AITaskKind,
+    AITaskStatus,
     Assertion,
     AssuranceStatus,
     ChecklistKind,
@@ -618,6 +620,62 @@ class AISettingsOut(BaseModel):
     is_mock: bool
     opted_in: bool = Field(description="An org admin turned AI suggestions on for this org.")
     opted_in_at: datetime | None
+
+
+class AIAgentOut(BaseModel):
+    name: str
+    tier: str = Field(description="reasoning or fast; each tier has its own model.")
+    model: str
+
+
+class AITaskIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    kind: AITaskKind
+    subject_id: uuid.UUID | None = Field(
+        default=None,
+        description="Document version (contract_tax), finding (finding_explain) or letter "
+        "point (letter_draft). Not used for pack_qa.",
+    )
+    question: str = Field(default="", max_length=1000, description="pack_qa only.")
+    language: Literal["en", "ar"] = "en"
+
+
+class AITaskStepOut(ORM):
+    ordinal: int
+    agent: str
+    tier: str
+    provider: str
+    model: str
+    model_version: str
+    status: str
+    duration_ms: int
+    input_tokens: int | None
+    output_tokens: int | None
+    note: str
+
+
+class AITaskOut(BaseModel):
+    id: uuid.UUID
+    kind: AITaskKind
+    subject_type: str
+    subject_id: uuid.UUID
+    question: str
+    language: str
+    status: AITaskStatus
+    provider: str
+    is_mock: bool
+    prompt_version: str
+    output: dict[str, Any]
+    warnings: list[str]
+    error: str
+    requested_by_name: str | None
+    decided_by_name: str | None
+    decided_at: datetime | None
+    decision_note: str
+    created_at: datetime
+    finished_at: datetime | None
+    steps: list[AITaskStepOut]
+    job: JobOut
 
 
 class AISettingsIn(BaseModel):

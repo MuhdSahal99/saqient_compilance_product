@@ -66,7 +66,13 @@ def test_org_admin_opts_in_per_organisation(
     assert on.json()["opted_in"] is True and on.json()["opted_in_at"]
     assert on.json()["is_mock"] is True and on.json()["provider"] == "mock"
     assert viewer.get("/api/org/ai-settings").json()["opted_in"] is True
-    assert reviewer.get("/api/ai/status").json()["available_features"] == ["review_suggestions"]
+    assert reviewer.get("/api/ai/status").json()["available_features"] == [
+        "review_suggestions",
+        "contract_tax",
+        "finding_explain",
+        "letter_draft",
+        "pack_qa",
+    ]
     data = reviewer.post(f"/api/reviews/{review['id']}/ai-suggestions").json()
     assert data["available"] is True and data["run"]["job"]["status"] == "completed"
     assert data["run"]["model"] == "mock" and data["run"]["is_mock"] is True

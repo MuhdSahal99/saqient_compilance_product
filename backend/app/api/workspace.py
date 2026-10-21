@@ -31,6 +31,7 @@ from app.models import (
 from app.schemas import AuditEventOut, AuditVerificationOut, MemberOut, Page
 from app.services import audit
 from app.services.ai_suggestions import FEATURE
+from app.services.ai_tasks import AGENT_FEATURES
 
 router = APIRouter(tags=["workspace"])
 
@@ -245,8 +246,9 @@ def ai_status(ctx: Ctx) -> dict[str, Any]:
         "deployment_enabled": deployment,
         "org_opted_in": ctx.org.ai_opt_in,
         "provider": provider.name,
-        "model": s.ai_model if s.ai_enabled else None,
-        "available_features": [FEATURE] if enabled else [],
+        "model": s.ai_model_for("fast") if deployment else None,
+        "reasoning_model": s.ai_model_for("reasoning") if deployment else None,
+        "available_features": [FEATURE, *AGENT_FEATURES] if enabled else [],
         "is_mock": enabled and provider.name == "mock",
         "note": (
             "AI suggestions are available. Each suggestion needs a reviewer's acceptance "
